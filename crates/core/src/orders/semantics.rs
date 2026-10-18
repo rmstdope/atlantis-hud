@@ -3487,6 +3487,7 @@ fn forecast_hex(
                         line: None,
                         other,
                         place,
+                        lands: None,
                     });
                 }
             }
@@ -3537,7 +3538,10 @@ fn forecast_hex(
                             .collect()
                     })
                     .unwrap_or_default();
-                lent_across.push((arrival.unit.clone(), lent_to, across, lent));
+                // One that sailed in lent all of it where its fleet lands, this hex, and its line
+                // names that hex once rather than the hex each passenger sails from (`ah-mqbu`).
+                let lands = arrival.sails.then(|| place_label(hex.region));
+                lent_across.push((arrival.unit.clone(), lent_to, across, lent, lands));
             }
         }
     }
@@ -3646,6 +3650,7 @@ fn forecast_hex(
                     line: None,
                     other,
                     place,
+                    lands: None,
                 });
             }
         }
@@ -3785,6 +3790,7 @@ fn forecast_hex(
                     line: None,
                     other: Some(other.clone()),
                     place: None,
+                    lands: None,
                 });
             }
         }
@@ -3857,6 +3863,7 @@ fn forecast_hex(
                     line: moved.line,
                     other: None,
                     place: None,
+                    lands: None,
                 });
             }
         }
@@ -17968,6 +17975,9 @@ struct ArrivingSilver {
     /// lends to here (`ah-myko`).
     label: String,
     lends: i64,
+    /// Whether it arrives aboard a fleet ([`HexMembership::sails_away`]) rather than on foot: what
+    /// it lends here is then lent where its fleet lands, and its `lent` line says so (`ah-mqbu`).
+    sails: bool,
     /// What maintenance took off its silver ([`maintenance_settled`]), on the `MonthEnd` figure
     /// once the month has settled and `0` everywhere else. Every order comes before maintenance
     /// (`rules/sequenceofevents`), so what a STUDY or a shipment here may borrow of it is its
@@ -18090,16 +18100,18 @@ fn split_loan<T>(
 /// it, as `forecast_hex` does for a sharer that stays (`ah-moq3`, `ah-wyj8`).
 /// What one sharer arriving from another hex lent where its month ends: its own row's key, whom
 /// it lent there as `(label, amount)` (`ah-myko`), which passengers sailing in it lent as
-/// `((label, the hex each sails from), amount)` (`ah-qffa`), and how much in all.
+/// `((label, the hex each sails from), amount)` (`ah-qffa`), how much in all, and - for one that
+/// sailed in - the hex its fleet lands in, where every unit it paid is named (`ah-mqbu`).
 type LentAcross = (
     UnitKey,
     Vec<(String, i64)>,
     Vec<((String, String), i64)>,
     i64,
+    Option<String>,
 );
 
 fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
-    for (unit, lent_to, across, lent) in lent_across {
+    for (unit, lent_to, across, lent, lands) in lent_across {
         let Some(forecast) = silver.iter_mut().find(|forecast| {
             forecast.region_id == unit.region_id && forecast.unit_id == unit.unit_id
         }) else {
@@ -18108,13 +18120,23 @@ fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
         forecast.expense = forecast.expense.map(|spent| spent.saturating_add(*lent));
         forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(*lent));
         if forecast.doubt.is_none() {
-            for (other, place, amount) in split_loan(*lent, lent_to, across, Clone::clone) {
+            let mut lines = split_loan(*lent, lent_to, across, Clone::clone);
+            if lands.is_some() {
+                // Lent where its fleet lands: the passengers it sailed in with first, as the agreed
+                // wording reads, then the units standing there (`ah-mqbu`).
+                lines.sort_by_key(|(_, place, _)| place.is_none());
+            }
+            for (other, place, amount) in lines {
+                // A unit it paid where its fleet lands is named with that hex; a part nobody is
+                // named for keeps "a faction-mate's orders in this hex".
+                let lands = lands.clone().filter(|_| other.is_some());
                 forecast.changes.push(SilverChange {
                     amount: -amount,
                     cause: SilverChangeCause::Lent,
                     line: None,
                     other,
-                    place,
+                    place: if lands.is_some() { None } else { place },
+                    lands,
                 });
             }
         }
@@ -18165,6 +18187,7 @@ fn name_landing_lenders(silver: &mut [UnitSilver], lent_landing: &[LentLanding])
                 line: None,
                 other: Some(other.clone()),
                 place: place.clone(),
+                lands: None,
             })
             .collect();
         forecast.changes.retain(|change| !across(change));
@@ -18263,6 +18286,7 @@ fn lend_walking_sharers_silver(
                 unit: unit_key(&hex.region.region_id, who),
                 label: unit_label(hex, who),
                 lends: (held_at(who, moment) - more).max(0),
+                sails: members.sails_away(who),
                 maintenance: if moment == LendingMoment::MonthEnd {
                     maintenance_settled(ledger, who)
                 } else {
@@ -62394,6 +62418,7 @@ BUILD
             line: None,
             other: Some("Unit 900 (900)".to_string()),
             place: None,
+            lands: None,
         }));
         assert!(transported_sender.changes.contains(&SilverChange {
             amount: -200,
@@ -62401,6 +62426,7 @@ BUILD
             line: Some(2),
             other: Some("unit 901".to_string()),
             place: None,
+            lands: None,
         }));
     }
 
@@ -62500,6 +62526,7 @@ BUILD
                     line: Some(2),
                     other: Some("HM (2000)".to_string()),
                     place: None,
+                    lands: None,
                 },
                 &SilverChange {
                     amount: 6597,
@@ -62507,6 +62534,7 @@ BUILD
                     line: None,
                     other: Some("Other (2001)".to_string()),
                     place: None,
+                    lands: None,
                 },
             ]
         );
@@ -62785,6 +62813,7 @@ BUILD
                 line: Some(2),
                 other: None,
                 place: None,
+                lands: None,
             }]
         );
     }
@@ -63065,6 +63094,7 @@ BUILD
                 line: Some(2),
                 other: None,
                 place: None,
+                lands: None,
             }]
         );
         assert_eq!(silver.shipping.len(), 1);
@@ -64572,6 +64602,7 @@ BUILD
                 line: Some(2),
                 other: None,
                 place: None,
+                lands: None,
             }]
         );
         let findings = unpaid_findings(regions(60), orders);
@@ -64622,6 +64653,7 @@ BUILD
                 line: Some(3),
                 other: None,
                 place: None,
+                lands: None,
             }]
         );
         let findings = unpaid_findings(regions(), orders);
@@ -64888,6 +64920,7 @@ BUILD
                 line: Some(4),
                 other: None,
                 place: None,
+                lands: None,
             }]
         );
     }
@@ -82732,6 +82765,87 @@ BUILD
         );
         let review = review_turn(&report, &orders, Some(&trident()), options);
         (report, review)
+    }
+
+    /// `ah-mqbu`: captain 4022, sharing $500, sails north carrying passenger 901, who studies
+    /// where the fleet lands (`rules/sequenceofevents`: SAIL before STUDY), and resident 902
+    /// sharing there with nothing writes `resident`. A sharer pays a unit "in the same region"
+    /// (`rules/share`), so the captain pays where its fleet lands.
+    fn captain_paying_its_passenger(resident_orders: &str) -> (ParsedReport, TurnReview) {
+        let resident = sharing(with_silver(unit("902"), 0));
+        let (mut report, _) = passenger_palace(
+            open_sea(vec![]),
+            region_at("1:7,53", 7, 53, vec![resident]),
+            None,
+        );
+        let captain = report
+            .regions
+            .iter_mut()
+            .flat_map(|region| region.units.iter_mut())
+            .find(|unit| unit.unit_id == "4022")
+            .expect("the captain");
+        *captain = sharing(with_silver(captain.clone(), 500));
+        let orders =
+            format!("unit 4022\nSAIL N\nunit 901\nSTUDY COMB\nunit 902\n{resident_orders}");
+        let review = review_turn(&report, &orders, Some(&trident()), CheckOptions::default());
+        (report, review)
+    }
+
+    /// One `Lent` line as `(other, place, lands, amount)` (`ah-mqbu`).
+    type LandingLine = (Option<String>, Option<String>, Option<String>, i64);
+
+    /// `ah-mqbu`: each `Lent` line of `id` as a [`LandingLine`].
+    fn lent_lines_landing(review: &TurnReview, id: &str) -> Vec<LandingLine> {
+        silver_of(review, id)
+            .changes
+            .iter()
+            .filter(|change| change.cause == SilverChangeCause::Lent)
+            .map(|change| {
+                (
+                    change.other.clone(),
+                    change.place.clone(),
+                    change.lands.clone(),
+                    change.amount,
+                )
+            })
+            .collect()
+    }
+
+    /// `ah-mqbu`: the captain's line names its passenger and the hex its fleet lands in - the
+    /// passenger's own line turned round - not the hex the passenger sails from, which is the
+    /// captain's own.
+    #[test]
+    fn a_sharing_captain_names_its_passenger_where_its_fleet_lands() {
+        let (report, review) = captain_paying_its_passenger("");
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        assert!(fee > 0, "{:?}", silver_of(&review, "901"));
+        let lands = Some("mountain (7,53)".to_string());
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![(Some(named(&report, "4022")), lands.clone(), fee)]
+        );
+        assert_eq!(
+            lent_lines_landing(&review, "4022"),
+            vec![(Some(named(&report, "901")), None, lands, -fee)]
+        );
+    }
+
+    /// `ah-mqbu`: a captain that also pays a unit already standing where it lands names it in
+    /// the same list, after the passenger, with the hex once.
+    #[test]
+    fn a_sharing_captain_names_a_resident_and_its_passenger_where_its_fleet_lands() {
+        let (report, review) = captain_paying_its_passenger("STUDY COMB\n");
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        let resident_fee = silver_of(&review, "902").borrowed_for_orders;
+        assert!(fee > 0 && resident_fee > 0, "{fee} {resident_fee}");
+        let lands = Some("mountain (7,53)".to_string());
+        assert_eq!(
+            lent_lines_landing(&review, "4022"),
+            vec![
+                (Some(named(&report, "901")), None, lands.clone(), -fee),
+                (Some(named(&report, "902")), None, lands, -resident_fee),
+            ]
+        );
     }
 
     /// `ah-kjq5`: two sharers where the fleet lands pay one fee between them, so the passenger's
