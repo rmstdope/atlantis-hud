@@ -19057,7 +19057,25 @@ impl Lending {
             Arriving(usize),
         }
         let lender = Lender::Unit(index);
-        let mut left = passed_on;
+        // What it was lent, latest first: only a loan the log holds can be passed on by name. A
+        // passenger's STUDY lent where its fleet lands is in `borrows` with no loan here, so what
+        // is rewired is capped at the loans, and every amount moved has a lender to move to.
+        let mut owed = passed_on;
+        let mut sources: Vec<(Lender, i64)> = Vec::new();
+        for loan in self.loans.iter_mut().rev() {
+            if owed == 0 {
+                break;
+            }
+            if loan.borrower != index {
+                continue;
+            }
+            let taken = loan.amount.min(owed);
+            loan.amount -= taken;
+            owed -= taken;
+            sources.push((loan.lender, taken));
+        }
+        sources.reverse();
+        let mut left: i64 = sources.iter().map(|(_, amount)| amount).sum();
         let mut onward: Vec<(To, i64)> = Vec::new();
         for loan in self.loans.iter_mut().rev() {
             if left == 0 {
@@ -19084,22 +19102,17 @@ impl Lending {
             draws.retain(|(_, amount)| *amount > 0);
         }
         onward.reverse();
-        // What it was lent, latest first, as far as it went onward.
-        let mut owed: i64 = onward.iter().map(|(_, amount)| amount).sum();
-        let mut sources: Vec<(Lender, i64)> = Vec::new();
-        for loan in self.loans.iter_mut().rev() {
-            if owed == 0 {
-                break;
+        // What found nowhere onward to go stays lent to this unit, so no amount is lost.
+        if left > 0 {
+            let mut back = left;
+            for (from, amount) in sources.iter_mut().rev() {
+                let returned = (*amount).min(back);
+                *amount -= returned;
+                back -= returned;
+                self.lend(index, *from, returned);
             }
-            if loan.borrower != index {
-                continue;
-            }
-            let taken = loan.amount.min(owed);
-            loan.amount -= taken;
-            owed -= taken;
-            sources.push((loan.lender, taken));
+            sources.retain(|(_, amount)| *amount > 0);
         }
-        sources.reverse();
         self.loans.retain(|loan| loan.amount > 0);
         // Pair them in order: the first silver it was lent went on to the first it lent.
         let mut sources = sources.into_iter();
@@ -19119,7 +19132,13 @@ impl Lending {
                 match to {
                     To::Unit(borrower) => self.lend(borrower, from, amount),
                     To::Arriving(student) => {
-                        push_loan(&mut self.arriving_lent_by[student], from, amount);
+                        let lenders = &mut self.arriving_lent_by[student];
+                        push_loan(lenders, from, amount);
+                        // In the hex's document order, as every other loan line names its lenders.
+                        lenders.sort_by_key(|(lender, _)| match *lender {
+                            Lender::Unit(index) => (0, index),
+                            Lender::Arrival(index) => (1, index),
+                        });
                     }
                 }
                 source = Some((from, has - amount));
@@ -80158,6 +80177,61 @@ BUILD
             .unwrap_or_else(|| panic!("the report lists {id}"));
         unit.region_id = id.to_string();
         region.units.push(unit);
+    }
+
+    /// `ah-myko` second follow-up review, finding 1, end to end: resident 902 where the fleet
+    /// lands GIVEs $50 it does not have, which sharer 906 funds as the gift runs, then SELLs its
+    /// grain and pays the passenger's STUDY. It passed $50 of 906's silver on (`ah-49j0`), so the
+    /// passenger names 902 and 906, and each of them names the passenger, for the same amounts.
+    #[test]
+    fn a_passenger_paid_with_silver_passed_on_names_whose_it_was() {
+        let (report, review) = between_two_sharers_with(
+            0,
+            |report| {
+                let region = report
+                    .regions
+                    .iter_mut()
+                    .find(|region| region.region_id == "1:7,53")
+                    .expect("the landing hex");
+                region.wanted = vec![MarketItem {
+                    amount: 100,
+                    name: "grain".to_string(),
+                    tag: "GRAI".to_string(),
+                    price: 10,
+                }];
+                let at = region
+                    .units
+                    .iter()
+                    .position(|unit| unit.unit_id == "902")
+                    .expect("the resident");
+                let resident = region.units.remove(at);
+                region
+                    .units
+                    .insert(at, with_item(resident, 10, "grain", "GRAI"));
+                standing_in(report, "1:7,53", sharing(with_silver(unit("906"), 500)));
+                standing_in(report, "1:7,53", with_silver(unit("907"), 0));
+            },
+            "GIVE 907 50 SILV\nSELL 10 grain\n",
+        );
+        let fee = silver_of(&review, "901").borrowed_for_orders;
+        assert!(fee > 50, "{fee}");
+        let place = Some("mountain (7,53)".to_string());
+        let from = Some("ocean (7,55)".to_string());
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![
+                (Some(named(&report, "902")), place.clone(), fee - 50),
+                (Some(named(&report, "906")), place, 50),
+            ]
+        );
+        assert_eq!(
+            loan_lines(&review, "902", SilverChangeCause::Lent),
+            vec![(Some(named(&report, "901")), from.clone(), -(fee - 50))]
+        );
+        assert_eq!(
+            loan_lines(&review, "906", SilverChangeCause::Lent),
+            vec![(Some(named(&report, "901")), from, -50)]
+        );
     }
 
     /// `ah-myko` follow-up review, finding 1: who paid a passenger's STUDY where its fleet lands

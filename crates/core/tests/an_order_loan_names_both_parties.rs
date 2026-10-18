@@ -107,9 +107,11 @@ fn a_loan_across_a_sailing_is_unchanged() {
     );
 }
 
-/// Across the whole report, every loan line names its other party, and each one a lender books
-/// is mirrored by its borrower's, the same amount the other way: the two sides of one loan - in
-/// one hex, or across a sailing.
+/// Across this report, every loan line names its other party, and each one a lender books is
+/// mirrored by its borrower's, the same amount the other way: the two sides of one loan - in one
+/// hex, or across a sailing. Not a property of every report: a sharer arriving from another hex
+/// that pays an arriving passenger's STUDY names nobody on its own row (out of `ah-myko`'s scope;
+/// the follow-up bead names it). This report has no such loan.
 #[test]
 fn every_loan_is_named_on_both_sides() {
     let review = review();
