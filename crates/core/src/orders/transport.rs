@@ -1067,12 +1067,15 @@ impl Shipping {
                             || self.may_own.contains(target))
                 }
                 Acceptance::NotCaravanseraiOwner => self.may_own.contains(target),
-                // The sender's own month can undo it. A TRANSPORT's target's can too: a target that
-                // ends the month a quartermaster owning a Caravanserai accepts from anybody within
-                // the flat reach. A DISTRIBUTE's cannot, since `CheckTransportOrders` never asks a
-                // DISTRIBUTE's target about its skill or structure (`ah-g4bz`).
+                // The sender's own month can undo it, but only by making it an owner: it already
+                // has the skill, and `rules/economy_transport` asks "a quartermaster must be the
+                // owner of a structure which allows transportation", so a STUDY mends nothing
+                // (`ah-xbnu`). A TRANSPORT's target's month can too: a target that ends the month a
+                // quartermaster owning a Caravanserai accepts from anybody within the flat reach.
+                // A DISTRIBUTE's cannot, since `CheckTransportOrders` never asks a DISTRIBUTE's
+                // target about its skill or structure (`ah-g4bz`).
                 Acceptance::SenderOwnsNoCaravanserai => {
-                    self.month_may_change(sender)
+                    self.may_own.contains(sender)
                         || (order == ShipmentOrder::Transport && self.month_may_change(target))
                 }
                 // Only the sender's own month - a STUDY of the skill - can undo it.
@@ -1732,6 +1735,14 @@ mod tests {
             "901 may end the month able to accept"
         );
 
+        // `ah-xbnu` review, finding 1: 900 already has the skill, so a STUDY of it mends nothing.
+        shipping.may_learn.insert("900".to_string());
+        assert!(
+            !shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901")
+                .unsettled,
+            "a STUDY gives 900 no Caravanserai"
+        );
         shipping.may_own.insert("900".to_string());
         assert!(
             shipping
@@ -1788,6 +1799,14 @@ mod tests {
         );
         assert!(!quartermaster_only.unsettled, "it lacks only the structure");
         assert!(judged(false, true, quartermaster()).unsettled);
+
+        // Another faction's month is never ours to read, whatever its orders show (`ah-kjjv`).
+        let foreign = judged(false, false, facts(false, true, false, false));
+        assert_eq!(foreign.acceptance, Acceptance::NotCaravanseraiOwner);
+        assert!(
+            foreign.unsettled,
+            "a foreign target's month is never settled"
+        );
     }
 
     /// `ah-1d3i`: `CheckTransportOrders` (`../Atlantis/runorders.cpp`) refuses every TRANSPORT

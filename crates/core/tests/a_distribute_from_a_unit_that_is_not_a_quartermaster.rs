@@ -123,6 +123,20 @@ fn a_sender_studying_the_skill_is_not_warned() {
     );
 }
 
+/// `ah-xbnu` review, finding 2: a BUILD gives no skill, so a sender that BUILDs is still no
+/// quartermaster when the shipments run and the refusal is warned about.
+#[test]
+fn a_sender_that_builds_is_still_warned() {
+    assert_eq!(
+        refusals(&orders("BUILD Caravanserai\nDISTRIBUTE 1162 100 SILV")),
+        vec![(
+            Some("683".to_string()),
+            Some(5),
+            "This unit is not a quartermaster, so 100 SILV stay with this unit.".to_string()
+        )]
+    );
+}
+
 /// `ah-7jsv`. A refused `ALL SILV` names what `ALL` would have taken when the shipments run, not
 /// the report's holding: `rules/sequenceofevents` processes CAST and STUDY before TRANSPORT, so
 /// their silver has already left Ivanhoe's 2890 by then. Before the fix the hover said 2890 while
