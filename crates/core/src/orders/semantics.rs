@@ -9496,7 +9496,8 @@ fn check_pillaged_tax(
 ///
 /// A `TAX` line in a hex the faction's region limit refuses is spared the same way: it collects
 /// nothing whatever the guard's attitude, and the region-limit warning already says so - "may" would
-/// read as if the guard were the reason (`ah-2l07`). A `PILLAGE` line there keeps the mark, since
+/// read as if the guard were the reason (`ah-2l07`). Like the pillaged case, which leans on
+/// `taxed-a-pillaged-hex`, this leans on that other warning: with it disabled, nothing is said. A `PILLAGE` line there keeps the mark, since
 /// the guard check comes before the region check (`../Atlantis` `runorders.cpp`).
 ///
 /// A unit that taxes by its flag has no `TAX` line to hang the mark on, so it is marked on its
@@ -9539,9 +9540,10 @@ fn check_guarded_tax(
         }
         // A unit that taxes by its flag collects nothing here either, and has no line to hang the
         // mark on - so it hangs on the block, which is what `finding_at_block` is for (`ah-fvzu`).
-        // Suppressed in a pillaged hex for the same reason the `TAX` line is: `taxed-a-pillaged-hex`
-        // already says the money is certainly gone, and `check_pillaged_tax` marks this same block
-        // with it (`ah-cxxa`).
+        // Suppressed wherever the hex's TAX is already lost, for the same reason the `TAX` line is:
+        // in a pillaged hex `taxed-a-pillaged-hex` already says the money is certainly gone, and
+        // `check_pillaged_tax` marks this same block with it (`ah-cxxa`); in a hex the region
+        // limit refuses, the region-limit warning names it (`ah-2l07`).
         if !tax_lost && !ordered_to_tax && taxes(&ordered.flags, &ordered.intents) {
             findings.push(ordered.finding_at_block(
                 hex,
@@ -76895,6 +76897,42 @@ BUILD
             CheckOptions::default(),
         );
 
+        let guarded: Vec<Option<&str>> = review
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TAXED_A_GUARDED_HEX)
+            .map(|finding| finding.unit_id.as_deref())
+            .collect();
+        assert_eq!(guarded, [Some("5")], "{:?}", codes(&review.findings));
+    }
+
+    /// The same for a unit that taxes by its flag: in a hex the region limit refuses, its block is
+    /// not marked either (`ah-2l07`).
+    #[test]
+    fn a_refused_regions_guarded_flag_taxer_is_not_told_the_guard_may_stop_it() {
+        let regions = vec![
+            taxable_region("1:7,53", 7, 53, vec![fighter("5"), foreign_guard("14")]),
+            taxable_region(
+                "1:8,53",
+                8,
+                53,
+                vec![taxing_by_flag(fighter("6")), foreign_guard("15")],
+            ),
+        ];
+        let review = review_turn(
+            &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 5)], regions),
+            "unit 5\nTAX\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+
+        assert!(
+            review.findings.iter().any(|finding| finding.code
+                == codes::TOO_MANY_TRADE_REGIONS
+                && finding.message.ends_with("mountain (8,53)")),
+            "the flag taxer's region is the one refused: {:?}",
+            codes(&review.findings)
+        );
         let guarded: Vec<Option<&str>> = review
             .findings
             .iter()
