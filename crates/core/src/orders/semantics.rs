@@ -18645,6 +18645,9 @@ struct Loan {
     borrower: usize,
     lender: Lender,
     amount: i64,
+    /// Drawn as a faction-mate's GIVE or TAKE ran ([`Lending::lent_at_give`]), which
+    /// [`Lending::netted`] never passes on.
+    at_give: bool,
 }
 
 /// What each unit of a hex has lent and borrowed through its `SHARE` silver pool's moments
@@ -18776,22 +18779,31 @@ impl Lending {
         by_unit
     }
 
-    /// Who lent each unit of the hex what it borrowed here, `(lender, amount)` in booking order -
-    /// aligned with `hex.units` (`ah-myko`). Adds up to `borrows`, less a passenger's STUDY lent
-    /// where its fleet lands.
+    /// Who lent each unit of the hex what it borrowed here, `(lender, amount)` - aligned with
+    /// `hex.units` (`ah-myko`). Adds up to `borrows`, less a passenger's STUDY lent where its fleet
+    /// lands. The lenders in the hex's document order, then the sharers arriving from other
+    /// hexes: the order the upkeep line names its payers in ([`pair_upkeep_transfers`]), whichever
+    /// moment lent first.
     fn lent_by(&self) -> Vec<Vec<(Lender, i64)>> {
         let mut by_unit: Vec<Vec<(Lender, i64)>> = vec![Vec::new(); self.borrows.len()];
         for loan in &self.loans {
             push_loan(&mut by_unit[loan.borrower], loan.lender, loan.amount);
         }
+        for lenders in &mut by_unit {
+            lenders.sort_by_key(|(lender, _)| match *lender {
+                Lender::Unit(index) => (0, index),
+                Lender::Arrival(index) => (1, index),
+            });
+        }
         by_unit
     }
 
     /// What each unit of the hex lent each unit of it, `(borrower index, amount)` with the
-    /// borrowers in report order - aligned with `hex.units` (`ah-myko`).
-    fn lent_to_each_in_hex(&self, report_order: &[usize]) -> Vec<Vec<(usize, i64)>> {
+    /// borrowers in document order, as the upkeep line names them - aligned with `hex.units`
+    /// (`ah-myko`).
+    fn lent_to_each_in_hex(&self) -> Vec<Vec<(usize, i64)>> {
         let mut by_unit = vec![Vec::new(); self.lends.len()];
-        for &borrower in report_order {
+        for borrower in 0..self.borrows.len() {
             for loan in self.loans.iter().filter(|loan| loan.borrower == borrower) {
                 if let Lender::Unit(index) = loan.lender {
                     push_loan(&mut by_unit[index], borrower, loan.amount);
@@ -18803,9 +18815,9 @@ impl Lending {
 
     /// [`Lending::lent_to_each_in_hex`] for the sharers arriving from other hexes, aligned with
     /// `arrivals_lend` (`ah-myko`).
-    fn arrivals_lent_to(&self, report_order: &[usize]) -> Vec<Vec<(usize, i64)>> {
+    fn arrivals_lent_to(&self) -> Vec<Vec<(usize, i64)>> {
         let mut by_arrival = vec![Vec::new(); self.arrivals_lend.len()];
-        for &borrower in report_order {
+        for borrower in 0..self.borrows.len() {
             for loan in self.loans.iter().filter(|loan| loan.borrower == borrower) {
                 if let Lender::Arrival(index) = loan.lender {
                     if let Some(lent) = by_arrival.get_mut(index) {
@@ -18824,6 +18836,7 @@ impl Lending {
                 borrower,
                 lender,
                 amount,
+                at_give: false,
             });
         }
     }
@@ -18928,8 +18941,9 @@ impl Lending {
     /// The loans are rewired to match: what a unit passed on comes off the latest loans it made
     /// and the latest it was given, and is booked as lent straight from whose silver it was to
     /// whom it went - so a borrower's `was lent` line names the unit that ended up paying, and
-    /// that unit's `lent` line names it (`ah-myko`). The Give phase's draws are booked first, so
-    /// taking from the latest never reaches them.
+    /// that unit's `lent` line names it (`ah-myko`). Its loans to the hex's units come off first,
+    /// then what it lent a passenger sailing in ([`Lending::arriving_lent_by`]); a Give-phase draw
+    /// never does, since netting never passes it on.
     fn netted(mut self) -> Self {
         for index in 0..self.lends.len() {
             let passed_on = (self.lends[index] - self.lent_at_give[index])
@@ -18946,59 +18960,81 @@ impl Lending {
 
     /// [`Lending::netted`]'s rewiring of unit `index`'s loans, for `passed_on` it only passed on.
     fn rewire(&mut self, index: usize, passed_on: i64) {
-        // Cut `amount` off the latest loans `matches`, latest first, and say what each cut was.
-        let cut = |loans: &mut Vec<Loan>, matches: &dyn Fn(&Loan) -> bool, mut amount: i64| {
-            let mut cuts = Vec::new();
-            for loan in loans.iter_mut().rev() {
-                if amount == 0 {
-                    break;
-                }
-                if !matches(loan) {
+        /// Where a cut of onward lending went: a unit of the hex, or an arriving passenger.
+        #[derive(Clone, Copy)]
+        enum To {
+            Unit(usize),
+            Arriving(usize),
+        }
+        let lender = Lender::Unit(index);
+        let mut left = passed_on;
+        let mut onward: Vec<(To, i64)> = Vec::new();
+        for loan in self.loans.iter_mut().rev() {
+            if left == 0 {
+                break;
+            }
+            if loan.lender != lender || loan.at_give {
+                continue;
+            }
+            let taken = loan.amount.min(left);
+            loan.amount -= taken;
+            left -= taken;
+            onward.push((To::Unit(loan.borrower), taken));
+        }
+        for (student, draws) in self.arriving_lent_by.iter_mut().enumerate().rev() {
+            for (party, amount) in draws.iter_mut().rev() {
+                if left == 0 || *party != lender {
                     continue;
                 }
-                let taken = loan.amount.min(amount);
-                loan.amount -= taken;
-                amount -= taken;
-                cuts.push(Loan {
-                    amount: taken,
-                    ..*loan
-                });
+                let taken = (*amount).min(left);
+                *amount -= taken;
+                left -= taken;
+                onward.push((To::Arriving(student), taken));
             }
-            loans.retain(|loan| loan.amount > 0);
-            cuts.reverse();
-            cuts
-        };
-        let mut loans = std::mem::take(&mut self.loans);
-        let onward = cut(
-            &mut loans,
-            &|loan: &Loan| loan.lender == Lender::Unit(index),
-            passed_on,
-        );
-        let sources = cut(&mut loans, &|loan: &Loan| loan.borrower == index, passed_on);
+            draws.retain(|(_, amount)| *amount > 0);
+        }
+        onward.reverse();
+        // What it was lent, latest first, as far as it went onward.
+        let mut owed: i64 = onward.iter().map(|(_, amount)| amount).sum();
+        let mut sources: Vec<(Lender, i64)> = Vec::new();
+        for loan in self.loans.iter_mut().rev() {
+            if owed == 0 {
+                break;
+            }
+            if loan.borrower != index {
+                continue;
+            }
+            let taken = loan.amount.min(owed);
+            loan.amount -= taken;
+            owed -= taken;
+            sources.push((loan.lender, taken));
+        }
+        sources.reverse();
+        self.loans.retain(|loan| loan.amount > 0);
         // Pair them in order: the first silver it was lent went on to the first it lent.
-        let mut sources = sources.into_iter().map(|loan| (loan.lender, loan.amount));
+        let mut sources = sources.into_iter();
         let mut source: Option<(Lender, i64)> = None;
-        for to in onward {
-            let mut owing = to.amount;
+        for (to, amount) in onward {
+            let mut owing = amount;
             while owing > 0 {
-                let (lender, left) = match source.take() {
+                let (from, has) = match source.take() {
                     Some(held) if held.1 > 0 => held,
                     _ => match sources.next() {
                         Some(next) => next,
                         None => break,
                     },
                 };
-                let amount = owing.min(left);
+                let amount = owing.min(has);
                 owing -= amount;
-                loans.push(Loan {
-                    borrower: to.borrower,
-                    lender,
-                    amount,
-                });
-                source = Some((lender, left - amount));
+                match to {
+                    To::Unit(borrower) => self.lend(borrower, from, amount),
+                    To::Arriving(student) => {
+                        push_loan(&mut self.arriving_lent_by[student], from, amount);
+                    }
+                }
+                source = Some((from, has - amount));
             }
         }
-        self.loans = loans;
     }
 
     /// The settlement, moment by moment through `moments`: each unit's position - its own
@@ -19112,7 +19148,12 @@ impl Lending {
                     purse.borrows[borrower] += amount;
                     purse.lends[lender] += amount;
                     purse.lent_at_give[lender] += amount;
-                    purse.lend(borrower, Lender::Unit(lender), amount);
+                    purse.loans.push(Loan {
+                        borrower,
+                        lender: Lender::Unit(lender),
+                        amount,
+                        at_give: true,
+                    });
                 }
             }
         }
@@ -19818,8 +19859,8 @@ fn sharing_purse_over(
             lent_to_arriving_students: paid.lent_to_arriving_students(),
             lent_to_each_arriving: paid.lent_to_each_arriving(),
             lent_by: paid.lent_by(),
-            lent_to_each_in_hex: paid.lent_to_each_in_hex(&hex.report_order()),
-            arrivals_lent_to: paid.arrivals_lent_to(&hex.report_order()),
+            lent_to_each_in_hex: paid.lent_to_each_in_hex(),
+            arrivals_lent_to: paid.arrivals_lent_to(),
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
             borrows: paid.borrows,
@@ -19850,8 +19891,8 @@ fn sharing_purse_over(
         lent_to_arriving_students: lending.lent_to_arriving_students(),
         lent_to_each_arriving: lending.lent_to_each_arriving(),
         lent_by: lending.lent_by(),
-        lent_to_each_in_hex: lending.lent_to_each_in_hex(&hex.report_order()),
-        arrivals_lent_to: lending.arrivals_lent_to(&hex.report_order()),
+        lent_to_each_in_hex: lending.lent_to_each_in_hex(),
+        arrivals_lent_to: lending.arrivals_lent_to(),
         lends: lending.lends,
         arrivals_lend: lending.arrivals_lend,
         borrows: lending.borrows,
@@ -66728,6 +66769,79 @@ BUILD
         assert!(lending.covered());
     }
 
+    /// `ah-myko` review, finding 1: sharer 0 funded unit 2's GIVE of $40 at the Give phase, lent
+    /// an arriving passenger $60 at STUDY, and was lent $30 by sharer 1 for a fee of its own. It
+    /// passed 1's $30 on to the passenger, so the passenger reads as lent by both, and the Give
+    /// phase's loan stays sharer 0's.
+    #[test]
+    fn netting_rewires_a_loan_passed_on_to_an_arriving_passenger() {
+        let loan = |borrower, lender, amount, at_give| Loan {
+            borrower,
+            lender: Lender::Unit(lender),
+            amount,
+            at_give,
+        };
+        let lending = Lending {
+            lends: vec![100, 30, 0],
+            lent_at_give: vec![40, 0, 0],
+            arrivals_lend: Vec::new(),
+            borrows: vec![30, 0, 40],
+            loans: vec![loan(2, 0, 40, true), loan(0, 1, 30, false)],
+            refused_cast: vec![0; 3],
+            study: vec![StudyOutcome::NoStudy; 3],
+            arriving_study: vec![StudyOutcome::Paid { own: 0, lent: 60 }],
+            arriving_lent_by: vec![vec![(Lender::Unit(0), 60)]],
+            studies_sent: vec![0; 3],
+            refused_casts: vec![false; 3],
+            stopped_at: None,
+        }
+        .netted();
+        assert_eq!(lending.lends, vec![70, 30, 0]);
+        assert_eq!(
+            lending.lent_by(),
+            vec![vec![], vec![], vec![(Lender::Unit(0), 40)]]
+        );
+        assert_eq!(
+            lending.arriving_lent_by,
+            vec![vec![(Lender::Unit(0), 30), (Lender::Unit(1), 30)]]
+        );
+        assert_eq!(
+            lending.lent_to_each_arriving(),
+            vec![vec![(0, 30)], vec![(0, 30)], vec![]]
+        );
+    }
+
+    /// `ah-myko` review, finding 3: a borrower names its lenders in the hex's document order -
+    /// the order the upkeep line names them in (`pair_upkeep_transfers`) - whichever moment
+    /// lent first.
+    #[test]
+    fn a_borrower_names_its_lenders_in_document_order() {
+        let loan = |lender, amount| Loan {
+            borrower: 0,
+            lender,
+            amount,
+            at_give: false,
+        };
+        let lending = Lending {
+            loans: vec![
+                loan(Lender::Arrival(0), 5),
+                loan(Lender::Unit(2), 10),
+                loan(Lender::Unit(1), 20),
+                loan(Lender::Unit(2), 1),
+            ],
+            borrows: vec![36, 0, 0],
+            ..Lending::default()
+        };
+        assert_eq!(
+            lending.lent_by()[0],
+            vec![
+                (Lender::Unit(1), 20),
+                (Lender::Unit(2), 11),
+                (Lender::Arrival(0), 5)
+            ]
+        );
+    }
+
     /// [`Lending::netted`] passes on only what a unit lent beyond its Give-phase draws
     /// (`ah-d3in`): a sharer a GIVE drained of 100 that also lent 200 later and was lent 10 for its
     /// own study passed 10 of the 200 on, and keeps the whole Give-phase draw lent.
@@ -81527,6 +81641,27 @@ BUILD
             .into_iter()
             .filter(|finding| finding.code == codes::NOT_ENOUGH_SILVER)
             .collect()
+    }
+
+    /// `ah-myko` review, finding 2: sharer 7 walks from (7,51) into (7,53), where unit 5 studies
+    /// on its silver (`rules/share`: "in the same region"). 7's `lent` line - on its own row, in
+    /// the hex the report lists it in - names 5, and 5's `was lent` line names 7.
+    #[test]
+    fn a_sharer_walking_in_names_whom_it_lent_and_is_named() {
+        let review = walking_sharer_review(
+            ("1:7,53", 7, 53),
+            ("1:7,51", 7, 51),
+            Some((7, 53)),
+            "STUDY combat",
+        );
+        assert_eq!(
+            loan_lines(&review, "5", SilverChangeCause::WasLent),
+            vec![(Some("Unit 7 (7)".to_string()), None, 20)]
+        );
+        assert_eq!(
+            loan_lines(&review, "7", SilverChangeCause::Lent),
+            vec![(Some("Unit 5 (5)".to_string()), None, -20)]
+        );
     }
 
     fn walking_sharer_review(
