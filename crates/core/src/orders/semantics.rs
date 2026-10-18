@@ -25763,11 +25763,15 @@ fn check_transport_reach(
             let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
                 continue;
             };
-            let goods = || match (amount, what) {
-                (Amount::Exact(moved), Selector::Item(text)) if *moved > 0 => {
-                    resolve_item(text, hex, ordered, ruleset)
-                        .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag)))
-                        .map(|tag| (*moved, tag.to_ascii_uppercase()))
+            // The named item, when it is one the game transports (`rules/economy_transport`).
+            let transportable = || match what {
+                Selector::Item(text) => resolve_item(text, hex, ordered, ruleset)
+                    .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag))),
+                _ => None,
+            };
+            let goods = || match amount {
+                Amount::Exact(moved) if *moved > 0 => {
+                    transportable().map(|tag| (*moved, tag.to_ascii_uppercase()))
                 }
                 // `ALL` is a question about stock, which this check does not ask.
                 _ => None,
@@ -25796,16 +25800,8 @@ fn check_transport_reach(
                         transport_target_sentence(&id, *order, refused, goods().as_ref());
                     // The same line as a DISTRIBUTE would deliver, so the refusal says so - in the
                     // words `transportTargetSentence` appends in the hover (`ah-7j90`). DISTRIBUTE
-                    // carries only what TRANSPORT does (`rules/economy_transport`), whatever the
-                    // amount form.
-                    let carried = || match what {
-                        Selector::Item(text) => resolve_item(text, hex, ordered, ruleset)
-                            .is_some_and(|tag| {
-                                ruleset.is_some_and(|rules| rules.can_be_transported(&tag))
-                            }),
-                        _ => false,
-                    };
-                    if judged.distribute_would_deliver && carried() {
+                    // carries only what TRANSPORT does, whatever the amount form.
+                    if judged.distribute_would_deliver && transportable().is_some() {
                         sentence.push_str(" DISTRIBUTE would deliver them.");
                     }
                     (codes::TRANSPORT_TARGET_REFUSED, sentence)

@@ -1835,6 +1835,32 @@ mod tests {
         );
     }
 
+    /// `ah-7j90`: a distance the map cannot measure (the world's width was never reported) proves
+    /// no DISTRIBUTE delivery either, so the refusal carries no hint.
+    #[test]
+    fn an_unmeasured_distance_names_no_distribute() {
+        let mut shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("903", at(facts(true, false, false, true), hex(0, 6))),
+            ],
+            &[],
+        );
+        shipping.geometry = None;
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "903");
+        assert_eq!(judged.acceptance, Acceptance::NotQuartermaster);
+        assert_eq!(
+            shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "903")
+                .measured
+                .map(|measured| measured.arrival),
+            Some(Arrival::Unmeasured)
+        );
+        assert!(!judged.distribute_would_deliver);
+    }
+
     /// `ah-s79p`: a unit this month's FORM creates is judged on what the engine knows of it, by the
     /// one builder both engines call. A quartermaster owning a Caravanserai may DISTRIBUTE to any
     /// unit within two hexes, but a TRANSPORT's target must be a quartermaster owning a

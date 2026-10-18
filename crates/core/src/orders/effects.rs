@@ -12261,6 +12261,19 @@ mod tests {
             assert!(row(&response, "1:2,2", "7001").is_none());
         }
 
+        /// `ah-7j90`: from a quartermaster owning a Caravanserai, the same refusal of a foreign unit
+        /// owning none is one a DISTRIBUTE would deliver - if that faction accepts - and the issue
+        /// carries the hint, unsettled since another faction's month is never ours to read.
+        #[test]
+        fn a_caravanserai_owners_refused_transport_to_a_foreign_unit_names_distribute() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 7001 5 STON\n");
+            let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            let issue = only_issue(refused);
+            assert_eq!(issue.reason, TransportTargetReason::NotCaravanseraiOwner);
+            assert!(issue.unsettled);
+            assert!(issue.distribute_delivers);
+        }
+
         /// The target 7001 would refuse a TRANSPORT, but a DISTRIBUTE is refused for its sender
         /// before the target is asked anything (`ah-lis2`, `CheckTransportOrders`): Sender is no
         /// quartermaster, which its own month alone could change.
