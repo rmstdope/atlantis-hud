@@ -9832,6 +9832,13 @@ fn apply(
             if verdict.gives_nothing() {
                 return;
             }
+            // A whole unit the game will not hand over - to unit 0 or to one of our own - moves
+            // nothing and leaves the giver ours, so it is followed to the end the same way: the
+            // ledger reads as with the line deleted (`ah-miqb`). `check_refused_whole_unit_gift`
+            // is what tells the player.
+            if matches!(what, Selector::WholeUnit) && verdict.reach().refuses_a_whole_unit() {
+                return;
+            }
             // Only ever read for a tag the verdict calls uncertain, and only ever a unit number
             // there - but formatted once here rather than per tag of a class.
             let target_label = party_label(to);
