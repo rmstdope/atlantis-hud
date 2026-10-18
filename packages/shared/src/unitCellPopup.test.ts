@@ -1816,6 +1816,108 @@ describe("the column popups", () => {
     );
   });
 
+  // `ah-myko`: a loan for a faction-mate's orders inside the hex names the other unit or units,
+  // word for word like the upkeep-loan lines (`docs/ui/ah-myko-order-loan-names-units.html`).
+  describe("a loan inside the hex", () => {
+    const silverWhy = (label: string, silver: Partial<UnitSilver>) =>
+      columnPopup(popupForCell("silver", unit({ own: true }), facts({ silver: aUnitSilver(silver) }))).lines.find(
+        (line) => line.label === label
+      );
+    const lent = (other: string, amount: number) => ({ amount: -amount, cause: "lent" as const, line: null, other });
+    const wasLent = (other: string, amount: number) => ({ amount, cause: "was-lent" as const, line: null, other });
+
+    it("the lender names the one unit it paid for", () => {
+      expect(silverWhy("lent", { changes: [lent("Drones (3740)", 200)] })).toMatchObject({
+        value: "-200",
+        why: "to Drones (3740)"
+      });
+    });
+
+    it("the lender names several units it paid for", () => {
+      expect(
+        silverWhy("lent", { changes: [lent("Drones (3740)", 100), lent("Drones (3741)", 100)] })
+      ).toMatchObject({ value: "-200", why: "to Drones (3740) and Drones (3741)" });
+    });
+
+    it("the lender names every unit however many, with no count", () => {
+      const ids = [3740, 3741, 3742, 3743, 3744, 3745, 3746];
+      expect(
+        silverWhy("lent", { changes: ids.map((id) => lent(`Drones (${id})`, 10)) })
+      ).toMatchObject({
+        value: "-70",
+        why: "to Drones (3740), Drones (3741), Drones (3742), Drones (3743), Drones (3744), Drones (3745) and Drones (3746)"
+      });
+    });
+
+    it("the borrower names the one unit that paid", () => {
+      expect(
+        silverWhy("was lent", { borrowedForOrders: 200, changes: [wasLent("Drones (3732)", 200)] })
+      ).toMatchObject({ value: "+200", why: "by Drones (3732)" });
+    });
+
+    it("the borrower names several units that paid", () => {
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 200,
+          changes: [wasLent("Drones (3732)", 150), wasLent("Drones (3755)", 50)]
+        })
+      ).toMatchObject({ value: "+200", why: "by Drones (3732) and Drones (3755)" });
+    });
+
+    it("a unit lent at two moments by one sharer is named once", () => {
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 200,
+          changes: [wasLent("Drones (3732)", 150), wasLent("Drones (3732)", 50)]
+        })
+      ).toMatchObject({ value: "+200", why: "by Drones (3732)" });
+    });
+
+    it("the lender's in-hex names come first, then the passengers across a sailing", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            lent("Drones (3740)", 50),
+            lent("Drones (3741)", 50),
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", place: "Lonthax (36,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-300",
+        why: "to Drones (3740) and Drones (3741), and to Drones (10594), arriving by fleet from Lonthax (36,44)"
+      });
+    });
+
+    it("the borrower's in-hex lenders come first, then where its fleet lands", () => {
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 250,
+          changes: [
+            wasLent("Drones (3732)", 50),
+            { amount: 200, cause: "was-lent", line: null, other: "Drones (9508)", place: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "+250",
+        why: "by Drones (3732), and by Drones (9508), where its fleet lands in ocean (38,44)"
+      });
+    });
+
+    it("a part no unit can be named for keeps today's words, after the names", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [lent("Drones (3740)", 50), { amount: -20, cause: "lent", line: null, other: null }]
+        })
+      ).toMatchObject({ value: "-70", why: "to Drones (3740), and to a faction-mate's orders in this hex" });
+      expect(
+        silverWhy("was lent", {
+          borrowedForOrders: 70,
+          changes: [wasLent("Drones (3732)", 50), { amount: 20, cause: "was-lent", line: null, other: null }]
+        })
+      ).toMatchObject({ value: "+70", why: "by Drones (3732), and by your units in this hex" });
+    });
+  });
+
   // `ah-kjq5`: a STUDY fee lent across a fleet's move names the other unit and its hex
   // (`docs/ui/ah-kjq5-loan-across-a-sailing.html`).
   describe("a loan across a sailing", () => {
