@@ -408,7 +408,8 @@ pub(crate) fn target_facts(
 /// it is still there when the shipments run only when it is one of `survivors`, the formed units
 /// the month's dissolution keeps (`ah-ry88`): `RunOrders` deletes a unit that gained no men
 /// (`Game::DeleteEmptyUnits`) after BUY and long before `CheckTransportOrders`, and with it goes
-/// whatever it owned. [`target_facts`] still says a formed unit owns nothing as a shipment end;
+/// whatever it owned. A survivor's own MOVE is followed like a reported unit's, so one that
+/// moves out hands the structure back. [`target_facts`] still says a formed unit owns nothing as a shipment end;
 /// what it changes here is who else does. The owner's EVICT takes its targets off the list too
 /// ([`occupants_after_promotes`], `ah-0ace`), units behind the owner, so it changes who owns only
 /// for an owner that evicts itself.
@@ -461,13 +462,48 @@ fn caravanserai_owners_at_transport(
 
     let mut owners = std::collections::BTreeSet::new();
     for region in &report.regions {
+        // Where each unit formed in this hex stands once the movement phase has run, by the rule
+        // a reported unit's walk is read by above, from where the PROMOTEs found it: a formed
+        // unit promoted to owner that then moves out hands the structure back (`ah-ry88`
+        // review). Keyed by its `new-<alias>`, which is unique only inside its hex (`rules/form`).
+        let formed_standing: std::collections::BTreeMap<String, (Coordinate, Option<String>)> =
+            ordered
+                .formed_at_promotion(region)
+                .into_iter()
+                .map(|crew| {
+                    let month_end_key = formed_month_end_key(&region.region_id, &crew.unit_id);
+                    let walked = month_end.contains_key(&month_end_key);
+                    let hex = standing_at(month_end, &month_end_key, region.coordinate);
+                    let moved = ordered
+                        .steps_for(&crew.key)
+                        .filter(|_| !ordered.sails_a_course(&crew.key))
+                        .map(|steps| {
+                            super::standing::standing_through_move(
+                                crew.structure_id.as_deref(),
+                                steps,
+                            )
+                        });
+                    let structure = match moved {
+                        Some(moved) if walked => moved.destination,
+                        Some(moved) => moved.origin,
+                        None if walked => None,
+                        None => crew.structure_id,
+                    };
+                    (crew.unit_id, (hex, structure))
+                })
+                .collect();
         for structure in region.structures.iter().filter(|one| is_caravanserai(one)) {
             let id = structure.structure_id.as_str();
             let mut occupants = occupants_after_promotes(region, &ordered, survivors, id);
-            occupants.retain(|unit| {
-                // A unit `occupants_after_promotes` reads from outside the report - none today -
-                // is left where it put it.
-                !standing.contains_key(unit.as_str()) || stands_in(unit, region.coordinate, id)
+            occupants.retain(|unit| match formed_standing.get(unit) {
+                Some((at, structure)) => {
+                    *at == region.coordinate && structure.as_deref() == Some(id)
+                }
+                // A unit `occupants_after_promotes` reads from outside the report and this
+                // month's FORMs - none today - is left where it put it.
+                None => {
+                    !standing.contains_key(unit.as_str()) || stands_in(unit, region.coordinate, id)
+                }
             });
             // `Unit::MoveUnit` appends whoever the movement phase brings in, from this hex or
             // another, in the order the report lists them.
@@ -786,6 +822,8 @@ impl Shipping {
     /// ([`caravanserai_owners_at_transport`]). `survivors` are the month's formed units the
     /// dissolution keeps - those that gained men, or may have - as the fleets are handed them: a
     /// formed unit left out is deleted before the shipments, and owns nothing then (`ah-ry88`).
+    /// A survivor is matched by its hex and `FORM` key alone, never by its `structure_id`: where it
+    /// stands is read from the month's orders (`movement::fleet::occupants_after_promotes`).
     pub(crate) fn read_owners(
         &mut self,
         report: &crate::report::ParsedReport,

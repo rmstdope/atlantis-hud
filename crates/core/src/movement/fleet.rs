@@ -724,8 +724,8 @@ pub fn fleet_owner(
 /// EVICT run, men or none ([`OrderedUnits::formed_at_promotion`]; `ah-vweq`, `ah-7ful`), but only
 /// those `formed` names survive into the answer: one left out is a unit the caller knows to be
 /// deleted before anything moves (`Game::DeleteEmptyUnits`), or one it cannot follow. The EVICTs
-/// pass every formed unit, the fleets the crews that survive to move, and `orders::transport`
-/// none yet (`ah-ry88`).
+/// pass every formed unit, and the fleets and `orders::transport` the crews that survive the
+/// market (`ah-877p`, `ah-ry88`).
 #[must_use]
 pub fn occupants_after_promotes(
     region: &ReportRegion,
