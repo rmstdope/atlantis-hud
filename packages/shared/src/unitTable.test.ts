@@ -1194,6 +1194,46 @@ describe("the Flags column (ah-5wbc)", () => {
   });
 });
 
+describe("the Silver column's opening width (ah-kyy6)", () => {
+  // Measured against the same nominal table the defaults are written on (1504 px).
+  const NOMINAL = 1504;
+
+  it("the_silver_column_opens_wide_enough_for_a_shortfall_in_words", () => {
+    expect(DEFAULT_COLUMN_SHARES.silver * NOMINAL).toBeCloseTo(146, 10);
+  });
+
+  it("the_width_silver_gains_comes_from_structure_alone", () => {
+    expect(DEFAULT_COLUMN_SHARES.structure * NOMINAL).toBeCloseTo(158, 10);
+    const others: Record<string, number> = {
+      own: 24,
+      unitId: 64,
+      name: 208,
+      faction: 192,
+      men: 64,
+      movement: 64,
+      flags: 80,
+      skills: 180,
+      items: 180,
+      longOrder: 144
+    };
+    for (const [column, px] of Object.entries(others)) {
+      expect(DEFAULT_COLUMN_SHARES[column as UnitColumn] * NOMINAL).toBeCloseTo(px, 10);
+    }
+    const total = UNIT_COLUMNS.reduce((whole, column) => whole + DEFAULT_COLUMN_SHARES[column], 0);
+    expect(total).toBeCloseTo(1, 10);
+  });
+
+  it("a_saved_layout_keeps_every_width_it_saved", () => {
+    const saved = Object.fromEntries(
+      UNIT_COLUMNS.map((column, index) => [column, (index + 1) / 78])
+    ) as Record<UnitColumn, number>;
+    const kept = columnSharesFromStorage(saved);
+    for (const column of UNIT_COLUMNS) {
+      expect(kept[column]).toBeCloseTo(saved[column], 12);
+    }
+  });
+});
+
 describe("the Silver column (ah-1wcw.1)", () => {
   it("the_table_has_a_silver_column", () => {
     expect(UNIT_COLUMNS[UNIT_COLUMNS.length - 1]).toBe("silver");
