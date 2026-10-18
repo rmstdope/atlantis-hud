@@ -17853,9 +17853,9 @@ fn purse_settles(hex: &Hex<'_>, ledger: &Ledger<'_>) -> bool {
 /// ([`nothing_is_shared`]), whose claim is the passenger's own overdraft at STUDY and whose
 /// per-unit readers take the verdict through [`study_judged_elsewhere`] (`ah-pa6z`). From a pool
 /// that cannot be trusted the study stays the claim of the hex it leaves, unjudged: what that
-/// purse lent the passenger before it sailed cannot be added up. Where the fleet lands in a hex where nothing of ours shares,
-/// the study is judged there and then, by nobody's silver but its own
-/// ([`settle_studies_where_nothing_is_shared`], `ah-oi3u`). Where something there shares but its
+/// purse lent the passenger before it sailed cannot be added up. Where the fleet lands in a hex
+/// where nothing of ours shares, the study is judged there and then, by nobody's silver but its
+/// own ([`settle_studies_where_nothing_is_shared`], `ah-oi3u`). Where something there shares but its
 /// sums cannot be trusted, the study stays the claim of the hex it leaves, as it was before: a
 /// purse that cannot be added up says nothing about who lends (`ah-oi3u` review, finding 1).
 fn send_studies_where_fleets_arrive(
@@ -79523,6 +79523,18 @@ BUILD
         let fee = passenger.wanted_for_orders.expect("the study is priced");
         assert!(fee > 0, "{passenger:?}");
         assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![(
+                Some("Unit 902 (902)".to_string()),
+                Some("mountain (7,53)".to_string()),
+                fee
+            )]
+        );
+        assert_eq!(
+            passenger.borrowed_where_fleet_lands.as_deref(),
+            Some("mountain (7,53)")
+        );
         let resident = silver_of(&review, "902");
         assert_eq!(resident.at_month_end, Some(500 - fee), "{resident:?}");
         assert!(
@@ -79551,7 +79563,8 @@ BUILD
     }
 
     /// `ah-pa6z`: ... and where the sharer it lands beside cannot pay, the study is refused there,
-    /// and the resident lends nothing.
+    /// and the resident lends nothing: the hex it lands in is short for that STUDY, and the STUDY
+    /// line points at it (`ah-1uja`).
     #[test]
     fn a_passengers_study_leaving_a_hex_where_nothing_shares_is_refused_where_nobody_can_pay() {
         let resident = sharing(with_silver(unit("902"), 1));
@@ -79573,6 +79586,19 @@ BUILD
             }),
             "{:?}",
             review.findings
+        );
+        let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
+        assert!(
+            warning.contains("on the STUDY of Unit 901 (901), arriving by sea"),
+            "{warning}"
+        );
+        assert_eq!(
+            markers_on(&review, "901"),
+            vec![
+                "The hex where the fleet lands, mountain (7,53), is short of silver between its \
+                 units, so this STUDY is refused. See Problems for mountain (7,53)."
+                    .to_string()
+            ]
         );
     }
 
