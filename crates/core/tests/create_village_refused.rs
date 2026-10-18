@@ -54,11 +54,20 @@ fn validate(text: &str) -> OrderValidationResult {
 
 /// The orders validated, with `more` written for Settlers after its CREATE.
 fn validate_with(text: &str, more: &str) -> OrderValidationResult {
+    validate_in(
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        text,
+        more,
+    )
+}
+
+/// The same, under `ruleset`.
+fn validate_in(ruleset: &str, text: &str, more: &str) -> OrderValidationResult {
     validate_orders_request(
         &mut ReportCache::new(),
         &ValidateOrdersRequest {
             raw_orders: script(text, more),
-            ruleset_json: Some(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON.to_string()),
+            ruleset_json: Some(ruleset.to_string()),
             raw_report: Some(text.to_string()),
             disabled_codes: None,
             map_json: None,
@@ -223,4 +232,26 @@ fn a_founder_left_uncertain_by_a_give_is_not_called_short() {
     // And the control: the same ten wagons definitely gone leave the founding short.
     let discarded = validate_with(&text, "GIVE 0 10 WAGO\n");
     assert_eq!(findings(&discarded, CODE).len(), 1, "{discarded:?}");
+}
+
+/// `newage arcanum rules/create_village` carries the same requirements, word for word, so an
+/// Arcanum founding is judged alike (`ah-s15o`).
+#[test]
+fn an_arcanum_region_with_a_settlement_refuses_the_founding() {
+    let text = report(
+        "plain (1,1) in Nowhere, contains Bigtown [city], 10 peasants (orcs), $5.",
+        ENOUGH,
+    );
+    let result = validate_in(
+        atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+        &text,
+        "",
+    );
+    assert_eq!(
+        findings(&result, CODE),
+        vec![
+            "CREATE VILLAGE will be refused: this region already has a settlement, Bigtown [city]"
+                .to_string()
+        ]
+    );
 }

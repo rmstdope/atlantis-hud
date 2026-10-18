@@ -139,11 +139,20 @@ fn held(text: &str, founders: &[u32], tag: &str) -> Vec<i64> {
 }
 
 fn validate(text: &str, founders: &[u32]) -> OrderValidationResult {
+    validate_in(
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        text,
+        founders,
+    )
+}
+
+/// The same, under `ruleset`.
+fn validate_in(ruleset: &str, text: &str, founders: &[u32]) -> OrderValidationResult {
     validate_orders_request(
         &mut ReportCache::new(),
         &ValidateOrdersRequest {
             raw_orders: script(text, founders),
-            ruleset_json: Some(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON.to_string()),
+            ruleset_json: Some(ruleset.to_string()),
             raw_report: Some(text.to_string()),
             disabled_codes: None,
             map_json: None,
@@ -349,5 +358,20 @@ fn an_earlier_founding_on_an_unsure_site_only_may_refuse() {
                     .to_string()
             )
         ]
+    );
+}
+
+/// `newage arcanum rules/create_village` carries the same requirements, word for word, so an
+/// Arcanum founding is judged alike (`ah-s15o`).
+#[test]
+fn of_two_arcanum_founders_in_one_region_only_the_first_listed_founds() {
+    let text = report(&[(10, 10, 900), (10, 10, 901)]);
+    assert_eq!(
+        warnings(&validate_in(
+            atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            &text,
+            &[900, 901]
+        )),
+        vec![("901".to_string(), refused_by("Settlers (900)", (10, 10)))]
     );
 }
