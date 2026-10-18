@@ -239,3 +239,30 @@ fn a_last_promote_naming_a_unit_not_in_the_structure_promotes_nobody() {
     assert_eq!(structure, None, "the evicted mage stands outside");
     assert_eq!(study.points_after, 160, "{study:?}");
 }
+
+/// A unit formed in the Stockade and promoted by the Drones' last PROMOTE owns it when the EVICTs
+/// run (`ah-vweq`). `rules/form`: the new unit is "in the same structure if any" as the unit that
+/// formed it - `../Atlantis parseorders.cpp` moves it into its former's object as the FORM is read
+/// (`temp->MoveUnit(former->object)`), long before `RunPromoteOrders` - so `Do1PromoteOrder` finds
+/// it there and puts it at the head of the object's list. The Drones' EVICT is then refused
+/// ("EVICT: Must be owner") and the mage studies sheltered inside.
+#[test]
+fn a_unit_formed_aboard_and_promoted_owns_the_structure_when_the_evicts_run() {
+    let orders = orders(
+        "ENTER 5",
+        &format!("FORM 1\nEND\nPROMOTE NEW 1\nEVICT {MAGE}\n"),
+    );
+    let findings = findings(&orders);
+    assert_eq!(
+        evict_warnings(&findings, DRONES).len(),
+        1,
+        "the Drones no longer own the Stockade, so their EVICT is refused: {findings:#?}"
+    );
+    let (structure, study) = mage(&orders);
+    assert_eq!(
+        structure.as_deref(),
+        Some("5"),
+        "the refused EVICT leaves the mage inside"
+    );
+    assert_eq!(study.points_after, 175, "{study:?}");
+}

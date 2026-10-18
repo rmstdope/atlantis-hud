@@ -51,6 +51,10 @@ pub struct WrittenMovement {
     promotes_by_unit: BTreeMap<String, Vec<String>>,
     /// Every unit each unit's `EVICT` orders name this month, in the order written (`ah-0ace`).
     evicts_by_unit: BTreeMap<String, Vec<String>>,
+    /// Every unit this month's `FORM` blocks create, keyed by the line of its `FORM`
+    /// ([`FormedAtPromotion`], `ah-vweq`). A `FORM` whose alias could not be read creates nobody
+    /// here, as it moves nobody.
+    formed: BTreeMap<usize, FormedAtPromotion>,
     /// The last `NOCROSS` each unit's own block writes this month. `rules/sequenceofevents` runs
     /// NOCROSS among the first instant orders, before LEAVE, so this is the flag a LEAVE at sea
     /// meets ([`standing::leave_refused_at_sea`]).
@@ -62,6 +66,28 @@ pub struct WrittenMovement {
     /// What the standing rule knows about each hex the report shows, filled by [`Self::settle`]
     /// ([`HexStandings`], `ah-6udn`). Empty until then, when every hex is undescribed.
     hexes: HexStandings,
+}
+
+/// A unit a `FORM` block creates, as the object lists stand when `Game::RunPromoteOrders` runs
+/// (`ah-vweq`).
+///
+/// `rules/form`: the new unit is "in the same structure if any" as the unit that formed it -
+/// `../Atlantis parseorders.cpp` moves it into its former's object as the `FORM` is read
+/// (`temp->MoveUnit(former->object)`), so into the structure the report shows the block's unit in,
+/// whatever that unit's own ENTER or LEAVE later does. Its own ENTER and LEAVE then run with
+/// everyone else's, before the PROMOTEs. Whether it gains men is decided only later, by GIVE and
+/// BUY (`rules/sequenceofevents`), and an empty unit is deleted only after that
+/// (`Game::DeleteEmptyUnits`), so every formed unit is in its object when the PROMOTEs and EVICTs
+/// run.
+#[derive(Debug, Clone)]
+struct FormedAtPromotion {
+    /// `new-<alias>`, as [`crate::orders::intents::promoted_unit`] names it.
+    unit_id: String,
+    /// The unit whose block the outermost `FORM` stands in: a nested `FORM`'s former stands in
+    /// the same object, so the report's structure is that unit's.
+    former: String,
+    /// The formed unit's own ENTER and LEAVE orders, in the order written.
+    boardings: Vec<BoardingOrder>,
 }
 
 /// This month's movement once it is settled: which route each unit walks or sails, whose `SAIL`
@@ -86,6 +112,7 @@ impl WrittenMovement {
         let mut chains: BTreeMap<OrderedUnitKey, RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut evicts_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut formed: BTreeMap<usize, FormedAtPromotion> = BTreeMap::new();
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut nocross_by_unit: BTreeMap<String, bool> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
@@ -113,12 +140,21 @@ impl WrittenMovement {
                 kind: BlockKind::Form,
                 depth,
             } if depth.turn == 0 => {
-                forms.open(
-                    line.arguments
-                        .first()
-                        .and_then(crate::orders::forms::read_alias)
-                        .map(|_| line.number),
-                );
+                let alias = line
+                    .arguments
+                    .first()
+                    .and_then(crate::orders::forms::read_alias);
+                if let (Some(alias), Some(former)) = (alias, current.as_ref()) {
+                    formed.insert(
+                        line.number,
+                        FormedAtPromotion {
+                            unit_id: format!("new-{alias}"),
+                            former: former.clone(),
+                            boardings: Vec::new(),
+                        },
+                    );
+                }
+                forms.open(alias.map(|_| line.number));
             }
             Event::Close {
                 kind: BlockKind::Form,
@@ -208,10 +244,22 @@ impl WrittenMovement {
                     crate::orders::blocks::Owner::Nobody => {}
                 }
                 // Skipped inside a FORM block for the reason above: those orders are applied by
-                // `Working` to the formed unit's own row already.
+                // `Working` to the formed unit's own row already. Kept apart for who stands in an
+                // object when the PROMOTEs run, which `Working` cannot answer this early (`ah-vweq`).
                 let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
-                    (owner, current.as_ref())
+                    (&owner, current.as_ref())
                 else {
+                    if let crate::orders::blocks::Owner::Formed(form_line) = owner {
+                        if let Some(formed) = formed.get_mut(form_line) {
+                            match intent {
+                                Intent::Enter { structure } => {
+                                    formed.boardings.push(BoardingOrder::Enter(structure));
+                                }
+                                Intent::Leave => formed.boardings.push(BoardingOrder::Leave),
+                                _ => {}
+                            }
+                        }
+                    }
                     return;
                 };
                 match intent {
@@ -263,6 +311,7 @@ impl WrittenMovement {
             boardings_by_unit,
             promotes_by_unit,
             evicts_by_unit,
+            formed,
             nocross_by_unit,
             closed_by_teach,
             // Only a report says what a hex holds; `settle` fills this from one.
@@ -451,18 +500,20 @@ impl OrderedUnits {
     /// then each object's owner's EVICT - the owner as the PROMOTE left it (`Object::GetOwner`) -
     /// and errors every other unit's ("EVICT: Must be owner"). `Do1EvictOrder` moves each target
     /// standing in that object to the region's dummy, unless the object is a fleet at sea and the
-    /// target cannot really swim ([`crate::orders::standing::eviction_refused_at_sea`]). Formed
-    /// units are not followed: a formed owner's EVICT, and an EVICT naming a formed unit, evict
-    /// nobody here. A unit of another faction is evicted here as the engine evicts it
+    /// target cannot really swim ([`crate::orders::standing::eviction_refused_at_sea`]). A unit
+    /// formed aboard is in the object ([`Self::formed_at_promotion`]), so an owner's last
+    /// `PROMOTE NEW <n>` hands it on and the old owner's EVICT is refused (`ah-vweq`). A formed
+    /// owner's own EVICT, and an EVICT naming a formed unit, still evict nobody here. A unit of another faction is evicted here as the engine evicts it
     /// (`Object::GetUnitId` finds any unit in the object), where `orders::semantics::evictions`
     /// leaves one where the report shows it - a known divergence, since the checks there read a
     /// foreign unit's structure from the report throughout.
     fn evictions_in(&self, region: &ReportRegion) -> BTreeMap<String, String> {
         let hex = self.0.hexes.of_region(&region.region_id);
+        let formed = self.formed_at_promotion(region);
         let mut evicted = BTreeMap::new();
         for structure in &region.structures {
             let structure_id = structure.structure_id.as_str();
-            let Some(owner) = occupants_after_promotes(region, self, &[], structure_id)
+            let Some(owner) = occupants_after_promotes(region, self, &formed, structure_id)
                 .into_iter()
                 .next()
             else {
@@ -484,6 +535,43 @@ impl OrderedUnits {
             }
         }
         evicted
+    }
+
+    /// Every unit this month's `FORM` blocks create in `region`, standing where it stands when the
+    /// PROMOTEs and EVICTs run ([`FormedAtPromotion`], `ah-vweq`): in its former's reported
+    /// structure, then through its own ENTER and LEAVE. Every one of them, given men or not - the
+    /// engine deletes an empty unit only after GIVE and BUY (`Game::DeleteEmptyUnits`), which is
+    /// why [`crate::orders::effects`]' formed crews, settled for the movement phase, are not these.
+    /// A formed unit's LEAVE at sea is read with its former's NOCROSS flag, which `rules/form`
+    /// does not list among the flags it inherits but which no formed unit can need at sea, having
+    /// no stated movement of its own: one that can neither swim nor fly is refused either way.
+    #[must_use]
+    pub fn formed_at_promotion(&self, region: &ReportRegion) -> Vec<FormedCrew> {
+        let hex = self.0.hexes.of_region(&region.region_id);
+        self.0
+            .formed
+            .iter()
+            .filter_map(|(form_line, formed)| {
+                let former = region
+                    .units
+                    .iter()
+                    .find(|unit| unit.unit_id == formed.former)?;
+                let structure_id = hex.standing_after(
+                    former.structure_id.as_deref(),
+                    formed.boardings.iter().map(BoardingOrder::as_boarding),
+                    Leaver {
+                        wont_cross_water: self.wont_cross_water(former),
+                        movement: None,
+                    },
+                );
+                Some(FormedCrew {
+                    unit_id: formed.unit_id.clone(),
+                    region_id: region.region_id.clone(),
+                    key: OrderedUnitKey::Formed(*form_line),
+                    structure_id: structure_id.map(str::to_string),
+                })
+            })
+            .collect()
     }
 
     /// One unit's boardings as the rule reads them.
@@ -607,8 +695,9 @@ pub fn fleet_owner(
 /// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
 /// movement phase has taken more units off it (`ah-1jl9`). A caller that passes no `formed` crews
 /// does not follow a `PROMOTE NEW <n>` either: the formed unit is not in the list, so that
-/// `PROMOTE` promotes nobody here (`OrderedUnits::evictions_in` and `orders::transport` today -
-/// `ah-vweq`).
+/// `PROMOTE` promotes nobody. The EVICTs and the Caravanserai owners pass
+/// [`OrderedUnits::formed_at_promotion`] (`ah-vweq`); the fleets pass the crews that survive to
+/// move.
 #[must_use]
 pub fn occupants_after_promotes(
     region: &ReportRegion,
@@ -1030,6 +1119,37 @@ mod tests {
             standing_in(&coast_scene(), "unit 901\nEVICT 902\n", "902").as_deref(),
             Some("329"),
             "901 does not own the hull, so its EVICT moves nobody"
+        );
+    }
+
+    /// A unit formed aboard stands in its former's object when the PROMOTEs run (`rules/form`: "in
+    /// the same structure if any"; `parseorders.cpp` `temp->MoveUnit(former->object)`), so the
+    /// owner's last `PROMOTE NEW 1` makes it owner and the old owner's EVICT is refused
+    /// ("EVICT: Must be owner") - as `orders::semantics` warns it (`ah-vweq`).
+    #[test]
+    fn a_unit_formed_aboard_and_promoted_runs_the_evicts_in_place_of_its_former() {
+        assert_eq!(
+            standing_in(
+                &coast_scene(),
+                "unit 900\nFORM 1\nEND\nPROMOTE NEW 1\nEVICT 901\n",
+                "901"
+            )
+            .as_deref(),
+            Some("329")
+        );
+    }
+
+    /// A formed unit's own LEAVE runs before the PROMOTEs, so it is not in the object and the
+    /// `PROMOTE NEW 1` promotes nobody ("PROMOTE: Can't find target."): its former's EVICT runs.
+    #[test]
+    fn a_unit_formed_aboard_that_leaves_is_not_promoted() {
+        assert_eq!(
+            standing_in(
+                &coast_scene(),
+                "unit 900\nFORM 1\nLEAVE\nEND\nPROMOTE NEW 1\nEVICT 901\n",
+                "901"
+            ),
+            None
         );
     }
 
