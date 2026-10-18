@@ -1750,7 +1750,12 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
   };
 }
 
-/** Whether the Items hover words a TRANSPORT or DISTRIBUTE that moved nothing (`ah-o1co`). */
+/**
+ * Whether the Items hover words a TRANSPORT or DISTRIBUTE the game refuses or could not count
+ * (`ah-o1co`): every `transportTargetIssues` entry and every refused `transportSent` row, which
+ * `itemsTooltip` (`unitPreview.ts`) writes as its own sentence. A shipment it merely sent 0 of is
+ * left out: "Sends 0 HORS to unit 1162." followed by the no-change sentence is still true.
+ */
 function shipmentWorded(unit: PreviewedUnit): boolean {
   return (
     (unit.transportTargetIssues ?? []).length > 0 ||

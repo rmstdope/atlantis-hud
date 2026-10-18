@@ -5450,6 +5450,31 @@ describe("the month each column popup states", () => {
     }
   });
 
+  it("an items cell explaining a shipment it could not count never also says nothing changes", () => {
+    const sender = unit({
+      own: true,
+      items: [{ name: "leader", tag: "LEAD", amount: 1 }],
+      transportTargetIssues: [
+        {
+          to: "1162",
+          amount: 500,
+          tag: "SILV",
+          reason: "senderOwnsNoCaravanserai",
+          orderIndex: 0,
+          reach: null,
+          toUnshown: false,
+          unsettled: true,
+          distribute: true
+        }
+      ]
+    });
+    const popup = columnPopup(popupForCell("items", sender, facts()));
+    expect(popup.notes.some((note) => note.startsWith("Could not count 500 SILV for unit 1162"))).toBe(true);
+    for (const sentence of NOTHING) {
+      expect(popup.notes).not.toContain(sentence);
+    }
+  });
+
   it("an items cell explaining goods the game will not transport never also says nothing changes", () => {
     const sender = unit({
       own: true,
