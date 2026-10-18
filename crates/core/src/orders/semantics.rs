@@ -80931,16 +80931,29 @@ BUILD
         assert_eq!(silver_of(&review, "901").borrowed_for_orders, 0);
         assert_eq!(silver_of(&review, "902").at_month_end, Some(1));
         // The marker below tells it of the refused STUDY; its own sentence is left with its upkeep
-        // alone, on its row (`ah-65kt`).
-        assert!(
-            review.findings.iter().any(|finding| {
+        // alone, on its row, counted where it lands (`ah-65kt`).
+        let short: Vec<(&str, Option<usize>, Option<&str>)> = review
+            .findings
+            .iter()
+            .filter(|finding| {
                 finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("901")
-                    && finding.line.is_none()
-                    && !finding.message.contains("STUDY")
-            }),
-            "{:?}",
-            review.findings
+            })
+            .map(|finding| {
+                (
+                    finding.message.as_str(),
+                    finding.line,
+                    finding.counted_in.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                None,
+                Some("1:7,53")
+            )]
         );
         let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
         assert!(
