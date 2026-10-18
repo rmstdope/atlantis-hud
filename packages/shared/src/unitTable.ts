@@ -502,9 +502,10 @@ export function silverShortfall(shown: number | null, silver: UnitSilver | null)
 /**
  * How much of the shortfall a narrow Silver column can hold (`ah-ottr`): spelled out, then `▾`
  * and the number, then `▾…`, then the red `▾` alone (`ah-sa9p`) - so the figure is never what is
- * cut first and a shortfall is never hidden completely.
+ * cut first and a shortfall is never hidden completely. `unmarked` is still `▾` alone, for a row
+ * that does not fit even so: the ⚠ in front of the figure gives way (`ah-sa9p`, its review).
  */
-export type ShortfallForm = "long" | "short" | "cut" | "arrow";
+export type ShortfallForm = "long" | "short" | "cut" | "arrow" | "unmarked";
 
 /** What one form reads: `8650 short`, `▾8650`, `▾…`, `▾`. */
 export function shortfallText(form: ShortfallForm, amount: number): string {
@@ -516,6 +517,7 @@ export function shortfallText(form: ShortfallForm, amount: number): string {
     case "cut":
       return "\u25be\u2026";
     case "arrow":
+    case "unmarked":
       return "\u25be";
   }
 }
@@ -524,11 +526,21 @@ const NARROWER: Record<ShortfallForm, ShortfallForm> = {
   long: "short",
   short: "cut",
   cut: "arrow",
-  arrow: "arrow"
+  arrow: "unmarked",
+  unmarked: "unmarked"
 };
 
-/** The next form to try: one step narrower while the text overflows, and no narrower than `▾`. */
-export function nextShortfallForm(form: ShortfallForm, overflowing: boolean): ShortfallForm {
+/**
+ * The next form to try: one step narrower while the figure is cut or the row overflows the cell,
+ * and no narrower than `▾`. From `▾` the ⚠ is dropped only when the row still overflows - when the
+ * figure, already down to its `…`, has nothing left to give.
+ */
+export function nextShortfallForm(
+  form: ShortfallForm,
+  figureCut: boolean,
+  rowOverflows = false
+): ShortfallForm {
+  const overflowing = form === "arrow" ? rowOverflows : figureCut || rowOverflows;
   return overflowing ? NARROWER[form] : form;
 }
 

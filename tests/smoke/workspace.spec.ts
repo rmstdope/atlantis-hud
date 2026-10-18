@@ -5899,24 +5899,20 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
 });
 
 /**
- * `ah-sa9p`, found verifying `ah-ottr`: narrowing the Silver column itself, down to its 36 px floor
- * (`COLUMN_MIN_PX`), cut the month-end figure to nothing while `▾…` kept its room. ah-ottr's agreed
- * experience: "The month-end figure is never the part that gets cut first, and a shortfall is never
- * hidden completely" - so at every width the figure is cut only once the shortfall is `▾…`, and
- * neither the figure nor the shortfall is ever hidden.
+ * `ah-sa9p`: narrows the Silver column of our own unit, with `orders`, from where it opens to its
+ * 36 px floor (`COLUMN_MIN_PX`), one splitter step at a time. Each step reports how much of the
+ * figure and of the shortfall is on screen (each part's box clipped to the cell's content box),
+ * whether the figure is truncated, the shortfall's form, and how much of a ⚠ is drawn.
  */
-test("however narrow the Silver column, neither the figure nor the shortfall disappears", async ({
-  page
-}) => {
+async function narrowSilverToItsFloor(page: Page, orders: string) {
   await page.setViewportSize({ width: 1400, height: 900 });
   await loadReport(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await fillOrders(page, "@claim 50\n@study obse\nCLAIM 2000\nBUY 50 GEM\n");
+  await fillOrders(page, orders);
 
   const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
   await expect(page.getByTestId(`silver-shortfall-${OWN_UNIT}`)).toBeVisible();
-  // What is on screen: each part's box clipped to the cell's content box, and to its own box.
   const layout = () =>
     cell.evaluate(async (node) => {
       await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
@@ -5924,17 +5920,24 @@ test("however narrow the Silver column, neither the figure nor the shortfall dis
       const style = getComputedStyle(node);
       const left = box.left + parseFloat(style.paddingLeft);
       const right = box.right - parseFloat(style.paddingRight);
-      const shown = (element: HTMLElement) => {
+      const shown = (element: Element | null) => {
+        if (element === null) {
+          return 0;
+        }
         const part = element.getBoundingClientRect();
         return Math.max(0, Math.min(part.right, right) - Math.max(part.left, left));
       };
       const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
       const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
+      const mark = [...node.querySelectorAll("button [aria-hidden]")].find((glyph) =>
+        glyph.textContent?.includes("\u26a0")
+      );
       return {
         cell: Math.round(box.width),
         figureShown: shown(figure),
         figureCut: figure.scrollWidth > figure.clientWidth,
         shortShown: shown(short),
+        markShown: shown(mark ?? null),
         form: short.dataset.form
       };
     });
@@ -5971,11 +5974,48 @@ test("however narrow the Silver column, neither the figure nor the shortfall dis
   for (const step of seen) {
     expect(step.figureShown, JSON.stringify(step)).toBeGreaterThanOrEqual(6);
     expect(step.shortShown, JSON.stringify(step)).toBeGreaterThanOrEqual(6);
+  }
+  return seen;
+}
+
+/**
+ * `ah-sa9p`, found verifying `ah-ottr`: narrowing the Silver column itself, down to its floor, cut
+ * the month-end figure to nothing while `▾…` kept its room. ah-ottr's agreed experience: "The
+ * month-end figure is never the part that gets cut first, and a shortfall is never hidden
+ * completely" - and the navigator's answer: the shortfall narrows to the red `▾` alone before the
+ * figure loses a digit, and the figure is never 0 px, kept at least as an ellipsis.
+ */
+test("however narrow the Silver column, neither the figure nor the shortfall disappears", async ({
+  page
+}) => {
+  const seen = await narrowSilverToItsFloor(page, "@claim 50\n@study obse\nCLAIM 2000\nBUY 50 GEM\n");
+  for (const step of seen) {
     // The shortfall gave way first: the figure is cut only once nothing narrower is left of it.
     if (step.figureCut) {
       expect(step.form, JSON.stringify(step)).toBe("arrow");
     }
   }
+});
+
+/**
+ * `ah-sa9p`, its review: a unit with a silver finding draws ⚠ before its figure, and at the floor
+ * ⚠, `…` and `▾` do not fit in one row, so the `▾` was drawn outside the cell. The navigator's
+ * answer: at the narrowest step the ⚠ glyph gives way - the button and its colour stay. Without
+ * the CLAIM, Seven of Eight cannot pay for its study (the ⚠) nor for the gems (the shortfall).
+ */
+test("however narrow the Silver column, a warned unit's ⚠ gives way before its figure or shortfall", async ({
+  page
+}) => {
+  const seen = await narrowSilverToItsFloor(page, "@study obse\nBUY 50 GEM\n");
+  expect(seen[0]!.markShown, JSON.stringify(seen[0])).toBeGreaterThanOrEqual(6);
+  for (const step of seen) {
+    if (step.figureCut) {
+      expect(["arrow", "unmarked"], JSON.stringify(step)).toContain(step.form);
+    }
+    // The ⚠ is drawn whole until the last step, and not at all after it.
+    expect(step.markShown, JSON.stringify(step)).toBe(step.form === "unmarked" ? 0 : 12);
+  }
+  expect(seen.at(-1)!.form).toBe("unmarked");
 });
 
 /**

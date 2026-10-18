@@ -2929,8 +2929,9 @@ function UnitRow({
         ) : (
           // One row, so a narrow column cuts the figure only after the shortfall has shrunk to
           // `▾` (`ah-ottr`, `ah-sa9p`): the shortfall never shrinks, the figure truncates - down to
-          // one character, its `…`, never to nothing.
-          <span className="inline-flex max-w-full items-baseline">
+          // one character, its `…`, never to nothing. A row that overflows even then drops the ⚠
+          // glyph in front of the figure; the button and its colour stay (`ah-sa9p`, its review).
+          <span className="inline-flex max-w-full items-baseline [&:has([data-form=unmarked])_button>[aria-hidden]]:hidden">
             {warned ? (
               silverFigureCell
             ) : (
