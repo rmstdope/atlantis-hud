@@ -1365,7 +1365,7 @@ mod tests {
                 .iter()
                 .map(|placed| placed.keyword)
                 .collect::<Vec<_>>(),
-            ["EXPLORE", "QUEST"]
+            ["EXPLORE", "QUEST", "CREATE"]
         );
         // EXPLORE keeps its map and QUEST its tokens, for what they hand in (`ah-mw1r.4`).
         assert_eq!(
@@ -1381,10 +1381,12 @@ mod tests {
                 Intent::Quest {
                     tokens: 1,
                     discount: false
-                }
+                },
+                // `newage arcanum rules/create_village`: "This is a month-long order" (`ah-s15o`).
+                Intent::MonthLong("CREATE")
             ]
         );
-        assert_eq!(arcanum.unread, vec![5]);
+        assert_eq!(arcanum.unread, Vec::<usize>::new());
 
         let trident = only_unit_with_ruleset(
             "unit 5\nCAPITAL\nEXPLORE RMAP\nQUEST\nCREATE VILLAGE \"New Hope\"\n",

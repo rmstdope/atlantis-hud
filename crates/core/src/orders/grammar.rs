@@ -601,6 +601,13 @@ pub(crate) fn is_trident(ruleset: Option<&Ruleset>) -> bool {
     ruleset.is_some_and(|ruleset| ruleset.order_language == OrderLanguage::NewAgeTrident)
 }
 
+/// Whether the selected world has `CREATE VILLAGE [name]`: both New Age worlds do, in the same
+/// words (`newage arcanum rules/create_village`, `newage trident rules/create_village`), and New
+/// Origins has no such anchor (`ah-s15o`).
+pub(crate) fn founds_villages(ruleset: Option<&Ruleset>) -> bool {
+    is_new_age(ruleset)
+}
+
 /// The selected profile's orders in command-list order.
 pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> {
     let new_age = is_new_age(ruleset);
@@ -608,7 +615,7 @@ pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> 
         .iter()
         .filter(|order| {
             (!new_age || !ORIGINS_ONLY_ORDERS.contains(&order.name))
-                && (order.name != "CREATE" || is_trident(ruleset))
+                && (order.name != "CREATE" || founds_villages(ruleset))
         })
         .map(|order| {
             if new_age {
@@ -625,7 +632,7 @@ pub(super) fn selected_orders(ruleset: Option<&Ruleset>) -> Vec<&'static Order> 
         orders.extend(
             NEW_AGE_ORDERS
                 .iter()
-                .filter(|order| order.name != "CREATE" || is_trident(ruleset))
+                .filter(|order| order.name != "CREATE" || founds_villages(ruleset))
                 .map(|order| {
                     if order.name == "QUEST" && is_trident(ruleset) {
                         &TRIDENT_QUEST
@@ -1360,9 +1367,10 @@ mod tests {
         assert!(find_order("SACRIFICE", Some(&origins)).is_some());
         assert!(find_order("ANNIHILATE", Some(&arcanum)).is_none());
         assert!(find_order("SACRIFICE", Some(&arcanum)).is_none());
-        assert!(find_order("CREATE", Some(&arcanum)).is_none());
-        assert!(find_order("CREATE", Some(&trident)).is_some());
-        for command in ["CAPITAL", "EXPLORE", "QUEST"] {
+        assert!(find_order("CREATE", Some(&origins)).is_none());
+        // `newage arcanum rules/create_village` and `newage trident rules/create_village` give
+        // the same month-long `CREATE VILLAGE [name]` (`ah-s15o`).
+        for command in ["CAPITAL", "CREATE", "EXPLORE", "QUEST"] {
             assert!(find_order(command, Some(&arcanum)).is_some());
             assert!(find_order(command, Some(&trident)).is_some());
         }

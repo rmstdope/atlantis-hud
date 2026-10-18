@@ -96,7 +96,7 @@ pub fn village_sites(
     ruleset: &Ruleset,
     geometry: Option<MapGeometry>,
 ) -> VillageSites {
-    if !super::grammar::is_trident(Some(ruleset)) || !writes_create(orders_document) {
+    if !super::grammar::founds_villages(Some(ruleset)) || !writes_create(orders_document) {
         return VillageSites::new();
     }
     let known = known();

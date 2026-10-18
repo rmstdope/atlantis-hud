@@ -780,14 +780,20 @@ mod tests {
 
     #[test]
     fn trident_completion_uses_only_the_selected_new_age_forms() {
+        let origins = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).unwrap();
         let arcanum =
             Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON).unwrap();
         let trident =
             Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON).unwrap();
 
         assert_eq!(
-            order_argument_completions("CREATE ", Some(&arcanum), None, None),
+            order_argument_completions("CREATE ", Some(&origins), None, None),
             Vec::<OrderCompletion>::new()
+        );
+        // `newage arcanum rules/create_village` has the same `CREATE VILLAGE [name]` (`ah-s15o`).
+        assert_eq!(
+            order_argument_completions("CREATE ", Some(&arcanum), None, None),
+            vec![kw("VILLAGE")]
         );
         assert_eq!(
             order_argument_completions("CREATE ", Some(&trident), None, None),
