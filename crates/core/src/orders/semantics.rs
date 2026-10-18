@@ -76927,9 +76927,11 @@ BUILD
         );
 
         assert!(
-            review.findings.iter().any(|finding| finding.code
-                == codes::TOO_MANY_TRADE_REGIONS
-                && finding.message.ends_with("mountain (8,53)")),
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS
+                    && finding.message.ends_with("mountain (8,53)")),
             "the flag taxer's region is the one refused: {:?}",
             codes(&review.findings)
         );
