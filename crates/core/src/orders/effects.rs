@@ -12307,6 +12307,53 @@ mod tests {
             assert!(issue.distribute_delivers);
         }
 
+        /// The two-hex report with one more Caravanserai in the mountain hex, owned by our Clerk
+        /// (6859), who has no quartermaster skill (`ah-pi5b`).
+        fn preview_with_an_unskilled_caravanserai_owner(orders: &str) -> OrdersPreviewResponse {
+            let report = report_across_two_hexes().replace(
+                "  - Camel Master (7004), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+                "  - Camel Master (7004), Bar (2), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                 + Depot [4] : Caravanserai.\n  \
+                 * Clerk (6859), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n",
+            );
+            assert!(report.contains("Clerk (6859)"), "the Clerk was added");
+            preview_over(&report, orders)
+        }
+
+        /// `ah-pi5b`: ah-7j90's own-target "either way" hint is reachable after `ah-xbnu`. Our Clerk
+        /// already owns a Caravanserai and studies the quartermaster skill, and `rules/transport`
+        /// asks the target for exactly those two, while `rules/sequenceofevents` runs STUDY before
+        /// TRANSPORT. So the refusal is unsettled, and the same line as DISTRIBUTE delivers.
+        #[test]
+        fn an_own_caravanserai_owner_studying_quartermaster_gets_the_either_way_hint() {
+            let response = preview_with_an_unskilled_caravanserai_owner(
+                "unit 6859\nSTUDY QUAM\nunit 6857\nTRANSPORT 6859 5 STON\n",
+            );
+            let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            let issue = only_issue(refused);
+            assert_eq!(issue.reason, TransportTargetReason::NotQuartermaster);
+            assert!(
+                issue.unsettled,
+                "the Clerk's STUDY may make it a quartermaster"
+            );
+            assert!(issue.distribute_delivers);
+        }
+
+        /// `ah-pi5b`: the same Clerk without the STUDY is refused for certain, with the plain hint.
+        #[test]
+        fn an_own_caravanserai_owner_not_studying_gets_the_plain_hint() {
+            let response =
+                preview_with_an_unskilled_caravanserai_owner("unit 6857\nTRANSPORT 6859 5 STON\n");
+            let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            let issue = only_issue(refused);
+            assert_eq!(issue.reason, TransportTargetReason::NotQuartermaster);
+            assert!(
+                !issue.unsettled,
+                "nothing in the Clerk's month gives it the skill"
+            );
+            assert!(issue.distribute_delivers);
+        }
+
         /// The target 7001 would refuse a TRANSPORT, but a DISTRIBUTE is refused for its sender
         /// before the target is asked anything (`ah-lis2`, `CheckTransportOrders`): Sender is no
         /// quartermaster, which its own month alone could change.

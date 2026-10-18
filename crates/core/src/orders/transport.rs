@@ -1111,7 +1111,10 @@ impl Shipping {
                 // transport structure, so our own target's refusal is unsettled only when its
                 // month could mend every one it fails (`ah-xbnu`): a STUDY of the skill gives no
                 // structure, and a BUILD no skill. `acceptance` asks an own unit for the skill
-                // first, so `NotCaravanseraiOwner` there means it already has the skill.
+                // first, so `NotCaravanseraiOwner` there means it already has the skill. A
+                // `NotQuartermaster` target that already owns a Caravanserai and studies the skill
+                // is the case that stays unsettled, and carries ah-7j90's "either way" hint
+                // (`ah-pi5b`).
                 _ if facts.is_some_and(|facts| !facts.own)
                     && matches!(
                         acceptance,
