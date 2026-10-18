@@ -28372,11 +28372,11 @@ impl RegionLimit {
 /// directly after the short line on the first refused order the game reaches (`ah-jhc2`).
 ///
 /// A use sits on its order line, or on its `unit` line when it taxes by flag with no TAX line. A
-/// flag taxer with no block in the document has no line to sit on: it is skipped, and the
-/// sentence goes to the next refused order the game reaches (a hexless finding is dropped by the
-/// client on purpose, `orderEditor.ts:194`).
+/// flag taxer with no block in the document has no line to sit on, so it is warned against the
+/// unit alone, with no line: the Problems list still shows it under its hex, and no order the
+/// limit lets through is made to carry the warning instead.
 fn push_region_findings(
-    mut refused: Vec<(usize, &RegionUse<'_, '_>)>,
+    refused: Vec<(usize, &RegionUse<'_, '_>)>,
     limit: &RegionLimit,
     findings: &mut Vec<Finding>,
 ) {
@@ -28388,7 +28388,6 @@ fn push_region_findings(
             .map(|placed| placed.line)
             .or(used.ordered.block_line)
     };
-    refused.retain(|(_, used)| line_of(used).is_some());
     // The game reaches the regions in walk order, and within one region it pillages before it
     // taxes and taxes before it produces (`region_refusals`).
     let rank = |kind: RegionUseKind| match kind {
@@ -28406,7 +28405,7 @@ fn push_region_findings(
     // the region, so they never carry the sentence.
     let mut lines: Vec<(usize, &RegionUse<'_, '_>, Option<&PlacedIntent>)> = Vec::new();
     for (_, used) in &refused {
-        lines.push((line_of(used).unwrap_or_default(), *used, used.placed));
+        lines.push((line_of(used).unwrap_or(usize::MAX), *used, used.placed));
         if used.kind == RegionUseKind::Produce {
             for placed in used.ordered.all_intents.iter().filter(|placed| {
                 matches!(
@@ -28459,7 +28458,7 @@ struct RegionUse<'a, 'b> {
     ordered: &'a Ordered<'b>,
     kind: RegionUseKind,
     /// The region the slot is used in. `None` only for a PRODUCE whose sail `production_region`
-    /// cannot follow - it still anchors the warning, but counts nowhere.
+    /// cannot follow - it counts nowhere, and so is never warned as refused.
     region: Option<&'b ReportRegion>,
     /// The order line. `None` for `TaxByFlag`.
     placed: Option<&'a PlacedIntent>,
@@ -76654,7 +76653,7 @@ BUILD
     }
 
     #[test]
-    fn a_refused_flag_taxer_with_no_block_leaves_nothing_to_warn_on() {
+    fn a_refused_flag_taxer_with_no_block_is_warned_without_a_line() {
         let regions = vec![
             region_at(
                 "1:7,53",
@@ -76667,12 +76666,23 @@ BUILD
         let findings = check_trade(regions, "unit 6\nPILLAGE\n", "Regions", 1);
 
         // The PILLAGE is walked first and fits; the refused order is unit 5's taxing, which has no
-        // line in the document. Unit 6's PILLAGE is not refused, so it carries nothing (`ah-jhc2`).
-        assert!(trade_findings(&findings).is_empty(), "{findings:?}");
+        // line in the document, so it is warned against the unit with no line. Unit 6's PILLAGE is
+        // not refused, so it carries nothing (`ah-jhc2`).
+        let found = trade_findings(&findings);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found
+            .iter()
+            .all(|finding| finding.unit_id.as_deref() == Some("5") && finding.line.is_none()));
+        assert_eq!(
+            found[0].message,
+            "this faction may tax and trade in 1 region and this one is past the limit, so this \
+             unit's taxing will be refused"
+        );
+        assert!(found[1].message.ends_with("refused: mountain (7,53)"));
     }
 
     #[test]
-    fn only_flag_taxers_have_no_line_to_warn_on() {
+    fn flag_taxers_with_no_block_are_warned_on_the_refused_unit() {
         let regions = vec![
             region_at(
                 "1:7,53",
@@ -76689,7 +76699,12 @@ BUILD
         ];
         let findings = check_trade(regions, "", "Regions", 1);
 
-        assert!(trade_findings(&findings).is_empty());
+        // Neither has a block; the second region's taxer is refused and warned with no line.
+        let found: Vec<(Option<&str>, Option<usize>)> = trade_findings(&findings)
+            .into_iter()
+            .map(|finding| (finding.unit_id.as_deref(), finding.line))
+            .collect();
+        assert_eq!(found, [(Some("6"), None), (Some("6"), None)]);
     }
 
     #[test]
@@ -77104,7 +77119,7 @@ BUILD
     }
 
     #[test]
-    fn a_flag_taxer_with_no_block_is_not_warned_and_the_sentence_moves_on() {
+    fn a_flag_taxer_with_no_block_is_warned_without_a_line_and_keeps_the_sentence() {
         let regions = vec![
             region_at(
                 "1:7,53",
@@ -77114,22 +77129,38 @@ BUILD
             ),
             grain_region("1:8,53", 8, 53, vec![farmer("6")]),
         ];
-        // Limit of none: the flag taxer is refused first, but has no line; the PRODUCE carries
-        // both warnings.
+        // Limit of none: the flag taxer is the first refused order the game reaches (the tax phase
+        // runs first), so it keeps the sentence, warned against the unit with no line.
         let findings = check_trade(regions, "unit 6\nPRODUCE grain\n", "Regions", 0);
 
+        let found: Vec<(Option<&str>, Option<usize>, &str)> = trade_findings(&findings)
+            .into_iter()
+            .map(|finding| {
+                (
+                    finding.unit_id.as_deref(),
+                    finding.line,
+                    finding.message.as_str(),
+                )
+            })
+            .collect();
         assert_eq!(
-            trade_lines(&findings),
+            found,
             [
-                row(
-                    "6",
-                    2,
+                (
+                    Some("6"),
+                    Some(2),
                     "this faction may not tax or trade in any region, so this PRODUCE will be \
                      refused"
                 ),
-                row(
-                    "6",
-                    2,
+                (
+                    Some("5"),
+                    None,
+                    "this faction may not tax or trade in any region, so this unit's taxing will \
+                     be refused"
+                ),
+                (
+                    Some("5"),
+                    None,
                     "this faction may not tax or trade in any region, so every PRODUCE, TAX and \
                      PILLAGE order will be refused"
                 ),
