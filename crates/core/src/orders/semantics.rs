@@ -20853,10 +20853,10 @@ fn judge_shortfalls(
             // fee where its fleet lands (`ah-pa6z`): its row was charged the fee, never the loan.
             // One refused there, with the landing hex's marker on its line, is handed its fee back
             // the same way (`ah-65kt`).
-            let lent_elsewhere = match study_judged_elsewhere(ledger, unit_id) {
-                Some(StudyOutcome::Paid { lent, .. }) if tag == SILVER && !pooled => lent,
-                _ if tag == SILVER && !pooled => refused_where_fleet_lands(ledger, unit_id),
-                _ => 0,
+            let lent_elsewhere = if tag == SILVER && !pooled {
+                settled_where_fleet_lands(ledger, unit_id)
+            } else {
+                0
             };
             let balance = balance + lent_elsewhere;
             let mid_month = if tag == SILVER && !pooled {
@@ -81798,7 +81798,18 @@ BUILD
     /// [`a_passenger_studying_where_none_of_ours_stand`] with a sharer standing where the fleet
     /// lands, as well as the banker it leaves behind.
     fn a_passenger_studying_between_two_sharers(there: i64) -> TurnReview {
-        let banker = sharing(with_silver(unit("903"), 500));
+        a_passenger_studying_beside_a_sharer(there, true)
+    }
+
+    /// [`a_passenger_studying_between_two_sharers`], with the banker left behind sharing or not:
+    /// where it does not, nothing pools in the hex the fleet sails from (`ah-pa6z`).
+    fn a_passenger_studying_beside_a_sharer(there: i64, banker_shares: bool) -> TurnReview {
+        let banker = with_silver(unit("903"), 500);
+        let banker = if banker_shares {
+            sharing(banker)
+        } else {
+            banker
+        };
         let resident = sharing(with_silver(unit("902"), there));
         let (report, _) = passenger_palace(
             open_sea(vec![banker]),
@@ -82589,30 +82600,33 @@ BUILD
                 "short $10: this unit can have $60 and its upkeep spends $70",
             ),
         ] {
-            let review = a_passenger_studying_between_two_sharers(there);
-            let passenger = silver_of(&review, "901");
-            let fee = passenger.wanted_for_orders.expect("the study is priced");
-            assert_eq!(passenger.borrowed_for_orders, fee, "resident holds {there}");
-            let short: Vec<(&str, Option<usize>, Option<&str>)> = review
-                .findings
-                .iter()
-                .filter(|finding| {
-                    finding.code == codes::NOT_ENOUGH_SILVER
-                        && finding.unit_id.as_deref() == Some("901")
-                })
-                .map(|finding| {
-                    (
-                        finding.message.as_str(),
-                        finding.line,
-                        finding.counted_in.as_deref(),
-                    )
-                })
-                .collect();
-            assert_eq!(
-                short,
-                vec![(said, None, Some("1:7,53"))],
-                "resident holds {there}"
-            );
+            // Whether or not anything pools in the hex the fleet sails from (`ah-pa6z`).
+            for banker_shares in [true, false] {
+                let review = a_passenger_studying_beside_a_sharer(there, banker_shares);
+                let passenger = silver_of(&review, "901");
+                let fee = passenger.wanted_for_orders.expect("the study is priced");
+                assert_eq!(passenger.borrowed_for_orders, fee, "resident holds {there}");
+                let short: Vec<(&str, Option<usize>, Option<&str>)> = review
+                    .findings
+                    .iter()
+                    .filter(|finding| {
+                        finding.code == codes::NOT_ENOUGH_SILVER
+                            && finding.unit_id.as_deref() == Some("901")
+                    })
+                    .map(|finding| {
+                        (
+                            finding.message.as_str(),
+                            finding.line,
+                            finding.counted_in.as_deref(),
+                        )
+                    })
+                    .collect();
+                assert_eq!(
+                    short,
+                    vec![(said, None, Some("1:7,53"))],
+                    "resident holds {there}, banker shares: {banker_shares}"
+                );
+            }
         }
     }
 
