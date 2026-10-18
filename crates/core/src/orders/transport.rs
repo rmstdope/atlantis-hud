@@ -403,15 +403,11 @@ pub(crate) fn target_facts(
 /// boardings and promotions have run, and the movement phase then takes off every unit
 /// `Unit::MoveUnit` moves out - a walker ending the month in another hex (`month_end`), and a
 /// `MOVE OUT` or `MOVE <structure>` from inside ([`standing_through_move`]) - and appends anyone a
-/// `MOVE <structure>` brings in, `MOVE <dir> <structure>` into another hex's included. A unit
-/// this month's `FORM` creates stands in the list where it stood when the PROMOTEs ran
-/// ([`OrderedUnits::formed_at_promotion`], `ah-vweq`), so an owner's last `PROMOTE NEW <n>` hands
-/// the Caravanserai over; it is a target of nothing itself, as [`target_facts`] says it owns
-/// nothing. Its own movement is not followed, and neither is `Game::DeleteEmptyUnits`, which
-/// removes it before the shipments if it gained no men, so a promoted unit that gains nobody is
-/// still read as the owner (`ah-ry88`). The owner's EVICT takes its targets off the list too
-/// ([`occupants_after_promotes`], `ah-0ace`), units behind the owner, so it changes who owns only
-/// for an owner that evicts itself.
+/// `MOVE <structure>` brings in, `MOVE <dir> <structure>` into another hex's included. A unit this month's `FORM` creates is not followed, as
+/// [`target_facts`] already says it owns nothing - nor, so, is an owner's `PROMOTE NEW <n>`, which
+/// needs the month's dissolution to answer (`ah-ry88`). The owner's EVICT takes its targets off the
+/// list too ([`occupants_after_promotes`], `ah-0ace`), units behind the owner, so it changes who
+/// owns only for an owner that evicts itself.
 ///
 /// [`occupants_after_promotes`]: crate::movement::fleet::occupants_after_promotes
 /// [`standing_through_move`]: super::standing::standing_through_move
@@ -462,11 +458,10 @@ fn caravanserai_owners_at_transport(
     for region in &report.regions {
         for structure in region.structures.iter().filter(|one| is_caravanserai(one)) {
             let id = structure.structure_id.as_str();
-            let formed = ordered.formed_at_promotion(region);
-            let mut occupants = occupants_after_promotes(region, &ordered, &formed, id);
+            let mut occupants = occupants_after_promotes(region, &ordered, &[], id);
             occupants.retain(|unit| {
-                // A unit `occupants_after_promotes` reads from outside the report - one formed
-                // this month - is left where it put it.
+                // A unit `occupants_after_promotes` reads from outside the report - none today -
+                // is left where it put it.
                 !standing.contains_key(unit.as_str()) || stands_in(unit, region.coordinate, id)
             });
             // `Unit::MoveUnit` appends whoever the movement phase brings in, from this hex or

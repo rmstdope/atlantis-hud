@@ -291,16 +291,3 @@ fn a_shipment_the_targets_month_may_make_good_is_not_warned_about() {
         "{warned:?}"
     );
 }
-
-/// A unit the Trader forms inside the Caravanserai and promotes owns it when the shipments run
-/// (`ah-vweq`): `rules/form` puts the new unit "in the same structure if any" as its former
-/// (`../Atlantis parseorders.cpp` `temp->MoveUnit(former->object)`, as the FORM is read), so the
-/// Trader's PROMOTE finds it there (`Do1PromoteOrder`). It buys an orc with silver Ivanhoe gives
-/// it, so it has men and is not deleted before the shipments (`Game::DeleteEmptyUnits`).
-#[test]
-fn a_trader_that_promotes_a_unit_it_formed_owns_it_no_longer() {
-    assert_trader_no_longer_owns(&orders(
-        "FORM 1\nBUY 1 ORC\nEND\nPROMOTE NEW 1",
-        &[(IVANHOE, "GIVE NEW 1 100 SILV")],
-    ));
-}

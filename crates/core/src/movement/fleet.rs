@@ -68,8 +68,10 @@ pub struct WrittenMovement {
     hexes: HexStandings,
 }
 
-/// A unit a `FORM` block creates, as the object lists stand when `Game::RunPromoteOrders` runs
-/// (`ah-vweq`).
+/// A unit a `FORM` block creates, and the structure it stands in when `Game::RunPromoteOrders`
+/// runs (`ah-vweq`). Where in the object's list it stands is [`occupants_after_boarding`]'s, which
+/// puts formed units after every reported entrant - a known divergence from the engine, which
+/// appends a formed unit as the `FORM` is read, ahead of every ENTER (`ah-7ful`).
 ///
 /// `rules/form`: the new unit is "in the same structure if any" as the unit that formed it -
 /// `../Atlantis parseorders.cpp` moves it into its former's object as the `FORM` is read
@@ -245,7 +247,8 @@ impl WrittenMovement {
                 }
                 // Skipped inside a FORM block for the reason above: those orders are applied by
                 // `Working` to the formed unit's own row already. Kept apart for who stands in an
-                // object when the PROMOTEs run, which `Working` cannot answer this early (`ah-vweq`).
+                // object when the PROMOTEs run, which `Working` cannot answer this early
+                // (`ah-vweq`).
                 let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
                     (&owner, current.as_ref())
                 else {
@@ -503,8 +506,9 @@ impl OrderedUnits {
     /// target cannot really swim ([`crate::orders::standing::eviction_refused_at_sea`]). A unit
     /// formed aboard is in the object ([`Self::formed_at_promotion`]), so an owner's last
     /// `PROMOTE NEW <n>` hands it on and the old owner's EVICT is refused (`ah-vweq`). A formed
-    /// owner's own EVICT, and an EVICT naming a formed unit, still evict nobody here. A unit of another faction is evicted here as the engine evicts it
-    /// (`Object::GetUnitId` finds any unit in the object), where `orders::semantics::evictions`
+    /// owner's own EVICT, and an EVICT naming a formed unit, still evict nobody here. A unit of
+    /// another faction is evicted here as the engine evicts it (`Object::GetUnitId` finds any unit
+    /// in the object), where `orders::semantics::evictions`
     /// leaves one where the report shows it - a known divergence, since the checks there read a
     /// foreign unit's structure from the report throughout.
     fn evictions_in(&self, region: &ReportRegion) -> BTreeMap<String, String> {
@@ -695,9 +699,9 @@ pub fn fleet_owner(
 /// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
 /// movement phase has taken more units off it (`ah-1jl9`). A caller that passes no `formed` crews
 /// does not follow a `PROMOTE NEW <n>` either: the formed unit is not in the list, so that
-/// `PROMOTE` promotes nobody. The EVICTs and the Caravanserai owners pass
-/// [`OrderedUnits::formed_at_promotion`] (`ah-vweq`); the fleets pass the crews that survive to
-/// move.
+/// `PROMOTE` promotes nobody. The EVICTs pass [`OrderedUnits::formed_at_promotion`] (`ah-vweq`)
+/// and the fleets the crews that survive to move; `orders::transport` passes none yet
+/// (`ah-ry88`).
 #[must_use]
 pub fn occupants_after_promotes(
     region: &ReportRegion,
