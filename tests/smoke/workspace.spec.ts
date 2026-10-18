@@ -2641,6 +2641,15 @@ test("the interface is not blocked while the core reads a report", async ({ page
   // lands inside the sampling window and is charged to the import being measured.
   await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
 
+  // And for the checks that reopening runs on the restored orders, for the same reason. They wait
+  // out a 300ms debounce, so they ran inside the sampling window and were charged to the import:
+  // the reload's validation and preview were the whole of the 900ms this guard tripped on in CI,
+  // against about a tenth of that for the import itself (`ah-q767`). The chip's problem count
+  // turning non-zero is the validation landing - the restored orders carry findings - and one
+  // timer turn after it the preview queued beside it has run too, since timers fire in due order.
+  await expect(page.getByTestId("turn-report-chip")).not.toHaveAttribute("data-problems", "0");
+  await page.evaluate(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
+
   // Sample how long the main thread goes unresponsive, by watching a timer miss its deadline.
   await page.evaluate(() => {
     const state = window as unknown as { __gaps?: number[]; __sampler?: number };
