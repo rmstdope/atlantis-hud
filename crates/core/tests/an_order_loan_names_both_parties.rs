@@ -107,18 +107,16 @@ fn a_loan_across_a_sailing_is_unchanged() {
     );
 }
 
-/// Across the whole report, every in-hex loan line names its other party, and each one a lender
-/// books is mirrored by its borrower's, the same amount the other way: the two sides of one loan.
+/// Across the whole report, every loan line names its other party, and each one a lender books
+/// is mirrored by its borrower's, the same amount the other way: the two sides of one loan - in
+/// one hex, or across a sailing.
 #[test]
-fn every_in_hex_loan_is_named_on_both_sides() {
+fn every_loan_is_named_on_both_sides() {
     let review = review();
     let mut lent: Vec<(String, String, i64)> = Vec::new();
     let mut was_lent: Vec<(String, String, i64)> = Vec::new();
     for row in &review.silver {
         for change in &row.changes {
-            if change.place.is_some() {
-                continue;
-            }
             let other = || {
                 change.other.clone().unwrap_or_else(|| {
                     panic!("unit {} books an unnamed {:?}", row.unit_id, change.cause)

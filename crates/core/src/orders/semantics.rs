@@ -978,6 +978,7 @@ pub fn review_turn(
     lend_walking_sharers_silver(&mut hexes, &membership, StatePhase::Maintenance);
 
     let mut lent_across: Vec<LentAcross> = Vec::new();
+    let mut lent_landing: Vec<LentLanding> = Vec::new();
     for (index, priced) in hexes.iter_mut().enumerate() {
         // Per hex, because the pools are: what one region's units ask of its tax base says nothing
         // about the next region's.
@@ -999,6 +1000,7 @@ pub fn review_turn(
             &claim_allowances,
             options.emits(codes::TRANSPORT_OUT_OF_REACH),
             &mut lent_across,
+            &mut lent_landing,
         );
         // The SILVER column has read the column's settlement of maintenance; every check below
         // reads the warning's, which counts a refused order as spending its silver (`ah-ayg7`).
@@ -1091,6 +1093,7 @@ pub fn review_turn(
         findings[start..].sort_by_key(|finding| (finding.line.is_none(), finding.line));
     }
     lend_across_hexes(&mut silver, &lent_across);
+    name_landing_lenders(&mut silver, &lent_landing);
 
     // Everything above is about one hex. An allowance is spent across the whole map, so it is
     // counted once, after every hex has been read - and `validate_turn` sorts the whole list by
@@ -2964,6 +2967,9 @@ fn forecast_hex(
     // What sharers arriving from other hexes lent this hex's units, by the arriving sharer's own
     // row: debited by `lend_across_hexes` once every hex's column exists (`ah-wyj8`).
     lent_across: &mut Vec<LentAcross>,
+    // Who paid each passenger's STUDY sailing in here, once this hex's purse is netted: named on
+    // the passenger's own row by `name_landing_lenders` (`ah-myko`).
+    lent_landing: &mut Vec<LentLanding>,
 ) {
     let Relief {
         shared_silver,
@@ -3449,6 +3455,36 @@ fn forecast_hex(
                     })
                     .unwrap_or_default();
                 lent_across.push((arrival.unit.clone(), lent_to, lent));
+            }
+        }
+    }
+
+    // Who paid each passenger sailing in, as this hex's netted purse says, so its `was lent` line
+    // names the lenders whose own lines name it (`ah-myko` follow-up review, finding 1).
+    {
+        let arrivals = ledger.relief().walking.arrivals_at(LendingMoment::MonthEnd);
+        for (student, lenders) in ledger
+            .relief()
+            .walking
+            .arriving_students
+            .iter()
+            .zip(&purse_for_orders.arriving_lent_by)
+        {
+            let named: Vec<(String, i64)> = lenders
+                .iter()
+                .map(|&(lender, amount)| {
+                    let label = match lender {
+                        Lender::Unit(index) => unit_label(hex, &hex.units[index].unit.unit_id),
+                        Lender::Arrival(index) => arrivals.get(index).map_or_else(
+                            || "a unit arriving here".to_string(),
+                            |arrival| arrival.label.clone(),
+                        ),
+                    };
+                    (label, amount)
+                })
+                .collect();
+            if !named.is_empty() {
+                lent_landing.push((student.unit.clone(), named));
             }
         }
     }
@@ -17767,6 +17803,57 @@ fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
     }
 }
 
+/// Who paid one passenger's STUDY where its fleet lands: its own row's key, and the lenders there
+/// as `(label, amount)` (`ah-myko`).
+type LentLanding = (UnitKey, Vec<(String, i64)>);
+
+/// Names each passenger's lenders where its fleet lands as the landing hex's netted purse does,
+/// once every hex's column exists: its `was lent` lines across the sailing are rebuilt from
+/// `lent_landing`, keeping their place and their total, so they name the same units whose `lent`
+/// lines name the passenger. The verdict the passenger's own hex read
+/// ([`StudyElsewhere::lent_by`]) was settled before that purse netted a sharer that passed silver
+/// on (`ah-myko` follow-up review, finding 1).
+fn name_landing_lenders(silver: &mut [UnitSilver], lent_landing: &[LentLanding]) {
+    for (unit, lenders) in lent_landing {
+        let Some(forecast) = silver.iter_mut().find(|forecast| {
+            forecast.region_id == unit.region_id && forecast.unit_id == unit.unit_id
+        }) else {
+            continue;
+        };
+        let across = |change: &SilverChange| {
+            change.cause == SilverChangeCause::WasLent && change.place.is_some()
+        };
+        let Some(at) = forecast.changes.iter().position(across) else {
+            continue;
+        };
+        let place = forecast.changes[at].place.clone();
+        let total: i64 = forecast
+            .changes
+            .iter()
+            .filter(|change| across(change))
+            .map(|change| change.amount)
+            .sum();
+        // The purse paid exactly the passenger's need, so the two agree; where they do not, the
+        // verdict's own lines stand rather than a pair of sides that do not add up.
+        if lenders.iter().map(|(_, amount)| amount).sum::<i64>() != total {
+            continue;
+        }
+        let lines: Vec<SilverChange> = lenders
+            .iter()
+            .filter(|(_, amount)| *amount > 0)
+            .map(|(other, amount)| SilverChange {
+                amount: *amount,
+                cause: SilverChangeCause::WasLent,
+                line: None,
+                other: Some(other.clone()),
+                place: place.clone(),
+            })
+            .collect();
+        forecast.changes.retain(|change| !across(change));
+        forecast.changes.splice(at..at, lines);
+    }
+}
+
 /// What maintenance took off `unit_id`'s [`silver_balance`]: the fee charged to its balance, less
 /// what steps 4 to 7 relieved it of, plus what it lent a faction-mate's fee at step 4. Added back,
 /// it reads the unit's silver as the month-long orders left it (`ah-6y6e`).
@@ -18597,6 +18684,9 @@ struct SharingPurse {
     /// [`Lending::arrivals_lent_to`]: what each sharer arriving from another hex lent which unit
     /// of this one, aligned with `arrivals_lend` (`ah-myko`).
     arrivals_lent_to: Vec<Vec<(usize, i64)>>,
+    /// [`Lending::arriving_lent_by`] once netted: who paid each arriving passenger's STUDY here,
+    /// aligned with [`WalkingSilver::arriving_students`] (`ah-myko`). Empty where nothing pools.
+    arriving_lent_by: Vec<Vec<(Lender, i64)>>,
     /// The result of judging each known shortfall against this pool, aligned with `hex.units`.
     coverage: Vec<Option<super::silver::SharedSilverCoverage>>,
     /// The pool could not be added up at all, because a sharer's month is doubted (`ah-0jxx`).
@@ -19752,6 +19842,7 @@ fn sharing_purse_over(
         lent_by: vec![Vec::new(); hex.units.len()],
         lent_to_each_in_hex: vec![Vec::new(); hex.units.len()],
         arrivals_lent_to: vec![Vec::new(); arrivals.len()],
+        arriving_lent_by: Vec::new(),
         coverage: vec![None; hex.units.len()],
         unjudged: false,
     };
@@ -19861,6 +19952,7 @@ fn sharing_purse_over(
             lent_by: paid.lent_by(),
             lent_to_each_in_hex: paid.lent_to_each_in_hex(),
             arrivals_lent_to: paid.arrivals_lent_to(),
+            arriving_lent_by: paid.arriving_lent_by.clone(),
             lends: paid.lends,
             arrivals_lend: paid.arrivals_lend,
             borrows: paid.borrows,
@@ -19893,6 +19985,7 @@ fn sharing_purse_over(
         lent_by: lending.lent_by(),
         lent_to_each_in_hex: lending.lent_to_each_in_hex(),
         arrivals_lent_to: lending.arrivals_lent_to(),
+        arriving_lent_by: lending.arriving_lent_by.clone(),
         lends: lending.lends,
         arrivals_lend: lending.arrivals_lend,
         borrows: lending.borrows,
@@ -80065,6 +80158,45 @@ BUILD
             .unwrap_or_else(|| panic!("the report lists {id}"));
         unit.region_id = id.to_string();
         region.units.push(unit);
+    }
+
+    /// `ah-myko` follow-up review, finding 1: who paid a passenger's STUDY where its fleet lands
+    /// is the landing hex's purse's answer once netted, so the passenger's own row is relabelled
+    /// with it - in the hex the report lists the passenger in, and with the same place and total.
+    #[test]
+    fn a_passengers_landing_lenders_are_the_netted_purses() {
+        let (_, review) = between_two_sharers_with(500, |_| {}, "");
+        let mut silver = review.silver.clone();
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.borrowed_for_orders;
+        assert!(fee > 10, "{fee}");
+        let key = unit_key(&passenger.region_id, "901");
+        name_landing_lenders(
+            &mut silver,
+            &[(
+                key,
+                vec![
+                    ("Unit 902 (902)".to_string(), fee - 10),
+                    ("Unit 905 (905)".to_string(), 10),
+                ],
+            )],
+        );
+        let row = silver
+            .iter()
+            .find(|row| row.unit_id == "901")
+            .expect("forecast");
+        let place = Some("mountain (7,53)".to_string());
+        assert_eq!(
+            row.changes
+                .iter()
+                .filter(|change| change.cause == SilverChangeCause::WasLent)
+                .map(|change| (change.other.clone(), change.place.clone(), change.amount))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some("Unit 902 (902)".to_string()), place.clone(), fee - 10),
+                (Some("Unit 905 (905)".to_string()), place, 10),
+            ]
+        );
     }
 
     /// `ah-kjq5`: a STUDY fee lent across a fleet's move names, on each side, the other unit and
