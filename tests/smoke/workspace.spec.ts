@@ -1747,7 +1747,12 @@ test("in a short window the orders splitter stays clear of the units dock and ta
   await page.mouse.move(from.x + from.width / 2, 60, { steps: 6 });
   await page.mouse.up();
   const raised = (await grip.boundingBox())!;
-  expect(raised.y + raised.height).toBeLessThanOrEqual((await dock.boundingBox())!.y + 0.5);
+  const raisedDock = (await dock.boundingBox())!;
+  expect(raised.y + raised.height).toBeLessThanOrEqual(raisedDock.y + 0.5);
+  // And the height the drag stored is the height drawn: the drag stops where the layout does,
+  // rather than storing seven tenths of the column while the dock shows less.
+  const storedPx = Number(await unitsGrip.getAttribute("aria-valuenow")) * 16;
+  expect(Math.abs(storedPx - raisedDock.height)).toBeLessThan(2);
   await unitsGrip.dblclick();
 });
 

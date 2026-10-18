@@ -6252,9 +6252,11 @@ export function AppShell({
                 even after the units dock has yielded (`railRowStyle`), the column scrolls here
                 instead of running on under the dock with the orders splitter. Inside the rail and
                 not on it, so the rail's width splitter, which stands just outside its left edge,
-                is not clipped away.
+                is not clipped away. The `-m-2 p-2` gives the panels' `shadow-lg` room inside the
+                clip box, so the column looks the same as the region rail in every window; the
+                splitter subtracts the padding when it measures the column.
               */}
-              <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
+              <div className="-m-2 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2">
                 {/*
                   One slot for the unit and the movement planner, as two tabs. The column has 249px
                   at 1280x720 and two panels is what fits in it; stacking the planner as a third put
@@ -6375,10 +6377,11 @@ export function AppShell({
           <div
             ref={unitsSlotRef}
             // `relative z-10`, the splitters' own layer, and later in the document than any of them
-            // (ah-9r8k). In a short window the right column runs down over the dock's title bar;
-            // the panels there already paint under the dock, but the orders splitter's `z-10` lifted
-            // it over the dock too, and a click on Add to army resized the orders panel. Every
-            // popup the dock opens is portalled, so this layer caps none of them.
+            // (ah-9r8k). A guard now rather than a cure: the right column once ran down over the
+            // dock's title bar in a short window, and the orders splitter's `z-10` lifted it over
+            // the dock, so a click on Add to army resized the orders panel. Since ah-hgyl the dock
+            // yields and the column scrolls, so nothing of it reaches the dock; should that come
+            // back, the dock still wins. Every popup it opens is portalled, so this caps none.
             className={`relative z-10 ${unitsSlotClass(collapsed, unitsHeightRem != null)}`}
             style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
             data-map-overlay="bottom"
