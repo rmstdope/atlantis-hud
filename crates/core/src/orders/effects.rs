@@ -1313,7 +1313,7 @@ fn settle(
     options: super::semantics::CheckOptions,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
     let mut working =
-        Working::over_own_units(report, ruleset.clone(), orders_document, geometry, options);
+        Working::over_own_units(report, ruleset.clone(), geometry, options);
     // The same reading of this month's orders the advisory makes (`ah-kjjv`).
     working
         .shipping
@@ -1400,6 +1400,15 @@ fn settle(
     // reverts from it includes whatever its own BUY brought it - so nothing can be dissolved
     // before `item_effects` has been applied (`ah-dhga`, `ah-l9d9`).
     let dissolved = working.dissolve_empty_forms();
+    // Who owns each Caravanserai when the shipments run, now that the month's dissolution is
+    // known: a formed unit an owner's `PROMOTE NEW <n>` handed one to is deleted with it when it
+    // gained no men (`Game::DeleteEmptyUnits`, `ah-ry88`).
+    working.shipping.read_owners(
+        report,
+        orders_document,
+        ruleset.as_ref(),
+        &formed_crews(&working.units, &dissolved),
+    );
     // `rules/sequenceofevents` processes ADVANCE, MOVE and SAIL before any TRANSPORT, so a unit that
     // moves steps off with what it holds now; goods shipped to it arrive after it has gone, and goods
     // it ships out are still on its back (`ah-ol1d`).
@@ -2907,7 +2916,6 @@ impl Working {
     fn over_own_units(
         report: &crate::report::ParsedReport,
         ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
-        orders_document: &str,
         geometry: Option<crate::movement::graph::MapGeometry>,
         options: super::semantics::CheckOptions,
     ) -> Self {
@@ -2965,7 +2973,6 @@ impl Working {
                 geometry,
                 ..options.clone()
             },
-            orders_document,
         );
         let mut shown_in_region: BTreeMap<String, std::collections::BTreeSet<String>> =
             BTreeMap::new();
@@ -12180,7 +12187,7 @@ mod tests {
 
         // `ah-kjjv`: a refusal of our own unit is settled only while nothing this month can make
         // it eligible. Ownership once ENTER, LEAVE, PROMOTE and movement have run is settled by
-        // `transport::Shipping::read` (`ah-1jl9`), so only what it cannot follow - a BUILD, or a
+        // `transport::Shipping::read_owners` (`ah-1jl9`), so only what it cannot follow - a BUILD, or a
         // walk with no month end - leaves a refusal unsettled.
         #[test]
         fn a_refusal_this_months_orders_may_undo_is_marked_unsettled() {
@@ -13934,7 +13941,6 @@ mod tests {
         let working = Working::over_own_units(
             &parsed,
             ruleset,
-            "",
             Some(geometry),
             super::super::semantics::CheckOptions::default(),
         );
@@ -13954,7 +13960,6 @@ mod tests {
         let working = Working::over_own_units(
             &parsed,
             ruleset,
-            "",
             None,
             super::super::semantics::CheckOptions::default(),
         );
@@ -14003,7 +14008,6 @@ mod tests {
         let working = Working::over_own_units(
             &parsed,
             ruleset,
-            "",
             None,
             super::super::semantics::CheckOptions::default(),
         );
