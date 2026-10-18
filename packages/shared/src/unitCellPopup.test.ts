@@ -5418,6 +5418,51 @@ describe("the month each column popup states", () => {
     }
   });
 
+  // ah-o1co: Trader (6857) in neworigins-3.0.0-g3-f42-t42 - DISTRIBUTE 1162 500 SILV plus LEAVE.
+  // The refusal sentence is this month's orders deciding what the goods do, so following it with
+  // "Nothing this month changes these." contradicts it.
+  it("an items cell explaining a refused shipment never also says nothing changes", () => {
+    const trader = unit({
+      own: true,
+      unitId: "6857",
+      name: "Trader",
+      items: [{ name: "leader", tag: "LEAD", amount: 1 }],
+      transportTargetIssues: [
+        {
+          to: "1162",
+          amount: 500,
+          tag: "SILV",
+          reason: "senderOwnsNoCaravanserai",
+          orderIndex: 0,
+          reach: null,
+          toUnshown: false,
+          unsettled: false,
+          distribute: true
+        }
+      ]
+    });
+    const popup = columnPopup(popupForCell("items", trader, facts()));
+    expect(popup.notes).toContain(
+      "This unit owns no Caravanserai when the shipments run, so 500 SILV stay with this unit."
+    );
+    for (const sentence of NOTHING) {
+      expect(popup.notes).not.toContain(sentence);
+    }
+  });
+
+  it("an items cell explaining goods the game will not transport never also says nothing changes", () => {
+    const sender = unit({
+      own: true,
+      items: [{ name: "horse", tag: "HORS", amount: 2 }],
+      transportSent: [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 0 }]
+    });
+    const popup = columnPopup(popupForCell("items", sender, facts()));
+    expect(popup.notes).toContain("The game will not transport HORS, so they stay with this unit.");
+    for (const sentence of NOTHING) {
+      expect(popup.notes).not.toContain(sentence);
+    }
+  });
+
   it("a month nothing was compared against states no answer and says nothing", () => {
     const cases: readonly [(typeof UNIT_COLUMNS)[number], Case][] = [
       ["longOrder", { unit: unit({ own: true }), facts: facts({ longOrder: "WORK" }) }],

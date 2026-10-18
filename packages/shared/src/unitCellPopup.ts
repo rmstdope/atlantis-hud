@@ -1742,8 +1742,20 @@ function itemsBody(unit: PreviewedUnit, facts: PopupFacts): Body {
     // Every entry, not only the ones the cap draws: ten iron given in and ten spent leave no report
     // change, and still move the cell (`ah-ymms`).
     month: monthOf(change !== undefined || entries.some((entry) => entry.moved)),
+    // A shipment the game refuses, or could not count, is this month's orders deciding where the
+    // goods are, and `itemsTooltip` says so in its own words - "so 500 SILV stay with this unit" -
+    // so the shared no-change sentence after it would contradict it (`ah-o1co`).
+    ...(shipmentWorded(unit) ? { worded: true as const } : {}),
     warning: warning.length > 0 ? warning.join(" ") : null
   };
+}
+
+/** Whether the Items hover words a TRANSPORT or DISTRIBUTE that moved nothing (`ah-o1co`). */
+function shipmentWorded(unit: PreviewedUnit): boolean {
+  return (
+    (unit.transportTargetIssues ?? []).length > 0 ||
+    (unit.transportSent ?? []).some((sent) => sent.refused)
+  );
 }
 
 /** What the popup writes where a unit stands in no structure at all (`ah-rgkk.5.3`). */
