@@ -1312,8 +1312,7 @@ fn settle(
     geometry: Option<crate::movement::graph::MapGeometry>,
     options: super::semantics::CheckOptions,
 ) -> (Vec<WorkingUnit>, BTreeMap<usize, Option<String>>) {
-    let mut working =
-        Working::over_own_units(report, ruleset.clone(), geometry, options);
+    let mut working = Working::over_own_units(report, ruleset.clone(), geometry, options);
     // The same reading of this month's orders the advisory makes (`ah-kjjv`).
     working
         .shipping
