@@ -1995,6 +1995,21 @@ describe("the column popups", () => {
       });
     });
 
+    it("a sailing lender joins three or more units with commas, and names the hex once", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", lands: "ocean (38,44)" },
+            { amount: -200, cause: "lent", line: null, other: "Drones (10603)", lands: "ocean (38,44)" },
+            { amount: -50, cause: "lent", line: null, other: "Drones (9579)", lands: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-450",
+        why: "to Drones (10594), Drones (10603) and Drones (9579), where its fleet lands in ocean (38,44)"
+      });
+    });
+
     it("the lender's line names each passenger with its own hex", () => {
       expect(
         silverWhy("lent", {
