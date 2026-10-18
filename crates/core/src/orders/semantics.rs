@@ -61017,6 +61017,23 @@ BUILD
         );
     }
 
+    /// `ah-q3bp`: a zero amount names no amount either ("moves nothing"), so its hint names the
+    /// goods as the `ALL` form's does.
+    #[test]
+    fn a_refused_transport_of_zero_says_distribute_would_deliver_the_item() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let finding = only(target_findings(
+            vec![home],
+            "unit 900\nTRANSPORT 901 0 SILV\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."
+        );
+    }
+
     /// `ah-q3bp`: each refused `ALL` line names its own item, in the canonical upper-case code
     /// however the order spelled it.
     #[test]
@@ -61026,7 +61043,7 @@ BUILD
 
         let messages: Vec<String> = target_findings(
             vec![home],
-            "unit 900\nTRANSPORT 901 ALL silv\nTRANSPORT 901 ALL IRON\n",
+            "unit 900\nTRANSPORT 901 ALL silver\nTRANSPORT 901 ALL IRON\n",
         )
         .into_iter()
         .map(|finding| finding.message)
