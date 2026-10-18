@@ -69,9 +69,9 @@ pub struct WrittenMovement {
 }
 
 /// A unit a `FORM` block creates, and the structure it stands in when `Game::RunPromoteOrders`
-/// runs (`ah-vweq`). Where in the object's list it stands is [`occupants_after_boarding`]'s, which
-/// puts formed units after every reported entrant - a known divergence from the engine, which
-/// appends a formed unit as the `FORM` is read, ahead of every ENTER (`ah-7ful`).
+/// runs (`ah-vweq`). Where in the object's list it stands is [`occupants_after_boarding`]'s: one
+/// that stays where it was formed ahead of every entrant, since the engine appends it as the
+/// `FORM` is read, before any ENTER runs (`ah-7ful`).
 ///
 /// `rules/form`: the new unit is "in the same structure if any" as the unit that formed it -
 /// `../Atlantis parseorders.cpp` moves it into its former's object as the `FORM` is read
@@ -551,6 +551,17 @@ impl OrderedUnits {
     /// no stated movement of its own: one that can neither swim nor fly is refused either way.
     #[must_use]
     pub fn formed_at_promotion(&self, region: &ReportRegion) -> Vec<FormedCrew> {
+        self.formed_placed(region)
+            .into_iter()
+            .map(|(crew, _)| crew)
+            .collect()
+    }
+
+    /// [`Self::formed_at_promotion`], each with whether it stands where it was formed (`ah-7ful`):
+    /// in its former's reported structure, which no ENTER of its own named. Such a unit joined the
+    /// object as its `FORM` was parsed, ahead of every entrant; one whose ENTER is refused stays
+    /// there too. Any other formed unit standing in a structure boarded it when ENTER ran.
+    fn formed_placed(&self, region: &ReportRegion) -> Vec<(FormedCrew, bool)> {
         let hex = self.0.hexes.of_region(&region.region_id);
         self.0
             .formed
@@ -568,12 +579,20 @@ impl OrderedUnits {
                         movement: None,
                     },
                 );
-                Some(FormedCrew {
-                    unit_id: formed.unit_id.clone(),
-                    region_id: region.region_id.clone(),
-                    key: OrderedUnitKey::Formed(*form_line),
-                    structure_id: structure_id.map(str::to_string),
-                })
+                let in_place = structure_id.is_some()
+                    && structure_id == former.structure_id.as_deref()
+                    && !formed.boardings.iter().any(|boarding| {
+                        structure_id.is_some_and(|id| boarding.as_boarding() == Boarding::Enter(id))
+                    });
+                Some((
+                    FormedCrew {
+                        unit_id: formed.unit_id.clone(),
+                        region_id: region.region_id.clone(),
+                        key: OrderedUnitKey::Formed(*form_line),
+                        structure_id: structure_id.map(str::to_string),
+                    },
+                    in_place,
+                ))
             })
             .collect()
     }
@@ -655,11 +674,13 @@ pub struct FormedCrew {
 /// appended to its end (`Unit::MoveUnit`), so the list the fleet moves with is: the report's
 /// occupants who stayed, in report order ("the first unit listed under the object",
 /// `rules/world_structures`), then everyone who boarded. A reported occupant whose last boarding
-/// order re-enters the hull it stands in is moved to the end like any other entrant. Formed units
-/// aboard (`formed`) come after every reported unit: the engine appends a formed unit to its
-/// parent's object as it is formed, so one formed aboard would really stand ahead of a reported
-/// entrant, but a month where both a reported and a formed unit board a hull every reported
-/// occupant has left is not modelled. Nobody aboard at all is no owner (`ah-877p`).
+/// order re-enters the hull it stands in is moved to the end like any other entrant. A unit
+/// formed aboard stands between the two (`ah-7ful`): the engine appends a formed unit to its
+/// former's object as the `FORM` is parsed (../Atlantis `parseorders.cpp`
+/// `temp->MoveUnit(former->object)`), before `Game::RunEnterOrders`, so behind the occupants who
+/// stayed and ahead of every entrant. One that boards by its own ENTER is an entrant itself, and
+/// stands behind the reported ones ([`occupants_after_boarding`]). Nobody aboard at all is no
+/// owner (`ah-877p`).
 ///
 /// A LEAVE at sea by a unit that can neither swim nor fly is refused and moves nobody
 /// (`rules/leave`: "If a unit is capable of swimming or flying then this order is usable to leave a
@@ -697,11 +718,14 @@ pub fn fleet_owner(
 /// first, as unit ids - the object's list [`fleet_owner`] reads its first entry from, by the rules
 /// stated there. A structure of any kind, not only a hull: the engine keeps one list per object
 /// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
-/// movement phase has taken more units off it (`ah-1jl9`). A caller that passes no `formed` crews
-/// does not follow a `PROMOTE NEW <n>` either: the formed unit is not in the list, so that
-/// `PROMOTE` promotes nobody. The EVICTs pass [`OrderedUnits::formed_at_promotion`] (`ah-vweq`)
-/// and the fleets the crews that survive to move; `orders::transport` passes none yet
-/// (`ah-ry88`).
+/// movement phase has taken more units off it (`ah-1jl9`).
+///
+/// Every unit this month's `FORM`s put in the structure stands in the list while PROMOTE and
+/// EVICT run, men or none ([`OrderedUnits::formed_at_promotion`]; `ah-vweq`, `ah-7ful`), but only
+/// those `formed` names survive into the answer: one left out is a unit the caller knows to be
+/// deleted before anything moves (`Game::DeleteEmptyUnits`), or one it cannot follow. The EVICTs
+/// pass every formed unit, the fleets the crews that survive to move, and `orders::transport`
+/// none yet (`ah-ry88`).
 #[must_use]
 pub fn occupants_after_promotes(
     region: &ReportRegion,
@@ -709,7 +733,8 @@ pub fn occupants_after_promotes(
     formed: &[FormedCrew],
     structure_id: &str,
 ) -> Vec<String> {
-    let mut occupants = occupants_after_boarding(region, ordered, formed, structure_id);
+    let placed = ordered.formed_placed(region);
+    let mut occupants = occupants_after_boarding(region, ordered, &placed, structure_id);
     // One `PROMOTE` per object, its owner's (`Game::RunPromoteOrders`): the unit it promotes does
     // not run its own that month (`ah-c1p2`).
     let Some(owner) = occupants.first().cloned() else {
@@ -730,6 +755,17 @@ pub fn occupants_after_promotes(
     // Then the EVICTs (`ah-0ace`): whoever they put outside is no longer in the object's list.
     let hex = ordered.0.hexes.of_region(&region.region_id);
     occupants.retain(|unit| hex.evicted_by(unit).is_none());
+    // And the formed units the caller does not hand in.
+    occupants.retain(|unit| {
+        placed
+            .iter()
+            .find(|(crew, _)| &crew.unit_id == unit)
+            .is_none_or(|(crew, _)| {
+                formed
+                    .iter()
+                    .any(|kept| kept.region_id == region.region_id && kept.key == crew.key)
+            })
+    });
     occupants
 }
 
@@ -738,11 +774,17 @@ pub fn occupants_after_promotes(
 /// the rules [`fleet_owner`] states. Its first entry is the one unit whose `PROMOTE` runs
 /// (`ah-c1p2`). `orders::semantics::owner_when_promotions_run` reads the same rule from a hex's
 /// own units.
+///
+/// The order is the engine's (`ah-7ful`): the report's occupants who stayed; then the units
+/// formed where they stand, which joined as their `FORM`s were parsed; then the reported units
+/// that boarded, as `Game::RunEnterOrders` appends them; then the formed units that boarded by
+/// their own ENTER. Which of the last two the engine appends first turns on the order it walks
+/// the region's objects in, which the report does not show.
 #[must_use]
 fn occupants_after_boarding(
     region: &ReportRegion,
     ordered: &OrderedUnits,
-    formed: &[FormedCrew],
+    placed: &[(FormedCrew, bool)],
     structure_id: &str,
 ) -> Vec<String> {
     let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
@@ -757,13 +799,19 @@ fn occupants_after_boarding(
         .iter()
         .filter(aboard)
         .filter(|unit| !listed_under(unit) || ordered.enters(unit, structure_id));
-    let formed_aboard = formed.iter().filter(|crew| {
-        crew.region_id == region.region_id && crew.structure_id.as_deref() == Some(structure_id)
-    });
+    let formed_aboard = |in_place: bool| {
+        placed
+            .iter()
+            .filter(move |(crew, stays)| {
+                *stays == in_place && crew.structure_id.as_deref() == Some(structure_id)
+            })
+            .map(|(crew, _)| crew.unit_id.clone())
+    };
     stayed
-        .chain(boarded)
         .map(|unit| unit.unit_id.clone())
-        .chain(formed_aboard.map(|crew| crew.unit_id.clone()))
+        .chain(formed_aboard(true))
+        .chain(boarded.map(|unit| unit.unit_id.clone()))
+        .chain(formed_aboard(false))
         .collect()
 }
 
@@ -1290,6 +1338,120 @@ mod tests {
             course_in(&coast_scene(), orders, &[elsewhere], "329").0,
             None,
             "a formed unit of another hex is not aboard this one"
+        );
+    }
+
+    /// `ah-7ful`: the engine adds a formed unit to its former's object as the `FORM` is parsed
+    /// (../Atlantis `parseorders.cpp`: `temp->MoveUnit(former->object)`), before
+    /// `Game::RunEnterOrders`, and `Unit::MoveUnit` appends - so a unit formed aboard stands
+    /// ahead of a reported unit that ENTERs, and owns the hull once every reported occupant left.
+    #[test]
+    fn a_unit_formed_aboard_stands_ahead_of_a_reported_entrant() {
+        let orders = "unit 900\nFORM 1\nEND\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n\
+                      unit 903\nENTER 329\n";
+        let crew = FormedCrew {
+            unit_id: "new-1".to_string(),
+            region_id: "1:1,1".to_string(),
+            key: OrderedUnitKey::Formed(2),
+            structure_id: Some("329".to_string()),
+        };
+        assert_eq!(
+            course_in(&coast_scene(), orders, std::slice::from_ref(&crew), "329").0,
+            Some("new-1".to_string())
+        );
+    }
+
+    /// `ah-7ful` review: the movement side's EVICT reads the same list. 900 forms NEW 1 aboard
+    /// Longship [329] and leaves; 903 and 901 board (901 re-entering), and 903 EVICTs 901. NEW 1
+    /// owns the hull when EVICT runs - with no men yet, since `Game::DeleteEmptyUnits` runs
+    /// later - so the engine refuses 903's EVICT ("EVICT: Must be owner") and 901 stays aboard.
+    #[test]
+    fn a_unit_formed_aboard_owns_the_hull_when_evict_runs() {
+        let mut cache = ReportCache::new();
+        let ruleset = cache.ruleset(RULESET).expect("the fixture ruleset loads");
+        let report = cache.classified(&coast_scene(), RULESET);
+        let deckhands = report
+            .units()
+            .find(|unit| unit.unit_id == "901")
+            .expect("Deckhands is in the scene");
+        let stands = |orders: &str| {
+            OrderedUnits::of_month(&report, orders, Some(&ruleset))
+                .structure_of(deckhands)
+                .map(str::to_string)
+        };
+        let boarding = "unit 901\nENTER 329\nunit 902\nLEAVE\nunit 903\nENTER 329\nEVICT 901\n";
+        assert_eq!(
+            stands(&format!("unit 900\nLEAVE\n{boarding}")),
+            None,
+            "with nobody formed, 903 owns the hull and evicts 901"
+        );
+        assert_eq!(
+            stands(&format!("unit 900\nFORM 1\nEND\nLEAVE\n{boarding}")),
+            Some("329".to_string())
+        );
+    }
+
+    /// `ah-7ful` review: a unit formed elsewhere that boards by its own ENTER is an entrant, so
+    /// it stands behind a unit formed in place and behind the reported entrants.
+    #[test]
+    fn a_formed_unit_that_enters_stands_behind_one_formed_in_place() {
+        let orders = "unit 903\nFORM 1\nENTER 329\nEND\n\
+                      unit 900\nFORM 2\nEND\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n";
+        let entrant = FormedCrew {
+            unit_id: "new-1".to_string(),
+            region_id: "1:1,1".to_string(),
+            key: OrderedUnitKey::Formed(2),
+            structure_id: Some("329".to_string()),
+        };
+        let in_place = FormedCrew {
+            unit_id: "new-2".to_string(),
+            key: OrderedUnitKey::Formed(6),
+            ..entrant.clone()
+        };
+        assert_eq!(
+            course_in(&coast_scene(), orders, &[entrant.clone(), in_place], "329").0,
+            Some("new-2".to_string())
+        );
+        assert_eq!(
+            course_in(&coast_scene(), orders, &[entrant], "329").0,
+            Some("new-1".to_string()),
+            "left out by the caller - given nobody - the unit formed in place is gone by SAIL"
+        );
+    }
+
+    /// `ah-7ful` review: an ENTER the engine refuses ("ENTER: Can't enter that.", no such
+    /// structure here) moves the formed unit nowhere, so it keeps its place ahead of the entrants.
+    #[test]
+    fn a_formed_unit_whose_enter_is_refused_keeps_its_place() {
+        let orders = "unit 900\nFORM 1\nENTER 999\nEND\nLEAVE\nunit 901\nLEAVE\nunit 902\nLEAVE\n\
+                      unit 903\nENTER 329\n";
+        let crew = FormedCrew {
+            unit_id: "new-1".to_string(),
+            region_id: "1:1,1".to_string(),
+            key: OrderedUnitKey::Formed(2),
+            structure_id: Some("329".to_string()),
+        };
+        assert_eq!(
+            course_in(&coast_scene(), orders, &[crew], "329").0,
+            Some("new-1".to_string())
+        );
+    }
+
+    /// `ah-7ful` review: a formed unit that boards by its own ENTER stands behind the reported
+    /// units that board too - here 901, re-entering the hull it stood in.
+    #[test]
+    fn a_formed_unit_that_enters_stands_behind_a_reported_entrant() {
+        let orders = "unit 903\nFORM 1\nENTER 329\nEND\n\
+                      unit 900\nLEAVE\nunit 901\nENTER 329\nunit 902\nLEAVE\n";
+        let entrant = FormedCrew {
+            unit_id: "new-1".to_string(),
+            region_id: "1:1,1".to_string(),
+            key: OrderedUnitKey::Formed(2),
+            structure_id: Some("329".to_string()),
+        };
+        assert_eq!(
+            course_in(&coast_scene(), orders, &[entrant], "329").0,
+            Some("901".to_string())
         );
     }
 

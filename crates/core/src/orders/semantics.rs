@@ -12541,9 +12541,13 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
 /// Who owns a structure when this month's `PROMOTE`s run: the first unit in the object's list
 /// once ENTER and LEAVE have run (`Object::GetOwner`; `rules/sequenceofevents`). The rule
 /// [`crate::movement::fleet::fleet_owner`] states, read from this hex's units (`ah-c1p2`): the
-/// report's occupants who stayed, in report order, then everyone who boarded - a reported
-/// occupant that ENTERs the structure it stands in boards again - then units formed aboard. A
-/// unit of another faction stays where the report shows it. `None` when nobody stands in it.
+/// report's occupants who stayed, in report order; then the units formed in place, whose block
+/// writes no ENTER or LEAVE (the engine adds one to its former's object as the `FORM` is parsed,
+/// before any ENTER runs - `ah-7ful`); then the reported units that boarded - a reported occupant
+/// that ENTERs the structure it stands in boards again; then the formed units that boarded. A
+/// formed unit counts men or none: `Game::DeleteEmptyUnits` runs only after PROMOTE, EVICT and
+/// DESTROY (`Game::RunOrders`). A unit of another faction stays where the report shows it. `None`
+/// when nobody stands in it.
 fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
     let enters = |unit_id: &str| {
         hex.units.iter().any(|ordered| {
@@ -12569,17 +12573,26 @@ fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String
             .iter()
             .find(|unit| !listed_under(unit) || enters(&unit.unit_id))
     };
-    if let Some(unit) = stayed.or_else(boarded) {
-        return Some(unit.unit_id.clone());
-    }
-    hex.units
-        .iter()
-        .find(|ordered| {
+    // A formed unit joins its former's object as the FORM is parsed, before any ENTER runs
+    // (`ah-7ful`): one still there - no ENTER of its own named it, and one that was refused moved
+    // nobody - stands between the occupants who stayed and the entrants, and one that boarded by
+    // its own ENTER is an entrant itself.
+    let formed = |boards: bool| {
+        hex.units.iter().find(|ordered| {
+            let stays = listed_under(ordered.unit)
+                && !ordered.intents.iter().any(|placed| {
+                    matches!(&placed.intent, Intent::Enter { structure } if structure == structure_id)
+                });
             ordered.formed.is_some()
-                && !ordered.after_the_market().gained_nobody()
                 && structure_after_boarding(ordered) == Some(structure_id)
+                && stays != boards
         })
-        .map(|ordered| ordered.unit.unit_id.clone())
+    };
+    stayed
+        .map(|unit| unit.unit_id.clone())
+        .or_else(|| formed(false).map(|ordered| ordered.unit.unit_id.clone()))
+        .or_else(|| boarded().map(|unit| unit.unit_id.clone()))
+        .or_else(|| formed(true).map(|ordered| ordered.unit.unit_id.clone()))
 }
 
 /// Every unit of ours a structure's owner EVICTs this month, with that owner (`ah-0ace`).
@@ -58403,6 +58416,72 @@ BUILD
             refused[0].message,
             "PROMOTE will be refused: Unit 900 (900) owns Castle [1] when promotions run, not \
              this unit, so nothing changes"
+        );
+    }
+
+    /// `ah-7ful`: the engine adds a formed unit to its former's object as the `FORM` is parsed
+    /// (../Atlantis `parseorders.cpp`: `temp->MoveUnit(former->object)`), before
+    /// `Game::RunEnterOrders`, and `Unit::MoveUnit` appends, so it stands ahead of every unit that
+    /// ENTERs. 900 forms NEW 1 in the Castle and leaves; 901 enters. NEW 1 owns the Castle when
+    /// promotions and evictions run, so 901's EVICT is refused ("EVICT: Must be owner").
+    #[test]
+    fn a_unit_formed_in_a_structure_owns_it_ahead_of_a_unit_that_enters() {
+        let castle = || ReportRegion {
+            structures: vec![finished_of_kind("1", "Castle")],
+            ..region(vec![
+                in_structure(unit("900"), "1"),
+                unit("901"),
+                unit("902"),
+            ])
+        };
+        let evict_refusals = |orders: &str| -> Vec<(Option<String>, String)> {
+            check(vec![castle()], orders)
+                .into_iter()
+                .filter(|finding| finding.code.as_str() == "evict-refused")
+                .map(|finding| (finding.unit_id, finding.message))
+                .collect()
+        };
+        assert_eq!(
+            evict_refusals("unit 900\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"),
+            vec![],
+            "with nobody formed, the entrant owns the Castle"
+        );
+        assert_eq!(
+            evict_refusals(
+                "unit 900\nFORM 1\nEND\nGIVE NEW 1 1 HUMN\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"
+            ),
+            vec![(
+                Some("901".to_string()),
+                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
+                 this unit, so nothing changes"
+                    .to_string()
+            )]
+        );
+        // `ah-7ful` review: an ENTER the engine refuses ("ENTER: Can't enter that.") moves the
+        // formed unit nowhere, so it keeps the place it took when its FORM was parsed.
+        assert_eq!(
+            evict_refusals("unit 900\nFORM 1\nENTER 7\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n")
+                .len(),
+            1
+        );
+        // `ah-7ful` review: a formed unit that boards by its own ENTER is an entrant, and stands
+        // behind the reported units that board, so 901 owns the Castle and its EVICT runs.
+        assert_eq!(
+            evict_refusals(
+                "unit 902\nFORM 1\nENTER 1\nEND\nunit 900\nLEAVE\nunit 901\nENTER 1\nEVICT 902\n"
+            ),
+            vec![]
+        );
+        // `ah-7ful` review: a formed unit given nobody still stands in the Castle when EVICT runs
+        // - `Game::DeleteEmptyUnits` comes after PROMOTE, EVICT and DESTROY (`Game::RunOrders`).
+        assert_eq!(
+            evict_refusals("unit 900\nFORM 1\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"),
+            vec![(
+                Some("901".to_string()),
+                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
+                 this unit, so nothing changes"
+                    .to_string()
+            )]
         );
     }
 
