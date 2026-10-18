@@ -2025,15 +2025,22 @@ function conditionalShippingClause(shipping: UnitSilver["shipping"]): string | u
  * name nobody for keeps the words it had before. One across a fleet's move carries a `place` and
  * names the other unit and the hex it is in - the lender's passengers each with the hex it sails
  * from, the passenger's lenders together with the one hex its fleet lands in. The in-hex part
- * reads first.
+ * reads first. A lender that sailed in carries `lands` instead (`ah-mqbu`,
+ * `docs/ui/ah-mqbu-captain-lent.html`): everyone it paid there is named together and the hex its
+ * fleet lands in once, the passenger's line turned round.
  */
 function loanClause(group: SilverCauseGroup): string {
-  const inHex = group.entries.filter((entry) => entry.place === undefined);
+  const landed = group.entries.filter(
+    (entry): entry is SilverChange & { other: string; lands: string } =>
+      entry.lands !== undefined && entry.other !== null
+  );
+  const rest = group.entries.filter((entry) => entry.lands === undefined || entry.other === null);
+  const inHex = rest.filter((entry) => entry.place === undefined);
   const named = [
     ...new Set(inHex.map((entry) => entry.other).filter((other): other is string => other !== null))
   ];
   const unnamed = inHex.some((entry) => entry.other === null);
-  const across = group.entries.filter(
+  const across = rest.filter(
     (entry): entry is SilverChange & { other: string; place: string } =>
       entry.place !== undefined && entry.other !== null
   );
@@ -2050,6 +2057,10 @@ function loanClause(group: SilverCauseGroup): string {
     ];
     if (passengers.length > 0) {
       clauses.push(`to ${serialList(passengers)}`);
+    }
+    if (landed.length > 0) {
+      const paid = [...new Set(landed.map((entry) => entry.other))];
+      clauses.push(`to ${andList(paid)}, where its fleet lands in ${landed[0].lands}`);
     }
   } else {
     if (named.length > 0) {

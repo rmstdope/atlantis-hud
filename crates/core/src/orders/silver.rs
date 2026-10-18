@@ -1033,6 +1033,14 @@ pub struct SilverChange {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub place: Option<String>,
+    /// The hex this unit's own fleet lands in, on a `Lent` line it lent there once it sailed in:
+    /// the loan is made there (`rules/share`: "in the same region"; `rules/sequenceofevents`: SAIL
+    /// before STUDY), so `other` is named with that hex rather than with one of its own, and
+    /// `place` is `None` - "where its fleet lands in ocean (38,44)", the passenger's `WasLent`
+    /// turned round. `None` on every other line, a walking lender's included (`ah-mqbu`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub lands: Option<String>,
 }
 
 /// One movement of one unit's silver, as the ledger settled it.
@@ -2253,6 +2261,7 @@ fn listed_moves(record: &[SilverMove]) -> Vec<(phases::StatePhase, SilverChange)
                     line: moved.line,
                     other: moved.other.clone(),
                     place: None,
+                    lands: None,
                 },
             )
         })
@@ -8761,6 +8770,7 @@ mod tests {
                     line: Some(7),
                     other: Some("Unit 9 (9)".into()),
                     place: None,
+                    lands: None,
                 },
                 SilverChange {
                     amount: -70,
@@ -8768,6 +8778,7 @@ mod tests {
                     line: Some(3),
                     other: None,
                     place: None,
+                    lands: None,
                 },
             ]
         );

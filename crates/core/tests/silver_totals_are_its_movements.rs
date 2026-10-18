@@ -270,6 +270,7 @@ fn the_unit_a_take_empties_says_where_its_silver_went() {
             line: Some(3),
             other: Some("Buyers (900)".to_string()),
             place: None,
+            lands: None,
         }],
         "one line, naming the taker, and carrying the taker's line - the order is in another unit's block (`ah-1x2h.3`)"
     );
@@ -322,6 +323,7 @@ fn a_take_of_all_the_silver_is_counted_like_any_other_take() {
             line: Some(3),
             other: Some("Purse (902)".to_string()),
             place: None,
+            lands: None,
         }],
         "one line, naming the source, and carrying the TAKE order's own line (`ah-1x2h.3`)"
     );

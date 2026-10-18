@@ -33,4 +33,12 @@ other: string | null,
  * lender's `Lent` (where the passenger sails from) - labelled as "Lonthax (36,44)" or
  * "ocean (38,44)". `None` on every other line (`ah-kjq5`).
  */
-place?: string, };
+place?: string, 
+/**
+ * The hex this unit's own fleet lands in, on a `Lent` line it lent there once it sailed in:
+ * the loan is made there (`rules/share`: "in the same region"; `rules/sequenceofevents`: SAIL
+ * before STUDY), so `other` is named with that hex rather than with one of its own, and
+ * `place` is `None` - "where its fleet lands in ocean (38,44)", the passenger's `WasLent`
+ * turned round. `None` on every other line, a walking lender's included (`ah-mqbu`).
+ */
+lands?: string, };

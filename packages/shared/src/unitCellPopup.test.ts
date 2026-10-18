@@ -1959,6 +1959,57 @@ describe("the column popups", () => {
       ).toMatchObject({ value: "-200", why: "to Drones (10594), arriving by fleet from Lonthax (36,44)" });
     });
 
+    it("a sailing lender names its passenger where its fleet lands", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [{ amount: -200, cause: "lent", line: null, other: "Drones (10594)", lands: "ocean (38,44)" }]
+        })
+      ).toMatchObject({ value: "-200", why: "to Drones (10594), where its fleet lands in ocean (38,44)" });
+    });
+
+    it("a sailing lender names every unit it paid where its fleet lands, and the hex once", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", lands: "ocean (38,44)" },
+            { amount: -200, cause: "lent", line: null, other: "Drones (10603)", lands: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-400",
+        why: "to Drones (10594) and Drones (10603), where its fleet lands in ocean (38,44)"
+      });
+    });
+
+    it("a sailing lender names a unit already standing where it lands in the same list", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", lands: "ocean (38,44)" },
+            { amount: -50, cause: "lent", line: null, other: "Drones (9579)", lands: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-250",
+        why: "to Drones (10594) and Drones (9579), where its fleet lands in ocean (38,44)"
+      });
+    });
+
+    it("a sailing lender joins three or more units with commas, and names the hex once", () => {
+      expect(
+        silverWhy("lent", {
+          changes: [
+            { amount: -200, cause: "lent", line: null, other: "Drones (10594)", lands: "ocean (38,44)" },
+            { amount: -200, cause: "lent", line: null, other: "Drones (10603)", lands: "ocean (38,44)" },
+            { amount: -50, cause: "lent", line: null, other: "Drones (9579)", lands: "ocean (38,44)" }
+          ]
+        })
+      ).toMatchObject({
+        value: "-450",
+        why: "to Drones (10594), Drones (10603) and Drones (9579), where its fleet lands in ocean (38,44)"
+      });
+    });
+
     it("the lender's line names each passenger with its own hex", () => {
       expect(
         silverWhy("lent", {
