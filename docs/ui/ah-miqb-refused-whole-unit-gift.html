@@ -1,0 +1,95 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>A refused whole-unit gift — what the player sees (ah-miqb)</title><style>
+  :root { --ground:#10151c; --panel:#171d26; --edge:#26303d; --edge-soft:#1e2733; --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --brass-bright:#eebe63; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main { max-width:1240px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; } h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.92em; }
+  h2.sec { margin-top:34px; font-size:18px; color:var(--brass); } h2.sec small { color:var(--ink-dim); font-size:13px; margin-left:10px; }
+  .cards { display:grid; grid-template-columns:repeat(2,1fr); gap:20px; margin-top:16px; align-items:start; }
+  .cards.three { grid-template-columns:repeat(3,1fr); }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px; }
+  .card h3 { font-size:17px; } .card h3 em { color:var(--brass); font-style:normal; font-size:12px; letter-spacing:1.6px; margin-right:8px; }
+  .card.rec { border-color:var(--brass); }
+  .concept { color:var(--ink-soft); font-size:13px; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:12px; display:grid; gap:10px; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; } .notes li.con::before { content:"\2212  "; color:var(--danger); }
+  .rep { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; line-height:1.55; color:var(--ink-soft); background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; white-space:pre; overflow-x:auto; }
+  .rep b { color:var(--brass-bright); font-weight:normal; }
+  .rep i { color:var(--danger); font-style:normal; }
+  .editor { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; line-height:1.6; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 0; }
+  .ln { display:flex; } .ln .no { width:40px; text-align:right; color:var(--ink-dim); padding-right:10px; } .ln .tx { white-space:pre; color:var(--ink); }
+  .ln.warn .tx { text-decoration: underline wavy var(--warn); text-underline-offset:3px; } .ln.warn .no { color:var(--warn); }
+  .ln.dim .tx { color:var(--ink-dim); }
+  .pane { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; line-height:1.45; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+  .pane .bar { display:flex; align-items:center; height:26px; padding:0 9px; border-bottom:1px solid var(--edge); } .bar .name { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .body { padding:7px 9px 9px; display:grid; gap:5px; min-height:28px; } .prob { display:flex; gap:6px; } .prob .uid { color:var(--ink-dim); min-width:44px; flex:none; } .prob .warn { color:var(--warn); flex:none; } .prob .msg { color:var(--ink); }
+  .body .silent { color:var(--ink-dim); font-style:italic; }
+  .setting { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; border:1px solid var(--edge); border-radius:6px; background:var(--panel); padding:8px 10px; display:grid; gap:6px; }
+  .setting .head { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--brass); }
+  .row { display:flex; gap:10px; align-items:flex-start; } .tog { width:28px; height:16px; border-radius:8px; background:var(--ok); position:relative; flex:none; margin-top:2px; } .tog::after { content:""; position:absolute; right:2px; top:2px; width:12px; height:12px; border-radius:6px; background:var(--ground); }
+  .row .t { color:var(--ink); } .row .d { color:var(--ink-dim); font-size:11px; }
+  table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:14px; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--edge-soft); vertical-align:top; } th { color:var(--brass); font-weight:normal; font-size:11px; letter-spacing:1px; text-transform:uppercase; } td.y { color:var(--ok); } td.n { color:var(--ink-dim); } td.w { color:var(--warn); } td.b { color:var(--danger); }
+  .banner { border:1px solid var(--edge); border-left:3px solid var(--danger); background:var(--panel); padding:14px 16px; border-radius:6px; margin-top:16px; color:var(--ink-soft); font-size:13.5px; }
+  .banner.ok { border-left-color:var(--ok); } .banner b { color:var(--ink); }
+  .score { display:flex; gap:6px; margin-top:4px; }
+  .pip { width:22px; height:22px; border-radius:4px; display:grid; place-items:center; font:11px/1 'SF Mono',monospace; }
+  .pip.hit { background:rgba(79,183,131,.18); color:var(--ok); border:1px solid rgba(79,183,131,.4); }
+  .pip.miss { background:rgba(217,112,112,.12); color:var(--danger); border:1px solid rgba(217,112,112,.35); }
+  .tagline { font:10px/1 'SF Mono',monospace; color:var(--brass); letter-spacing:1px; text-transform:uppercase; margin-top:6px; }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:20px; margin-top:16px; align-items:start; }
+.units { font-family:'Helvetica Neue',Arial,sans-serif; font-size:12px; border:1px solid var(--edge); border-radius:6px; background:var(--panel); overflow:hidden; }
+.units table { margin:0; } .units td, .units th { padding:5px 8px; } .units td.num { text-align:right; font-family:'SF Mono',Menlo,monospace; }
+.q { color:var(--warn); } .chg { color:var(--brass-bright); }
+.tip { font-family:'Helvetica Neue',Arial,sans-serif; font-size:11.5px; background:#0d1218; border:1px solid var(--edge); border-radius:6px; padding:8px 10px; color:var(--ink-soft); }
+.tip b { color:var(--ink); font-weight:normal; }
+.before { opacity:.75; }
+.lbl { font:10px/1 'SF Mono',monospace; color:var(--ink-dim); letter-spacing:1px; text-transform:uppercase; }
+@media (max-width:700px){ body{padding:16px;} }
+</style></head><body><header><h1>A refused whole-unit gift — what the player sees (ah-miqb)</h1><p><b>Agreed 2026-10-18.</b> The game refuses <span class='mono'>GIVE 0 UNIT</span> (“Can't discard a whole unit.”) and a whole-unit GIVE to one of our own units (“Unit already belongs to our faction!”) before anything moves (<span class='mono'>../Atlantis runorders.cpp</span>, Game::DoGiveOrder). So the unit's cells read as the ordinary month (Option A), the line is warned in Wording 1, and the warning lives under the existing <i>Gifts the game will refuse</i> switch (Switch 1).</p></header><main><h2 class="sec">Today <small>what the player sees now — wrong</small></h2><div class="grid"><section class="card"><div class="stage"><div class="editor">
+<div class="ln"><span class="no">1</span><span class="tx">unit 10293   ; Woodsmen — sharing</span></div>
+<div class="ln"><span class="no">2</span><span class="tx">GIVE 0 UNIT</span></div>
+<div class="ln dim"><span class="no">3</span><span class="tx">unit 9433    ; Carpenters</span></div>
+<div class="ln dim"><span class="no">4</span><span class="tx">EXCHANGE 5767 5 WOOD 50 SILV</span></div>
+<div class="ln dim"><span class="no">5</span><span class="tx">unit 5767    ; Taxers</span></div>
+<div class="ln dim"><span class="no">6</span><span class="tx">EXCHANGE 9433 50 SILV 5 WOOD</span></div></div><div class="units before"><table><tr><th>Unit</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Woodsmen (10293)</td><td class="q">?</td><td class="num q">?</td></tr>
+<tr><td>Carpenters (9433)</td><td>…, 5 wood</td><td class="num">…</td></tr>
+<tr><td>Taxers (5767)</td><td>…</td><td class="num">7829</td></tr></table></div>
+<div class="tip">Woodsmen's Silver, on hover: <b>This unit is giving itself to another faction, so what it ends the month with cannot be counted.</b></div><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body"><div class="silent">nothing for these two lines</div></div></div></div>
+<p class="concept">The game refuses <span class="mono">GIVE 0 UNIT</span> (“Can't discard a whole unit.”) and <span class="mono">GIVE 6109 UNIT</span> to one of our own units (“Unit already belongs to our faction!”) before anything moves. Woodsmen stays ours, keeps its wood, and Taxers pays its 60 upkeep — but the screen shows question marks, a false hover, and Taxers 60 too rich.</p></section></div><h2 class="sec">Agreed</h2><div class="grid">
+<section class="card rec"><h3><em>GIVE 0 UNIT</em></h3><div class="stage"><div class="editor">
+<div class="ln"><span class="no">1</span><span class="tx">unit 10293   ; Woodsmen — sharing</span></div>
+<div class="ln warn"><span class="no">2</span><span class="tx">GIVE 0 UNIT</span></div>
+<div class="ln dim"><span class="no">3</span><span class="tx">unit 9433    ; Carpenters</span></div>
+<div class="ln dim"><span class="no">4</span><span class="tx">EXCHANGE 5767 5 WOOD 50 SILV</span></div>
+<div class="ln dim"><span class="no">5</span><span class="tx">unit 5767    ; Taxers</span></div>
+<div class="ln dim"><span class="no">6</span><span class="tx">EXCHANGE 9433 50 SILV 5 WOOD</span></div></div><div class="units"><table><tr><th>Unit</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Woodsmen (10293)</td><td>12 men, 8 wood</td><td class="num">0</td></tr>
+<tr><td>Carpenters (9433)</td><td>…, 5 wood</td><td class="num">…</td></tr>
+<tr><td>Taxers (5767)</td><td>…</td><td class="num chg">7769</td></tr></table></div>
+<div class="tip">Woodsmen's Silver, on hover — the ordinary month: <b>Upkeep 60, paid by Taxers (5767)</b>. No sentence about giving itself away.</div><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body"><div class="prob"><span class="uid">10293</span><span class="warn">&#9888;</span><span class="msg">GIVE UNIT will be refused: a whole unit cannot be discarded</span></div></div></div></div></section>
+<section class="card rec"><h3><em>GIVE 6109 UNIT</em> (WoodmenY, ours, in this hex)</h3><div class="stage"><div class="editor">
+<div class="ln"><span class="no">1</span><span class="tx">unit 10293   ; Woodsmen — sharing</span></div>
+<div class="ln warn"><span class="no">2</span><span class="tx">GIVE 6109 UNIT</span></div>
+<div class="ln dim"><span class="no">3</span><span class="tx">unit 9433    ; Carpenters</span></div>
+<div class="ln dim"><span class="no">4</span><span class="tx">EXCHANGE 5767 5 WOOD 50 SILV</span></div>
+<div class="ln dim"><span class="no">5</span><span class="tx">unit 5767    ; Taxers</span></div>
+<div class="ln dim"><span class="no">6</span><span class="tx">EXCHANGE 9433 50 SILV 5 WOOD</span></div></div><div class="units"><table><tr><th>Unit</th><th>Items</th><th>Silver</th></tr>
+<tr><td>Woodsmen (10293)</td><td>12 men, 8 wood</td><td class="num">0</td></tr>
+<tr><td>Carpenters (9433)</td><td>…, 5 wood</td><td class="num">…</td></tr>
+<tr><td>Taxers (5767)</td><td>…</td><td class="num chg">7769</td></tr></table></div>
+<div class="tip">Woodsmen's Silver, on hover — the ordinary month: <b>Upkeep 60, paid by Taxers (5767)</b>. No sentence about giving itself away.</div><div class="pane"><div class="bar"><span class="name">Problems</span></div><div class="body"><div class="prob"><span class="uid">10293</span><span class="warn">&#9888;</span><span class="msg">GIVE UNIT will be refused: unit 6109 already belongs to this faction</span></div></div></div><div class="setting"><div class="head">Warnings · Orders</div><div class="row"><span class="tog"></span><div><div class="t">Gifts the game will refuse</div><div class="d">A GIVE or TAKE naming items that cannot change hands, men given to another faction, or a whole unit given to unit 0 or to a unit that is already yours.</div></div></div></div></div></section></div>
+<h2 class="sec">The other states</h2><table>
+<tr><th style="width:34%">Case</th><th>What the player sees</th></tr>
+<tr><td>Same orders on a unit that is not sharing</td><td>Same warning; its cells are already ordinary.</td></tr>
+<tr><td>GIVE &lt;our unit&gt; UNIT, but that unit is in another hex</td><td>Only the existing “unit … is not in this hex to be given to …” warning; the game refuses it for that reason first.</td></tr>
+<tr><td>GIVE &lt;this unit's own number&gt; UNIT</td><td>Only the existing “Transfers a unit writes to itself” warning; never two on one line.</td></tr>
+<tr><td>GIVE &lt;foreign unit in this hex&gt; UNIT</td><td>Unchanged: still uncertain (“?”), with the giving-itself-away hover; no warning.</td></tr>
+<tr><td><i>Gifts the game will refuse</i> switched off</td><td>No underline, no Problems entry; the cells are still ordinary and Taxers still reads 7769.</td></tr>
+<tr><td>Inside a TURN … ENDTURN block</td><td>Not checked, like every other order warning there.</td></tr>
+</table></main></body></html>
