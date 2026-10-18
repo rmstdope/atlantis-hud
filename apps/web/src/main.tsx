@@ -10,7 +10,8 @@ import {
   createWebCoreAdapter,
   createWebStore,
   loadCoreWasm,
-  requestPersistentStorage
+  requestPersistentStorage,
+  startQueryWorker
 } from "@atlantis/browser-core";
 
 // Before React mounts, so a light-theme user never sees a dark flash.
@@ -43,7 +44,7 @@ loadCoreWasm()
     // Kept in hand as well as given to the core: the shell needs to hear when another tab asks this
     // one to let go of the storage.
     const store = createWebStore(wasm);
-    const client = createCoreClient(createWebCoreAdapter(wasm, store));
+    const client = createCoreClient(createWebCoreAdapter(wasm, store, startQueryWorker()));
     root.render(
       <StrictMode>
         <App client={client} storageStop={store} />

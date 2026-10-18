@@ -22,6 +22,9 @@ export default defineConfig({
   // is a copy that will be missing wherever nobody remembered - which is what broke CI.
   publicDir: fileURLToPath(new URL("../../config/public", import.meta.url)),
   envPrefix: ["VITE_", "ATLANTIS_"],
+  // The core's worker (ah-iauy) is an ES module like the wasm glue it imports, whose
+  // `import.meta.url` is what finds the `.wasm` asset.
+  worker: { format: "es" },
   plugins: [
     // A long-lived dev server must not serve a core older than the Rust sources it sits beside.
     wasmFreshness({ repoRoot: fileURLToPath(new URL("../..", import.meta.url)) }),

@@ -2691,6 +2691,69 @@ test("the interface is not blocked while the core reads a report", async ({ page
 });
 
 /**
+ * ah-iauy: the order checks run after every pause in typing - validate_orders and preview_orders,
+ * about 440ms and 155ms on this turn under a 6x CPU throttle - and as single wasm calls on the main
+ * thread they froze the interface for their sum. They now run in the core's worker, so the main
+ * thread only posts the request (measured at under a millisecond) and receives the answers (42KB
+ * and 59KB of JSON, 2-4ms under the throttle); what is left in this window is the edit itself and
+ * drawing the answer.
+ *
+ * Calibrated against CI, as the report-load guard above is. After: 126ms and 202ms on CI's smoke
+ * shards (PR #1782), most of it the edit itself and drawing the answer. Before: these same checks
+ * on this turn blocked CI for 650-950ms, as measured by ah-q767 when they were landing inside the
+ * report-load guard's window. 450ms is about twice the slower "after" and under every "before", so
+ * putting the checks back on the main thread fails it. Locally, for reference: 70ms before and
+ * 20ms after unthrottled; 460ms before and 140-220ms after under the throttle, where about 140ms is
+ * the throttle's own floor - this sampler reads 130-150ms gaps on the same page with the worker
+ * idle.
+ *
+ * `ATLANTIS_CPU_THROTTLE=6` applies the throttle the acceptance names, through the DevTools
+ * protocol, for a local run; CI runners are roughly that slow already and run it unthrottled.
+ */
+test("the interface is not blocked while the orders are checked", async ({ page }) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  // The load's own checks, and their answers being drawn, are not what this measures.
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /\d/);
+  await page.waitForTimeout(2500);
+
+  const throttle = Number(process.env.ATLANTIS_CPU_THROTTLE ?? "1");
+  if (throttle > 1) {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: throttle });
+  }
+
+  await page.evaluate(() => {
+    const state = window as unknown as { __gaps?: number[]; __sampler?: number };
+    state.__gaps = [];
+    let last = performance.now();
+    state.__sampler = window.setInterval(() => {
+      const now = performance.now();
+      state.__gaps?.push(now - last);
+      last = now;
+    }, 4);
+  });
+
+  // The shared-purse shortfall "a hex-level problem is shown in the region panel" uses: a finding
+  // only the validate reply can put on screen, so its appearing says that reply has landed.
+  await fillOrders(page, "GIVE 0 999999999 SILV");
+  await expect(page.getByTestId("region-problems")).toContainText("short", { timeout: 20_000 });
+  // The preview was asked straight after the check and is answered after it, so a little longer
+  // keeps its answer inside the window too.
+  await page.waitForTimeout(1500 * throttle);
+
+  const worstBlockMs = await page.evaluate(() => {
+    const state = window as unknown as { __gaps?: number[]; __sampler?: number };
+    window.clearInterval(state.__sampler);
+    return Math.max(...(state.__gaps ?? [0]));
+  });
+
+  console.log(`order checks (throttle ${throttle}x): worst main-thread block ${Math.round(worstBlockMs)}ms`);
+  expect(worstBlockMs).toBeLessThan(450);
+});
+
+/**
  * The turn is committed to the faction's project and read back, in a real browser, against real
  * IndexedDB. That path is what lets the map remember earlier turns; without it a small report
  * stops at its own fringe and a hex named only in passing brings none of its exits back.

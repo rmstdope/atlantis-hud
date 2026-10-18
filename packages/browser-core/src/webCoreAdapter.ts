@@ -30,7 +30,8 @@ import type {
   TradeRoute,
   TurnRef
 } from "@atlantis/core-client";
-import { createQueryMethods } from "@atlantis/core-client";
+import { createQueryMethods, type QueryCall } from "@atlantis/core-client";
+import { QueryWorkerUnavailable } from "./queryWorkerProtocol";
 import type { StoredMergedReport, StoredTurn, StoredTurnSnapshot, WebStore } from "./webStore";
 import { createWebStore } from "./webStore";
 import type { TraceMoveOrdersRequest } from "@atlantis/core-client";
@@ -330,10 +331,38 @@ function withGoals({
   };
 }
 
+/**
+ * The queries answered in the core's worker when the shell gives the adapter one (ah-iauy): the
+ * order checks, which run after every pause in typing and take hundreds of milliseconds on a slow
+ * machine. Every other query is cheap, and some are asked per keystroke, so they stay on the main
+ * thread rather than queue behind a check.
+ */
+export const OFF_THREAD_QUERIES: ReadonlySet<string> = new Set(["validate_orders", "preview_orders"]);
+
+/**
+ * `offThread` is how to ask the core's worker, from `startQueryWorker`, or null to answer
+ * everything on the main thread as before. A worker that cannot answer at all hands its query back
+ * to the main thread; a refusal from the core is the answer, and is not asked twice.
+ */
 export function createWebCoreAdapter(
   wasm: CoreWasmModule,
-  store: WebStore = createWebStore(wasm)
+  store: WebStore = createWebStore(wasm),
+  offThread: QueryCall | null = null
 ): CoreAdapter {
+  const onMainThread: QueryCall = async (name, args) => wasm.query(name, args);
+  const query: QueryCall =
+    offThread === null
+      ? onMainThread
+      : (name, args) =>
+          OFF_THREAD_QUERIES.has(name)
+            ? offThread(name, args).catch((error: unknown) => {
+                if (error instanceof QueryWorkerUnavailable) {
+                  return onMainThread(name, args);
+                }
+                throw error;
+              })
+            : onMainThread(name, args);
+
   const prepare = (
     rawReport: string,
     confirmedFactionId: string,
@@ -379,7 +408,8 @@ export function createWebCoreAdapter(
     // Every query the core declares (ah-w83n), through the module's one `query` export: a query
     // added to the core arrives here with nothing written. Async, so a refusal the module throws
     // becomes a rejection, as every other method's does.
-    ...createQueryMethods(async (name, args) => wasm.query(name, args)),
+    // The order checks may be answered in the core's worker instead (`OFF_THREAD_QUERIES`).
+    ...createQueryMethods(query),
 
     async parseReport(rawReport: string) {
       return wasm.parse_report_state(rawReport);
