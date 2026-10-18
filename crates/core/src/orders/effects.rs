@@ -362,6 +362,14 @@ pub struct TransportTargetIssue {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(as = "Option<bool>", optional))]
     pub distribute: bool,
+    /// The same line written as DISTRIBUTE would deliver it
+    /// (`transport::Judged::distribute_would_deliver`, `ah-7j90`), and every item it moves is one
+    /// the game transports: the refusal's sentence then says so. Only ever on a `NotQuartermaster` or
+    /// `NotCaravanseraiOwner` refusal of a TRANSPORT; with `unsettled`, the latter is always
+    /// another faction's unit. Absent otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    pub distribute_delivers: bool,
 }
 
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
@@ -4409,6 +4417,12 @@ impl Working {
             {
                 // One record for the order, naming the goods only where there is a claim to make.
                 let (amount, tag) = self.goods_named(pending, &moving);
+                // DISTRIBUTE carries only what TRANSPORT does (`rules/economy_transport`), so the
+                // hint needs every item the line moves to be one the game transports (`ah-7j90`).
+                let distribute_delivers = verdict.distribute_would_deliver
+                    && moving
+                        .iter()
+                        .all(|(_, tag, _)| self.ruleset.can_be_transported(tag));
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4421,6 +4435,7 @@ impl Working {
                         to_unshown: pending.to_unshown,
                         unsettled: verdict.unsettled,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,
+                        distribute_delivers,
                     },
                 ));
                 continue;
@@ -4443,6 +4458,7 @@ impl Working {
                         to_unshown: pending.to_unshown,
                         unsettled: false,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,
+                        distribute_delivers: false,
                     },
                 ));
                 continue;
@@ -4473,6 +4489,7 @@ impl Working {
                             unsettled: false,
                             distribute: pending.order
                                 == super::transport::ShipmentOrder::Distribute,
+                            distribute_delivers: false,
                         },
                     ));
                 }
@@ -11878,6 +11895,8 @@ mod tests {
                 only_issue(refused).reason,
                 TransportTargetReason::NotQuartermaster
             );
+            // The same line as a DISTRIBUTE delivers, so the refusal says so (`ah-7j90`).
+            assert!(only_issue(refused).distribute_delivers);
             assert!(
                 row(&response, "1:1,1", "5530").is_none(),
                 "nothing arrived at 5530, so its row is unchanged"
@@ -11890,6 +11909,21 @@ mod tests {
             assert!(sender.transport_target_issues.is_empty());
             let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
             assert_eq!(held(receiver, "STON"), Some(45), "five arrived at 5530");
+        }
+
+        /// `ah-7j90`: a DISTRIBUTE carries only what the game transports (`rules/economy_transport`),
+        /// so a refused TRANSPORT of goods it would not carry anyway says nothing of DISTRIBUTE.
+        #[test]
+        fn a_refused_transport_of_goods_no_shipment_carries_names_no_distribute() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 5530 1 LEAD\n");
+            let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            let issue = only_issue(refused);
+            assert_eq!(issue.reason, TransportTargetReason::NotQuartermaster);
+            assert_eq!(
+                issue.tag, "",
+                "no claim about goods the game would not carry"
+            );
+            assert!(!issue.distribute_delivers);
         }
 
         #[test]
@@ -12030,6 +12064,7 @@ mod tests {
                     to_unshown: false,
                     unsettled: false,
                     distribute: false,
+                    distribute_delivers: false,
                 }
             );
         }
@@ -12093,6 +12128,7 @@ mod tests {
                     to_unshown: true,
                     unsettled: false,
                     distribute: false,
+                    distribute_delivers: false,
                 }
             );
         }
@@ -12136,6 +12172,7 @@ mod tests {
                     to_unshown: false,
                     unsettled: false,
                     distribute: false,
+                    distribute_delivers: false,
                 }
             );
         }
@@ -12217,10 +12254,24 @@ mod tests {
                     to_unshown: false,
                     unsettled: true,
                     distribute: false,
+                    distribute_delivers: false,
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
             assert!(row(&response, "1:2,2", "7001").is_none());
+        }
+
+        /// `ah-7j90`: from a quartermaster owning a Caravanserai, the same refusal of a foreign unit
+        /// owning none is one a DISTRIBUTE would deliver - if that faction accepts - and the issue
+        /// carries the hint, unsettled since another faction's month is never ours to read.
+        #[test]
+        fn a_caravanserai_owners_refused_transport_to_a_foreign_unit_names_distribute() {
+            let response = two_hex_preview("unit 6857\nTRANSPORT 7001 5 STON\n");
+            let refused = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            let issue = only_issue(refused);
+            assert_eq!(issue.reason, TransportTargetReason::NotCaravanseraiOwner);
+            assert!(issue.unsettled);
+            assert!(issue.distribute_delivers);
         }
 
         /// The target 7001 would refuse a TRANSPORT, but a DISTRIBUTE is refused for its sender
@@ -12242,6 +12293,7 @@ mod tests {
                     to_unshown: false,
                     unsettled: false,
                     distribute: true,
+                    distribute_delivers: false,
                 }
             );
         }
@@ -12271,6 +12323,7 @@ mod tests {
                     to_unshown: false,
                     unsettled: true,
                     distribute: false,
+                    distribute_delivers: false,
                 }
             );
         }
@@ -12314,6 +12367,7 @@ mod tests {
                     to_unshown: false,
                     unsettled: true,
                     distribute: false,
+                    distribute_delivers: false,
                 }]
             );
         }
@@ -12338,6 +12392,7 @@ mod tests {
                     to_unshown: false,
                     unsettled: true,
                     distribute: false,
+                    distribute_delivers: false,
                 }]
             );
             assert_eq!(
@@ -14986,6 +15041,7 @@ mod tests {
                 to_unshown: false,
                 unsettled: false,
                 distribute: false,
+                distribute_delivers: false,
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -15032,6 +15088,7 @@ mod tests {
                 to_unshown: false,
                 unsettled: false,
                 distribute: false,
+                distribute_delivers: false,
             }]
         );
 
@@ -15313,6 +15370,7 @@ mod tests {
                 to_unshown: false,
                 unsettled: false,
                 distribute: false,
+                distribute_delivers: false,
             }]
         );
 
@@ -15424,6 +15482,7 @@ mod tests {
                 to_unshown: false,
                 unsettled: false,
                 distribute: false,
+                distribute_delivers: false,
             }]
         );
     }
@@ -15454,6 +15513,7 @@ mod tests {
                 to_unshown: false,
                 unsettled: false,
                 distribute: false,
+                distribute_delivers: false,
             }]
         );
         assert_eq!(reach_held(&response, "900", "FUR"), 9);

@@ -1003,8 +1003,35 @@ impl Shipping {
             }
             settled => settled,
         };
+        // A TRANSPORT refused on its target's account, to a unit not known to be a quartermaster,
+        // is the line a DISTRIBUTE would deliver when that DISTRIBUTE is accepted - certainly for
+        // ours, on the faction's attitude for another's - and the map proves it inside the reach
+        // (`ah-7j90`). Asked of the DISTRIBUTE judgement itself, so the sender's tests and
+        // DISTRIBUTE's `LOCAL_TRANSPORT` reach are not restated here.
+        let distribute_would_deliver = order == ShipmentOrder::Transport
+            && matches!(
+                acceptance,
+                Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner
+            )
+            && !target_qm
+            && {
+                let distributed = self.judge_on(
+                    ShipmentOrder::Distribute,
+                    sender,
+                    sender_reported,
+                    target,
+                    facts,
+                );
+                matches!(
+                    distributed.acceptance,
+                    Acceptance::Eligible | Acceptance::AcceptanceUnknown
+                ) && distributed
+                    .measured
+                    .is_some_and(|measured| measured.arrival == Arrival::Certain)
+            };
         Judged {
             target_shown: facts.is_some(),
+            distribute_would_deliver,
             // Another faction's orders are never ours to read, so its month is never settled. The
             // sender's own refusal is unsettled exactly when the sender's month is.
             unsettled: match acceptance {
@@ -1072,6 +1099,12 @@ pub(crate) struct Judged {
     /// sender's orders could (`ah-1jl9`, `ah-lis2`). `false` for every other answer. Meaningful only on a
     /// `Shipping` that has read the month's orders; every caller does, straight after `read`.
     pub unsettled: bool,
+    /// A TRANSPORT refused because its target is no quartermaster owning a Caravanserai, which the
+    /// same line written as DISTRIBUTE would deliver: the sender is a quartermaster owning one, the
+    /// target is not known to be a quartermaster, and the map proves it within DISTRIBUTE's reach
+    /// (`ah-7j90`). For another faction's target the DISTRIBUTE still waits on that faction's
+    /// attitude. `false` for every other line, a DISTRIBUTE included.
+    pub distribute_would_deliver: bool,
     pub acceptance: Acceptance,
     pub phase: ShipmentPhase,
     /// `None` exactly when `reach_for` answers `None`.
@@ -1734,6 +1767,98 @@ mod tests {
                 .acceptance,
             Acceptance::AcceptanceUnknown
         );
+    }
+
+    /// `ah-7j90`: a TRANSPORT refused because its target is no quartermaster (`ah-1d3i`) is the
+    /// line a DISTRIBUTE would have delivered whenever the sender is a quartermaster owning a
+    /// Caravanserai and the target sits inside DISTRIBUTE's `LOCAL_TRANSPORT` reach
+    /// (`CheckTransportOrders`, `../Atlantis/runorders.cpp`). The answer is the DISTRIBUTE
+    /// judgement's own, so it agrees with what that line would be told.
+    #[test]
+    fn a_refused_transport_a_distribute_would_deliver_is_marked() {
+        let mut shipping = shipping(
+            &[("900", 1), ("902", 1), ("910", 1), ("920", 1)],
+            vec![
+                // 900: a quartermaster owning a Caravanserai.
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                // 901: one of ours, ordinary, a hex away.
+                ("901", at(facts(true, false, false, true), hex(0, 1))),
+                // 902: a quartermaster of ours owning no Caravanserai.
+                ("902", at(facts(true, true, false, true), hex(0, 1))),
+                // 903: one of ours, ordinary, three hexes away.
+                ("903", at(facts(true, false, false, true), hex(0, 6))),
+                // 904: another faction's unit owning no Caravanserai.
+                ("904", at(facts(false, false, false, true), hex(0, 1))),
+                // 905: one of ours, ordinary, whose month may make it a quartermaster.
+                ("905", at(facts(true, false, false, true), hex(0, 1))),
+                // 910: a quartermaster owning no Caravanserai, sending.
+                ("910", at(facts(true, true, false, true), hex(0, 0))),
+                // 911: ordinary, sending.
+                ("911", at(facts(true, false, false, true), hex(0, 0))),
+            ],
+            &[],
+        );
+        shipping.unsettled.insert("905".to_string());
+        let delivers = |order, sender, target| {
+            shipping
+                .judge(order, sender, Some(hex(0, 0)), target)
+                .distribute_would_deliver
+        };
+
+        assert!(delivers(ShipmentOrder::Transport, "900", "901"));
+        assert!(
+            delivers(ShipmentOrder::Transport, "900", "904"),
+            "another faction's ordinary unit, if it accepts"
+        );
+        let unsettled = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "905");
+        assert!(unsettled.unsettled && unsettled.distribute_would_deliver);
+
+        assert!(
+            !delivers(ShipmentOrder::Distribute, "900", "901"),
+            "a DISTRIBUTE is not refused"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "900", "903"),
+            "beyond DISTRIBUTE's reach"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "900", "902"),
+            "a quartermaster target without a Caravanserai keeps no hint"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "910", "901"),
+            "a sender owning no Caravanserai cannot DISTRIBUTE"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "911", "901"),
+            "a sender that is no quartermaster cannot DISTRIBUTE"
+        );
+    }
+
+    /// `ah-7j90`: a distance the map cannot measure (the world's width was never reported) proves
+    /// no DISTRIBUTE delivery either, so the refusal carries no hint.
+    #[test]
+    fn an_unmeasured_distance_names_no_distribute() {
+        let mut shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("903", at(facts(true, false, false, true), hex(0, 6))),
+            ],
+            &[],
+        );
+        shipping.geometry = None;
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "903");
+        assert_eq!(judged.acceptance, Acceptance::NotQuartermaster);
+        assert_eq!(
+            shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "903")
+                .measured
+                .map(|measured| measured.arrival),
+            Some(Arrival::Unmeasured)
+        );
+        assert!(!judged.distribute_would_deliver);
     }
 
     /// `ah-s79p`: a unit this month's FORM creates is judged on what the engine knows of it, by the
