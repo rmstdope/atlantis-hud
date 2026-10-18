@@ -5869,6 +5869,43 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
   await expect(shortfall.locator("[aria-hidden]")).toHaveText("\u25be\u2026");
 });
 
+/**
+ * `ah-kyy6`: the same unit as above, at the layout a player who never dragged a column sees. At
+ * 1400 px the Silver column's default share is wide enough for the shortfall in words, so it opens
+ * as `<N> short` rather than ah-ottr's narrow-column `\u25be<N>`.
+ */
+test("at the default layout a shortfall is spelled out in words", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@claim 50\n@study obse\nCLAIM 2000\nBUY 50 GEM\n");
+
+  const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
+  const shortfall = page.getByTestId(`silver-shortfall-${OWN_UNIT}`);
+  await expect(shortfall).toBeVisible();
+  const layout = () =>
+    cell.evaluate(async (node) => {
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const box = node.getBoundingClientRect();
+      const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
+      const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
+      const mark = short.getBoundingClientRect();
+      return {
+        figureWhole: figure.scrollWidth <= figure.clientWidth,
+        shortInside: mark.width > 0 && mark.left >= box.left - 0.5 && mark.right <= box.right + 0.5,
+        form: short.dataset.form
+      };
+    });
+  await expect.poll(async () => (await layout()).form).toBe("long");
+  // Read twice: a form settles in at most two steps, so "long" now is "long" for good.
+  await expect.poll(async () => (await layout()).form).toBe("long");
+  const shown = await layout();
+  expect(shown.figureWhole).toBe(true);
+  expect(shown.shortInside).toBe(true);
+  await expect(shortfall.locator("[aria-hidden]")).toHaveText(/^\d{4} short$/);
+});
+
 test("a row in All my units takes the map to the unit's hex", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");

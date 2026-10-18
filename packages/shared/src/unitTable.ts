@@ -359,12 +359,11 @@ export function sortUnits<T extends ReportUnit>(
 export type ColumnShares = Partial<Record<UnitColumn, number>>;
 
 /**
- * The shipped shape, as shares: exactly the widths the table renders today, taken at a nominal
- * 1440px table - own 24, unitId 64, name 208, faction 192, men 64, skills 220, items 220,
- * structure 208, longOrder 144, silver 96. A player who never drags must see no difference at all,
- * so these are a restatement of the Tailwind width classes they replace rather than a new choice -
- * and `silver` (ah-1wcw.1) widened the nominal table by its own 96 rather than taking width from
- * any of the ten that were here before it.
+ * The shipped shape, as shares of a nominal 1504px table - own 24, unitId 64, name 208, faction
+ * 192, men 64, movement 64, flags 80, skills 180, items 180, structure 158, longOrder 144, silver
+ * 146. They began as a restatement of the Tailwind width classes they replaced; `silver`
+ * (ah-1wcw.1) widened the nominal table by its own 96, and later took 50 from `structure`
+ * (ah-kyy6) so a shortfall reads in words at the default layout.
  */
 const NOMINAL_TABLE_PX = 1504;
 
@@ -723,9 +722,11 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   flags: 80 / NOMINAL_TABLE_PX,
   skills: 180 / NOMINAL_TABLE_PX,
   items: 180 / NOMINAL_TABLE_PX,
-  structure: 208 / NOMINAL_TABLE_PX,
+  // 50 of Structure's nominal px went to Silver (ah-kyy6): Structure is the column most often
+  // `—`, and Silver needs the room to spell a shortfall out as `<N> short` at the default layout.
+  structure: 158 / NOMINAL_TABLE_PX,
   longOrder: 144 / NOMINAL_TABLE_PX,
-  silver: 96 / NOMINAL_TABLE_PX
+  silver: 146 / NOMINAL_TABLE_PX
 };
 
 /**
