@@ -745,9 +745,14 @@ pub(crate) struct Shipping {
     pub(crate) geometry: Option<crate::movement::graph::MapGeometry>,
     shown: crate::movement::graph::ShownExtent,
     month_end: MonthEndHexes,
-    /// Units whose own month could make them an eligible target before TRANSPORT runs, from
-    /// [`Shipping::read_orders`]. Empty until it is called (`ah-kjjv`).
-    unsettled: std::collections::BTreeSet<String>,
+    /// Units whose own month could give them the quartermaster skill before TRANSPORT runs - a
+    /// STUDY of it - from [`Shipping::read_orders`]. Empty until it is called (`ah-kjjv`).
+    may_learn: std::collections::BTreeSet<String>,
+    /// Units whose month could make them the owner of a transport structure before TRANSPORT
+    /// runs - a BUILD, or a structure the trace cannot follow - from [`Shipping::read_orders`].
+    /// Kept apart from `may_learn` because `rules/transport` asks the target for both, and a month
+    /// that can mend only one leaves a target failing both refused (`ah-xbnu`).
+    may_own: std::collections::BTreeSet<String>,
 }
 
 impl Shipping {
@@ -784,8 +789,14 @@ impl Shipping {
             geometry: options.geometry,
             shown: options.shown.clone(),
             month_end: options.month_end.clone(),
-            unsettled: std::collections::BTreeSet::new(),
+            may_learn: std::collections::BTreeSet::new(),
+            may_own: std::collections::BTreeSet::new(),
         }
+    }
+
+    /// Whether this unit's own month could change it as a shipment end at all.
+    fn month_may_change(&self, unit: &str) -> bool {
+        self.may_learn.contains(unit) || self.may_own.contains(unit)
     }
 
     /// Reads this month's orders for the units whose eligibility as a target they could change
@@ -833,15 +844,14 @@ impl Shipping {
         let mut shaken: std::collections::BTreeSet<(&str, &str)> =
             std::collections::BTreeSet::new();
         for unit in super::intents::read_intents(orders, Some(ruleset)) {
-            let mut changes_itself = false;
+            let mut learns = false;
+            let mut builds = false;
             let mut steps_out = false;
             for placed in &unit.intents {
                 match &placed.intent {
-                    Intent::Study { skill } if studies_quartermaster(skill) => {
-                        changes_itself = true
-                    }
+                    Intent::Study { skill } if studies_quartermaster(skill) => learns = true,
                     Intent::Build { .. } => {
-                        changes_itself = true;
+                        builds = true;
                         steps_out = true;
                     }
                     Intent::Move { steps }
@@ -859,8 +869,11 @@ impl Shipping {
                     _ => {}
                 }
             }
-            if changes_itself {
-                self.unsettled.insert(unit.unit_id.clone());
+            if learns {
+                self.may_learn.insert(unit.unit_id.clone());
+            }
+            if builds {
+                self.may_own.insert(unit.unit_id.clone());
             }
             if steps_out {
                 if let Some(place) = inside.get(unit.unit_id.as_str()) {
@@ -870,7 +883,7 @@ impl Shipping {
         }
         for (unit, place) in &inside {
             if shaken.contains(place) {
-                self.unsettled.insert((*unit).to_string());
+                self.may_own.insert((*unit).to_string());
             }
         }
     }
@@ -1004,24 +1017,70 @@ impl Shipping {
             }
             settled => settled,
         };
+        // A TRANSPORT refused on its target's account, to a unit not known to be a quartermaster,
+        // is the line a DISTRIBUTE would deliver when that DISTRIBUTE is accepted - certainly for
+        // ours, on the faction's attitude for another's - and the map proves it inside the reach
+        // (`ah-7j90`). Asked of the DISTRIBUTE judgement itself, so the sender's tests and
+        // DISTRIBUTE's `LOCAL_TRANSPORT` reach are not restated here.
+        let distribute_would_deliver = order == ShipmentOrder::Transport
+            && matches!(
+                acceptance,
+                Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner
+            )
+            && !target_qm
+            && {
+                let distributed = self.judge_on(
+                    ShipmentOrder::Distribute,
+                    sender,
+                    sender_reported,
+                    target,
+                    facts,
+                );
+                matches!(
+                    distributed.acceptance,
+                    Acceptance::Eligible | Acceptance::AcceptanceUnknown
+                ) && distributed
+                    .measured
+                    .is_some_and(|measured| measured.arrival == Arrival::Certain)
+            };
         Judged {
             target_shown: facts.is_some(),
+            distribute_would_deliver,
             // Another faction's orders are never ours to read, so its month is never settled. The
             // sender's own refusal is unsettled exactly when the sender's month is.
             unsettled: match acceptance {
-                Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner => {
-                    facts.is_some_and(|facts| !facts.own) || self.unsettled.contains(target)
+                // `rules/transport` asks the target for the quartermaster skill and ownership of a
+                // transport structure, so our own target's refusal is unsettled only when its
+                // month could mend every one it fails (`ah-xbnu`): a STUDY of the skill gives no
+                // structure, and a BUILD no skill. `acceptance` asks an own unit for the skill
+                // first, so `NotCaravanseraiOwner` there means it already has the skill.
+                _ if facts.is_some_and(|facts| !facts.own)
+                    && matches!(
+                        acceptance,
+                        Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner
+                    ) =>
+                {
+                    true
                 }
-                // The sender's own month can undo it. A TRANSPORT's target's can too: a target that
-                // ends the month a quartermaster owning a Caravanserai accepts from anybody within
-                // the flat reach. A DISTRIBUTE's cannot, since `CheckTransportOrders` never asks a
-                // DISTRIBUTE's target about its skill or structure (`ah-g4bz`).
+                Acceptance::NotQuartermaster => {
+                    self.may_learn.contains(target)
+                        && (facts.is_some_and(|facts| facts.caravanserai_owner)
+                            || self.may_own.contains(target))
+                }
+                Acceptance::NotCaravanseraiOwner => self.may_own.contains(target),
+                // The sender's own month can undo it, but only by making it an owner: it already
+                // has the skill, and `rules/economy_transport` asks "a quartermaster must be the
+                // owner of a structure which allows transportation", so a STUDY mends nothing
+                // (`ah-xbnu`). A TRANSPORT's target's month can too: a target that ends the month a
+                // quartermaster owning a Caravanserai accepts from anybody within the flat reach.
+                // A DISTRIBUTE's cannot, since `CheckTransportOrders` never asks a DISTRIBUTE's
+                // target about its skill or structure (`ah-g4bz`).
                 Acceptance::SenderOwnsNoCaravanserai => {
-                    self.unsettled.contains(sender)
-                        || (order == ShipmentOrder::Transport && self.unsettled.contains(target))
+                    self.may_own.contains(sender)
+                        || (order == ShipmentOrder::Transport && self.month_may_change(target))
                 }
                 // Only the sender's own month - a STUDY of the skill - can undo it.
-                Acceptance::SenderNotQuartermaster => self.unsettled.contains(sender),
+                Acceptance::SenderNotQuartermaster => self.may_learn.contains(sender),
                 _ => false,
             },
             acceptance,
@@ -1073,6 +1132,12 @@ pub(crate) struct Judged {
     /// sender's orders could (`ah-1jl9`, `ah-lis2`). `false` for every other answer. Meaningful only on a
     /// `Shipping` that has read the month's orders; every caller does, straight after `read`.
     pub unsettled: bool,
+    /// A TRANSPORT refused because its target is no quartermaster owning a Caravanserai, which the
+    /// same line written as DISTRIBUTE would deliver: the sender is a quartermaster owning one, the
+    /// target is not known to be a quartermaster, and the map proves it within DISTRIBUTE's reach
+    /// (`ah-7j90`). For another faction's target the DISTRIBUTE still waits on that faction's
+    /// attitude. `false` for every other line, a DISTRIBUTE included.
+    pub distribute_would_deliver: bool,
     pub acceptance: Acceptance,
     pub phase: ShipmentPhase,
     /// `None` exactly when `reach_for` answers `None`.
@@ -1632,7 +1697,8 @@ mod tests {
                 .iter()
                 .map(|(id, at)| ((*id).to_string(), *at))
                 .collect(),
-            unsettled: std::collections::BTreeSet::new(),
+            may_learn: std::collections::BTreeSet::new(),
+            may_own: std::collections::BTreeSet::new(),
         }
     }
 
@@ -1654,7 +1720,9 @@ mod tests {
             ],
             &[],
         );
-        shipping.unsettled.insert("901".to_string());
+        // 901 fails both of the target's tests, so only a month that could mend both unsettles it.
+        shipping.may_learn.insert("901".to_string());
+        shipping.may_own.insert("901".to_string());
 
         let distributed = shipping.judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901");
         assert_eq!(distributed.acceptance, Acceptance::SenderOwnsNoCaravanserai);
@@ -1668,12 +1736,77 @@ mod tests {
             "901 may end the month able to accept"
         );
 
-        shipping.unsettled.insert("900".to_string());
+        // `ah-xbnu` review, finding 1: 900 already has the skill, so a STUDY of it mends nothing.
+        shipping.may_learn.insert("900".to_string());
+        assert!(
+            !shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901")
+                .unsettled,
+            "a STUDY gives 900 no Caravanserai"
+        );
+        shipping.may_own.insert("900".to_string());
         assert!(
             shipping
                 .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "901")
                 .unsettled,
             "900's own month can"
+        );
+    }
+
+    /// `ah-xbnu`: `rules/transport` asks a TRANSPORT's target for the quartermaster skill *and*
+    /// ownership of a transport structure. A target failing both is unsettled only when its month
+    /// could mend both: a STUDY of the skill alone, or a BUILD alone, leaves it refused for certain.
+    #[test]
+    fn a_target_failing_both_tests_is_unsettled_only_when_its_month_can_mend_both() {
+        let judged = |learns: bool, owns: bool, target: TargetFacts| {
+            let mut shipping = shipping(
+                &[],
+                vec![
+                    ("900", at(facts(true, false, false, true), hex(0, 0))),
+                    ("901", at(target, hex(0, 0))),
+                ],
+                &[],
+            );
+            if learns {
+                shipping.may_learn.insert("901".to_string());
+            }
+            if owns {
+                shipping.may_own.insert("901".to_string());
+            }
+            shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "901")
+        };
+        let bare = || facts(true, false, false, true);
+        let owner = || facts(true, false, true, true);
+        let quartermaster = || facts(true, true, false, true);
+
+        let studies_only = judged(true, false, bare());
+        assert_eq!(studies_only.acceptance, Acceptance::NotQuartermaster);
+        assert!(!studies_only.unsettled, "a STUDY gives no Caravanserai");
+        assert!(
+            !judged(false, true, bare()).unsettled,
+            "a BUILD gives no skill"
+        );
+        assert!(judged(true, true, bare()).unsettled);
+        assert!(
+            judged(true, false, owner()).unsettled,
+            "the owner lacks only the skill"
+        );
+        assert!(!judged(false, true, owner()).unsettled);
+
+        let quartermaster_only = judged(true, false, quartermaster());
+        assert_eq!(
+            quartermaster_only.acceptance,
+            Acceptance::NotCaravanseraiOwner
+        );
+        assert!(!quartermaster_only.unsettled, "it lacks only the structure");
+        assert!(judged(false, true, quartermaster()).unsettled);
+
+        // Another faction's month is never ours to read, whatever its orders show (`ah-kjjv`).
+        let foreign = judged(false, false, facts(false, true, false, false));
+        assert_eq!(foreign.acceptance, Acceptance::NotCaravanseraiOwner);
+        assert!(
+            foreign.unsettled,
+            "a foreign target's month is never settled"
         );
     }
 
@@ -1735,6 +1868,101 @@ mod tests {
                 .acceptance,
             Acceptance::AcceptanceUnknown
         );
+    }
+
+    /// `ah-7j90`: a TRANSPORT refused because its target is no quartermaster (`ah-1d3i`) is the
+    /// line a DISTRIBUTE would have delivered whenever the sender is a quartermaster owning a
+    /// Caravanserai and the target sits inside DISTRIBUTE's `LOCAL_TRANSPORT` reach
+    /// (`CheckTransportOrders`, `../Atlantis/runorders.cpp`). The answer is the DISTRIBUTE
+    /// judgement's own, so it agrees with what that line would be told.
+    #[test]
+    fn a_refused_transport_a_distribute_would_deliver_is_marked() {
+        let mut shipping = shipping(
+            &[("900", 1), ("902", 1), ("910", 1), ("920", 1)],
+            vec![
+                // 900: a quartermaster owning a Caravanserai.
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                // 901: one of ours, ordinary, a hex away.
+                ("901", at(facts(true, false, false, true), hex(0, 1))),
+                // 902: a quartermaster of ours owning no Caravanserai.
+                ("902", at(facts(true, true, false, true), hex(0, 1))),
+                // 903: one of ours, ordinary, three hexes away.
+                ("903", at(facts(true, false, false, true), hex(0, 6))),
+                // 904: another faction's unit owning no Caravanserai.
+                ("904", at(facts(false, false, false, true), hex(0, 1))),
+                // 905: one of ours, ordinary, whose month may make it a quartermaster owning a
+                // Caravanserai.
+                ("905", at(facts(true, false, false, true), hex(0, 1))),
+                // 910: a quartermaster owning no Caravanserai, sending.
+                ("910", at(facts(true, true, false, true), hex(0, 0))),
+                // 911: ordinary, sending.
+                ("911", at(facts(true, false, false, true), hex(0, 0))),
+            ],
+            &[],
+        );
+        // It fails both of the target's tests, so its month must be able to mend both (`ah-xbnu`).
+        shipping.may_learn.insert("905".to_string());
+        shipping.may_own.insert("905".to_string());
+        let delivers = |order, sender, target| {
+            shipping
+                .judge(order, sender, Some(hex(0, 0)), target)
+                .distribute_would_deliver
+        };
+
+        assert!(delivers(ShipmentOrder::Transport, "900", "901"));
+        assert!(
+            delivers(ShipmentOrder::Transport, "900", "904"),
+            "another faction's ordinary unit, if it accepts"
+        );
+        let unsettled = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "905");
+        assert!(unsettled.unsettled && unsettled.distribute_would_deliver);
+
+        assert!(
+            !delivers(ShipmentOrder::Distribute, "900", "901"),
+            "a DISTRIBUTE is not refused"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "900", "903"),
+            "beyond DISTRIBUTE's reach"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "900", "902"),
+            "a quartermaster target without a Caravanserai keeps no hint"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "910", "901"),
+            "a sender owning no Caravanserai cannot DISTRIBUTE"
+        );
+        assert!(
+            !delivers(ShipmentOrder::Transport, "911", "901"),
+            "a sender that is no quartermaster cannot DISTRIBUTE"
+        );
+    }
+
+    /// `ah-7j90`: a distance the map cannot measure (the world's width was never reported) proves
+    /// no DISTRIBUTE delivery either, so the refusal carries no hint.
+    #[test]
+    fn an_unmeasured_distance_names_no_distribute() {
+        let mut shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("903", at(facts(true, false, false, true), hex(0, 6))),
+            ],
+            &[],
+        );
+        shipping.geometry = None;
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "903");
+        assert_eq!(judged.acceptance, Acceptance::NotQuartermaster);
+        assert_eq!(
+            shipping
+                .judge(ShipmentOrder::Distribute, "900", Some(hex(0, 0)), "903")
+                .measured
+                .map(|measured| measured.arrival),
+            Some(Arrival::Unmeasured)
+        );
+        assert!(!judged.distribute_would_deliver);
     }
 
     /// `ah-s79p`: a unit this month's FORM creates is judged on what the engine knows of it, by the

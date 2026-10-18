@@ -20015,6 +20015,20 @@ fn study_judged_elsewhere(ledger: &Ledger<'_>, unit_id: &str) -> Option<StudyOut
         .and_then(|elsewhere| elsewhere.outcome)
 }
 
+/// The STUDY fee of a passenger refused by the purse where its fleet lands, which that hex's
+/// marker tells it of (`ah-1uja`); `0` for any other unit. The engine takes nothing for a refused
+/// study (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough funds."), so the unit's own
+/// sentence hands it back and is left with what else it is short of - its upkeep, which falls due
+/// where it ends the month (`rules/sequenceofevents`; `ah-65kt`).
+fn refused_where_fleet_lands(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let walking = &ledger.relief().walking;
+    if walking.landing_of(unit_id).is_some() {
+        walking.refused_elsewhere(unit_id)
+    } else {
+        0
+    }
+}
+
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
 ///
 /// **The same moments the warning judges at** - [`Sharing`], [`Sharing::silver_short_reading`] and
@@ -20405,7 +20419,10 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
     let at_give = silver_short_at_give(ledger, unit_id);
     let at_cast = silver_short_at_cast(ledger, unit_id);
     let at_market = silver_short_at_market(ledger, unit_id);
-    let at_study = silver_short_at_study(ledger, unit_id);
+    // A STUDY refused where the fleet lands took nothing here (`ah-65kt`).
+    let at_study = (silver_short_at_study(ledger, unit_id)
+        - refused_where_fleet_lands(ledger, unit_id))
+    .max(0);
     if at_give >= short && at_give >= at_study {
         ShortfallMoment::Give
     } else if at_give.max(at_cast).max(at_market).max(at_study) < short {
@@ -20762,8 +20779,11 @@ fn judge_shortfalls(
             // cut, which runs at the market (`ah-y70h`).
             // A passenger sailing out of a hex where nothing shares may have been lent its STUDY
             // fee where its fleet lands (`ah-pa6z`): its row was charged the fee, never the loan.
+            // One refused there, with the landing hex's marker on its line, is handed its fee back
+            // the same way (`ah-65kt`).
             let lent_elsewhere = match study_judged_elsewhere(ledger, unit_id) {
                 Some(StudyOutcome::Paid { lent, .. }) if tag == SILVER && !pooled => lent,
+                _ if tag == SILVER && !pooled => refused_where_fleet_lands(ledger, unit_id),
                 _ => 0,
             };
             let balance = balance + lent_elsewhere;
@@ -21381,7 +21401,14 @@ fn report_shortfalls(
         let Some(ordered) = hex.find(unit_id) else {
             continue;
         };
-        let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
+        // A passenger's STUDY refused where its fleet lands is told on its line by that hex's
+        // marker alone, and took nothing: what is left short is the unit's, on its row
+        // (`ah-65kt`).
+        let refused_on_landing = tag == SILVER && refused_where_fleet_lands(ledger, unit_id) > 0;
+        let at = ledger
+            .charged_at
+            .get(&(unit_id.clone(), tag.clone()))
+            .filter(|at| !(refused_on_landing && matches!(at.intent, Intent::Study { .. })));
         let finding = if tag == SILVER {
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
@@ -21445,7 +21472,7 @@ fn report_shortfalls(
             // A STUDY the unit cannot pay for is refused outright (`monthorders.cpp`:
             // `Do1StudyOrder`, "STUDY: Not enough funds."), and the sentence says so rather than
             // leaving it to be inferred (`ah-wr2w`).
-            if matches!(study_of(unit_id), StudyOutcome::Refused { .. }) {
+            if !refused_on_landing && matches!(study_of(unit_id), StudyOutcome::Refused { .. }) {
                 bought.push_str(if bought.is_empty() {
                     ", so its STUDY is refused"
                 } else {
@@ -25763,11 +25790,15 @@ fn check_transport_reach(
             let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
                 continue;
             };
-            let goods = || match (amount, what) {
-                (Amount::Exact(moved), Selector::Item(text)) if *moved > 0 => {
-                    resolve_item(text, hex, ordered, ruleset)
-                        .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag)))
-                        .map(|tag| (*moved, tag.to_ascii_uppercase()))
+            // The named item, when it is one the game transports (`rules/economy_transport`).
+            let transportable = || match what {
+                Selector::Item(text) => resolve_item(text, hex, ordered, ruleset)
+                    .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag))),
+                _ => None,
+            };
+            let goods = || match amount {
+                Amount::Exact(moved) if *moved > 0 => {
+                    transportable().map(|tag| (*moved, tag.to_ascii_uppercase()))
                 }
                 // `ALL` is a question about stock, which this check does not ask.
                 _ => None,
@@ -25792,10 +25823,15 @@ fn check_transport_reach(
                 | super::transport::Acceptance::SenderNotQuartermaster)
                     if target_on && !judged.unsettled =>
                 {
-                    (
-                        codes::TRANSPORT_TARGET_REFUSED,
-                        transport_target_sentence(&id, *order, refused, goods().as_ref()),
-                    )
+                    let mut sentence =
+                        transport_target_sentence(&id, *order, refused, goods().as_ref());
+                    // The same line as a DISTRIBUTE would deliver, so the refusal says so - in the
+                    // words `transportTargetSentence` appends in the hover (`ah-7j90`). DISTRIBUTE
+                    // carries only what TRANSPORT does, whatever the amount form.
+                    if judged.distribute_would_deliver && transportable().is_some() {
+                        sentence.push_str(" DISTRIBUTE would deliver them.");
+                    }
+                    (codes::TRANSPORT_TARGET_REFUSED, sentence)
                 }
                 _ => continue,
             };
@@ -60784,9 +60820,10 @@ BUILD
         ));
         assert_eq!(finding.unit_id.as_deref(), Some("900"));
         assert_eq!(finding.line, Some(2));
+        // The same line as a DISTRIBUTE delivers, so the refusal says so (`ah-7j90`).
         assert_eq!(
             finding.message,
-            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
+            "Unit 901 is not a quartermaster, so 100 SILV stay with this unit. DISTRIBUTE would deliver them."
         );
 
         let review = |orders: &str| {
@@ -60808,6 +60845,121 @@ BUILD
         }
 
         assert!(target_findings(vec![home], "unit 900\nDISTRIBUTE 901 100 SILV\n").is_empty());
+    }
+
+    /// `ah-7j90`: the order line's refusal keeps its words and gains the hint whatever the amount
+    /// form, since DISTRIBUTE carries SILV. `ALL` names no amount here, as today.
+    #[test]
+    fn a_refused_transport_of_all_says_distribute_would_deliver_them() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let finding = only(target_findings(
+            vec![home],
+            "unit 900\nTRANSPORT 901 ALL SILV\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver them."
+        );
+    }
+
+    /// `ah-7j90`: each refused line carries its own refusal and its own hint.
+    #[test]
+    fn every_refused_transport_line_carries_its_own_distribute_hint() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let messages: Vec<String> = target_findings(
+            vec![home],
+            "unit 900\nTRANSPORT 901 100 SILV\nTRANSPORT 901 3 IRON\n",
+        )
+        .into_iter()
+        .map(|finding| finding.message)
+        .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "Unit 901 is not a quartermaster, so 100 SILV stay with this unit. DISTRIBUTE would deliver them.",
+                "Unit 901 is not a quartermaster, so 3 IRON stay with this unit. DISTRIBUTE would deliver them.",
+            ]
+        );
+    }
+
+    /// `ah-7j90`: no hint where DISTRIBUTE would not deliver either - beyond its two-hex reach
+    /// (`CheckTransportOrders` gives every DISTRIBUTE `LOCAL_TRANSPORT`), from a sender that cannot
+    /// DISTRIBUTE, to a quartermaster target, or for goods no shipment carries
+    /// (`rules/economy_transport`).
+    #[test]
+    fn a_refused_transport_distribute_would_not_deliver_has_no_hint() {
+        let refusals = |regions: Vec<ReportRegion>, orders: &str| -> Vec<String> {
+            check_turn(&report(regions), orders, Some(&ruleset()), with_map())
+                .into_iter()
+                .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+                .map(|finding| finding.message)
+                .collect()
+        };
+
+        let far = region_at("1:0,6", 0, 6, vec![unit("950")]);
+        assert_eq!(
+            refusals(
+                vec![shipping_quartermaster(), far],
+                "unit 900\nTRANSPORT 950 100 SILV\n"
+            ),
+            vec!["Unit 950 is not a quartermaster, so 100 SILV stay with this unit."]
+        );
+
+        assert_eq!(
+            refusals(
+                vec![shipping_from(vec![
+                    with_silver(unit("900"), 100),
+                    unit("901"),
+                ])],
+                "unit 900\nTRANSPORT 901 100 SILV\n"
+            ),
+            vec!["Unit 901 is not a quartermaster, so 100 SILV stay with this unit."],
+            "a sender that is no quartermaster"
+        );
+
+        assert_eq!(
+            refusals(
+                vec![shipping_from(vec![
+                    with_silver(with_skill(unit("900"), "QUAM", 1), 100),
+                    unit("901"),
+                ])],
+                "unit 900\nTRANSPORT 901 100 SILV\n"
+            ),
+            vec!["Unit 901 is not a quartermaster, so 100 SILV stay with this unit."],
+            "a quartermaster sender owning no Caravanserai"
+        );
+
+        let mut home = shipping_quartermaster();
+        home.units.push(with_skill(unit("902"), "QUAM", 1));
+        assert_eq!(
+            refusals(vec![home], "unit 900\nTRANSPORT 902 100 SILV\n"),
+            vec!["Unit 902 does not own a Caravanserai, so 100 SILV stay with this unit."],
+            "a quartermaster target"
+        );
+
+        let mut home = shipping_quartermaster();
+        home.units[0] = with_item(home.units[0].clone(), 2, "horse", "HORS");
+        home.units.push(unit("901"));
+        assert_eq!(
+            refusals(vec![home], "unit 900\nTRANSPORT 901 2 HORS\n"),
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing."],
+            "goods no shipment carries"
+        );
+    }
+
+    /// `ah-7j90`: an uncertain refusal still has no order-line warning; its hint lives in the hover.
+    #[test]
+    fn an_uncertain_refusal_distribute_would_deliver_stays_silent_at_the_order() {
+        let mut home = shipping_quartermaster();
+        let mut theirs = unit("7100");
+        theirs.own = false;
+        theirs.faction_id = Some("2".to_string());
+        home.units.push(theirs);
+        assert!(target_findings(vec![home], "unit 900\nTRANSPORT 7100 100 SILV\n").is_empty());
     }
 
     /// `ah-kjjv`: only a refusal the report proves is warned about. A target that can receive, a
@@ -81118,14 +81270,30 @@ BUILD
 
         assert_eq!(silver_of(&review, "901").borrowed_for_orders, 0);
         assert_eq!(silver_of(&review, "902").at_month_end, Some(1));
-        assert!(
-            review.findings.iter().any(|finding| {
+        // The marker below tells it of the refused STUDY; its own sentence is left with its upkeep
+        // alone, on its row, counted where it lands (`ah-65kt`).
+        let short: Vec<(&str, Option<usize>, Option<&str>)> = review
+            .findings
+            .iter()
+            .filter(|finding| {
                 finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("901")
-                    && finding.message.contains("STUDY")
-            }),
-            "{:?}",
-            review.findings
+            })
+            .map(|finding| {
+                (
+                    finding.message.as_str(),
+                    finding.line,
+                    finding.counted_in.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                None,
+                Some("1:7,53")
+            )]
         );
         let warning = hex_silver_warning(&review, "1:7,53").expect("the landing hex is short");
         assert!(
@@ -81578,6 +81746,61 @@ BUILD
             .expect("the marker");
         assert_eq!(marker.region_id, "1:7,55", "under the hex it sails from");
         assert!(marker.line.is_some(), "on its STUDY line: {marker:?}");
+    }
+
+    /// `ah-65kt`: a passenger refused where its fleet lands is told so by the landing hex's marker
+    /// alone - no per-unit "short $N ... so its STUDY is refused" sentence beside it, whatever the
+    /// resident holds. The engine took nothing for that STUDY (`monthorders.cpp`:
+    /// `Do1StudyOrder`), so what is left short is its upkeep, on its row and counted where it ends
+    /// the month (`rules/sequenceofevents`; `rules/economy_maintenance`: no sharing "between units
+    /// in different regions").
+    #[test]
+    fn a_passenger_refused_where_it_lands_gets_no_per_unit_study_sentence() {
+        for there in [1, 60, 99] {
+            let review = a_passenger_studying_between_two_sharers(there);
+            assert_eq!(
+                markers_on(&review, "901"),
+                vec![LANDING_REFUSES_STUDY],
+                "resident holds {there}"
+            );
+            let short: Vec<&Finding> = review
+                .findings
+                .iter()
+                .filter(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some("901")
+                })
+                .collect();
+            assert!(
+                short
+                    .iter()
+                    .all(|finding| !finding.message.contains("STUDY") && finding.line.is_none()),
+                "resident holds {there}: {short:?}"
+            );
+        }
+    }
+
+    /// `ah-65kt`: ... and where nothing there pays its upkeep either, that is the sentence it gets,
+    /// on its row, counted in the hex it lands in.
+    #[test]
+    fn a_passenger_refused_where_it_lands_is_told_only_of_its_upkeep() {
+        let review = a_passenger_studying_between_two_sharers(1);
+        let short: Vec<(&str, Option<&str>)> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+            })
+            .map(|finding| (finding.message.as_str(), finding.counted_in.as_deref()))
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                Some("1:7,53")
+            )]
+        );
     }
 
     /// `ah-1uja`: where the hex the passenger sails from is short too, its STUDY line still names

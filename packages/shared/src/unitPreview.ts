@@ -645,6 +645,32 @@ export function hasUncertainTransport(unit: PreviewedUnit | undefined): boolean 
  * `crates/core/src/orders/semantics.rs` for the order's own warning (`ah-kjjv`).
  */
 export function transportTargetSentence(issue: TransportTargetIssue): string {
+  const hint = distributeHint(issue);
+  const sentence = refusalSentence(issue);
+  return hint === null ? sentence : `${sentence} ${hint}`;
+}
+
+/**
+ * What the player can write instead, after a TRANSPORT refused on its target's account that the
+ * same line as DISTRIBUTE would deliver (`distributeDelivers`, `ah-7j90`). A certain refusal says
+ * so plainly, as `transport_target_sentence`'s caller in `crates/core/src/orders/semantics.rs` does
+ * at the order line; an unsettled one says "either way", since DISTRIBUTE delivers whatever the
+ * target does this month - and, for another faction's unit (the only unsettled
+ * `notCaravanseraiOwner` the flag rides on), only if that faction accepts.
+ */
+function distributeHint(issue: TransportTargetIssue): string | null {
+  if (issue.distributeDelivers !== true) {
+    return null;
+  }
+  if (!issue.unsettled) {
+    return "DISTRIBUTE would deliver them.";
+  }
+  return issue.reason === "notCaravanseraiOwner"
+    ? `DISTRIBUTE would deliver them either way, if unit ${issue.to}'s faction accepts transports from yours.`
+    : "DISTRIBUTE would deliver them either way.";
+}
+
+function refusalSentence(issue: TransportTargetIssue): string {
   const goods = issue.tag === "" ? null : `${issue.amount} ${issue.tag}`;
   // The word the line was written with, for a sentence that names the order rather than the goods
   // (`ah-lis2`), as `transport_target_sentence` does.

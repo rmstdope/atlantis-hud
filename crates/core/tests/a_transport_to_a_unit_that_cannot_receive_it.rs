@@ -42,3 +42,23 @@ fn ivanhoes_transport_to_robin_hood_warns_at_the_order() {
         "Unit 1162 is not a quartermaster, so 100 SILV stay with this unit."
     );
 }
+
+/// `ah-xbnu`. Rebecca (1163) studies the quartermaster skill but stands outside the Caravanserai
+/// Trader (6857) owns, and no order this month moves her in or hands it over. `rules/transport`
+/// asks the target for the skill *and* ownership of a transport structure, so a month of STUDY can
+/// meet only the first: the refusal is certain, and the order is still warned about.
+#[test]
+fn a_transport_to_a_unit_that_only_studies_the_quartermaster_skill_still_warns() {
+    let found = findings(
+        "#atlantis 42 \"<password>\"\n\nunit 683\nTRANSPORT 1163 100 SILV\nunit 1163\nSTUDY QUAM\n",
+    );
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    let finding = &found[0];
+    assert_eq!(finding.unit_id.as_deref(), Some("683"));
+    assert_eq!(finding.line, Some(4));
+    assert_eq!(
+        finding.message,
+        "Unit 1163 is not a quartermaster, so 100 SILV stay with this unit."
+    );
+}

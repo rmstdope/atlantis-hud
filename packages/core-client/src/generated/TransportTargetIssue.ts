@@ -46,16 +46,25 @@ reach: TransportReach | null,
 toUnshown: boolean, 
 /**
  * A refusal the report shows but the month may undo: the target is another faction's unit,
- * whose orders we cannot read, or one of ours whose own orders this month could make it
- * eligible before TRANSPORT runs (`transport::Judged::unsettled`, `ah-kjjv`). The order
- * carries no warning for it and the SILVER working does not state it; `false` for every
+ * whose orders we cannot read, or one of ours whose own orders this month could mend every
+ * condition it fails before TRANSPORT runs - a STUDY of the quartermaster skill gives no
+ * structure, a BUILD no skill (`transport::Judged::unsettled`, `ah-kjjv`, `ah-xbnu`). The
+ * order carries no warning for it and the SILVER working does not state it; `false` for every
  * reason but `NotQuartermaster`, `NotCaravanseraiOwner`, `SenderOwnsNoCaravanserai` and
- * `SenderNotQuartermaster` - the last two unsettled when the sender's own month is
- * (`ah-1jl9`, `ah-lis2`).
+ * `SenderNotQuartermaster` - the last two unsettled when the sender's own month could make it
+ * an owner, or a quartermaster, respectively (`ah-1jl9`, `ah-lis2`).
  */
 unsettled: boolean, 
 /**
  * The line was written as DISTRIBUTE rather than TRANSPORT, so a sentence that names the
  * order calls it by the word the player wrote (`ah-lis2`). Absent for a TRANSPORT.
  */
-distribute?: boolean, };
+distribute?: boolean, 
+/**
+ * The same line written as DISTRIBUTE would deliver it
+ * (`transport::Judged::distribute_would_deliver`, `ah-7j90`), and every item it moves is one
+ * the game transports: the refusal's sentence then says so. Only ever on a `NotQuartermaster` or
+ * `NotCaravanseraiOwner` refusal of a TRANSPORT; with `unsettled`, the latter is always
+ * another faction's unit. Absent otherwise.
+ */
+distributeDelivers?: boolean, };
