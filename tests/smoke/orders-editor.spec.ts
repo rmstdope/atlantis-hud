@@ -1035,3 +1035,103 @@ test("another unit's problem list starts at the top", async ({ page }) => {
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(5);
   expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
 });
+
+/** The bead's repro orders (`ah-zjcj`), on a fresh game from `g5-f21-t24`. */
+async function landingHexShortfall(page: Page) {
+  await loadReport(
+    page,
+    "Landing hex smoke",
+    readReport("g5f21t24"),
+    "regions"
+  );
+
+  await selectHex(page, "1:36,44");
+  await selectUnit(page, "10575");
+  await fillOrders(page, "sail se ne\nSHARE 0");
+  await selectHex(page, "1:38,44");
+  await selectUnit(page, "9508");
+  await fillOrders(page, "@study sail\nGIVE 9579 650 SILV");
+  await selectUnit(page, "9579");
+  await fillOrders(page, "@produce fish\n@transport 8333 all fish\nSHARE 0");
+}
+
+/** 10594's STUDY marker, hovered, and its tooltip's button. */
+async function landingHexButton(page: Page) {
+  await selectHex(page, "1:36,44");
+  await selectUnit(page, "10594");
+  await expectOrders(page, /study fish/);
+
+  // The marker underlines the STUDY keyword, the one warning on this unit's block.
+  const marked = page.getByTestId("orders-input").locator(".cm-lintRange-warning", {
+    hasText: "study"
+  });
+  await expect(marked).toHaveCount(1);
+  await marked.hover();
+  // CodeMirror names an action "Action: <name>." for assistive technology; the words a person
+  // reads are the button's text.
+  const button = page.locator(".cm-tooltip-lint .cm-diagnosticAction");
+  return button;
+}
+
+/**
+ * `ah-zjcj`: a sailing passenger whose STUDY the hex its fleet lands in refuses (`ah-1uja`) is
+ * marked on its STUDY line naming that hex, and the tooltip's button goes there - not to the hex
+ * on screen. The bead's own repro on `g5-f21-t24`: Drones (10575) sails 10594 from Lonthax
+ * (36,44) to ocean (38,44), where 9508 gives its silver to 9579 and nothing there shares.
+ */
+test("Show problems on a passenger's landing-hex marker goes to that hex", async ({ page }) => {
+  await landingHexShortfall(page);
+  const button = await landingHexButton(page);
+  await expect(button).toHaveText("Show problems in ocean (38,44)");
+  await button.click();
+
+  // The landing hex, selected as a pick from the map would select it, with a unit of ours.
+  await expect(page.getByTestId("panel-region")).toContainText("(38,44)");
+  await expect(page.getByRole("button", { name: "hex 1:38,44", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  await expect(page.getByTestId("panel-unit")).toContainText(/\(95(08|79)\)/);
+
+  // Its Problems open, and the shortfall naming the passenger's STUDY flashed and focused.
+  const flashed = page.getByTestId("region-problems").locator("[data-flash]");
+  await expect(flashed).toHaveCount(1);
+  await expect(flashed).toContainText("arriving by sea");
+  await expect(flashed).toContainText("10594");
+  await expect(flashed).toBeFocused();
+
+  // The flash runs once and the line reads as normal again, keeping the keyboard where it is.
+  await expect(flashed).not.toHaveClass(/region-problem-flash/);
+  await expect(flashed).toBeFocused();
+
+  // Leaving and coming back is an ordinary visit: nothing is marked or flashed again.
+  await selectHex(page, "1:36,44");
+  await selectHex(page, "1:38,44");
+  await expect(page.getByTestId("region-problems")).toContainText("arriving by sea");
+  await expect(flashed).toHaveCount(0);
+});
+
+/**
+ * `ah-zjcj` review, finding 1: pressed while the Region panel is folded, the request is spent
+ * then - the panel stays folded, as today's "Show problems" leaves it - and no later visit to the
+ * landing hex flashes its line or takes the keyboard.
+ */
+test("a landing-hex jump made with the Region panel folded never flashes later", async ({
+  page
+}) => {
+  await landingHexShortfall(page);
+  const region = page.getByTestId("panel-region");
+  await region.getByRole("button", { expanded: true }).click();
+  await expect(region).toHaveAttribute("data-collapsed", "true");
+
+  await (await landingHexButton(page)).click();
+  await expect(region).toContainText("(38,44)");
+  await expect(region).toHaveAttribute("data-collapsed", "true");
+
+  await selectHex(page, "1:36,44");
+  await region.getByRole("button", { expanded: false }).click();
+  await expect(region).toHaveAttribute("data-collapsed", "false");
+  await selectHex(page, "1:38,44");
+  await expect(page.getByTestId("region-problems")).toContainText("arriving by sea");
+  await expect(page.getByTestId("region-problems").locator("[data-flash]")).toHaveCount(0);
+});

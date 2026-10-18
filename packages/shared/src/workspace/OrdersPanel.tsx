@@ -82,6 +82,9 @@ type OrdersPanelProps = {
 
   /** The open game's order-processing context. */
   orders: OrderProcessing;
+
+  /** Goes to another hex and opens its Problems; see `OrdersEditor`'s prop (`ah-zjcj`). */
+  onShowProblemsIn?: (regionId: string) => void;
 };
 
 export function OrdersPanel({
@@ -104,7 +107,8 @@ export function OrdersPanel({
   onWalkProblems,
   walkPosition,
   walkedProblem,
-  orders
+  orders,
+  onShowProblemsIn
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
@@ -182,6 +186,7 @@ export function OrdersPanel({
             orderOcd={orderOcd}
             snippets={snippets}
             caretCompletions={caretCompletions}
+            onShowProblemsIn={onShowProblemsIn}
             onChange={(text) => {
               if (unitId !== null) {
                 onChange(unitId, text);

@@ -1431,15 +1431,8 @@ export function AppShell({
    * always on the level being drawn, so for it this is a no-op. `setLevel` clears the selection,
    * so it has to come first.
    */
-  const selectHex = useCallback(
-    (regionId: string | null) => {
-      // While the planner is armed the map means "where to", not "show me". One click, then it
-      // goes back to selecting - a mode you can forget you are in makes every later click a
-      // surprise.
-      if (planner.armed && regionId) {
-        planTo(regionId);
-        return;
-      }
+  const lookAtHex = useCallback(
+    (regionId: string | null, options?: { picked?: boolean }) => {
       if (regionId !== null) {
         // Region ids are `z:x,y`, so the level is written on the front of the id.
         const targetLevel = Number(regionId.split(":")[0]);
@@ -1450,10 +1443,48 @@ export function AppShell({
       const target = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
       selectRegion(
         regionId,
-        unitForHex(useWorkspaceStore.getState().hexUnits, regionId, unitsForHex(target))
+        unitForHex(useWorkspaceStore.getState().hexUnits, regionId, unitsForHex(target)),
+        options
       );
     },
-    [model, selectRegion, planner.armed, planTo, level, setLevel]
+    [model, selectRegion, level, setLevel]
+  );
+
+  /**
+   * A click on the map: `lookAtHex`, unless the planner is armed. Every other way of being taken to
+   * a hex - the dossier's rows, `Show problems in <hex>` (`ah-zjcj`) - calls `lookAtHex` itself, so
+   * the three cannot drift apart.
+   */
+  const selectHex = useCallback(
+    (regionId: string | null) => {
+      // While the planner is armed the map means "where to", not "show me". One click, then it
+      // goes back to selecting - a mode you can forget you are in makes every later click a
+      // surprise.
+      if (planner.armed && regionId) {
+        planTo(regionId);
+        return;
+      }
+      lookAtHex(regionId);
+    },
+    [lookAtHex, planner.armed, planTo]
+  );
+
+  /**
+   * `Show problems in <hex>` on a sailing passenger's landing-hex marker (`ah-zjcj`): selects the
+   * hex it names as a map click would - the unit last chosen there, otherwise the first - with the
+   * map following as for any pick, then opens that hex's Problems and asks it to flash its
+   * shortfall line.
+   *
+   * Deliberately not `selectHex`: while the planner is armed that means "move here", and this is
+   * somewhere to look, not an order - the faction dossier's hex rows make the same choice.
+   */
+  const flashRegionProblems = useWorkspaceStore((state) => state.flashRegionProblems);
+  const showProblemsIn = useCallback(
+    (regionId: string) => {
+      lookAtHex(regionId, { picked: true });
+      flashRegionProblems(regionId);
+    },
+    [lookAtHex, flashRegionProblems]
   );
 
   const hex = useMemo(
@@ -4081,15 +4112,7 @@ export function AppShell({
       // way `goToUnit` does - a faction's units can be in the underworld, and selecting an
       // off-level hex would otherwise leave the map where it was with nothing marked.
       onSelectHex: (regionId: string) => {
-        const target = Number(regionId.split(":")[0]);
-        if (Number.isFinite(target) && target !== level) {
-          setLevel(target);
-        }
-        const found = model.hexes.find((candidate) => candidate.regionId === regionId) ?? null;
-        selectRegion(
-          regionId,
-          unitForHex(useWorkspaceStore.getState().hexUnits, regionId, unitsForHex(found))
-        );
+        lookAtHex(regionId);
         setDossier(null);
       },
       // The popover no longer lists their units; this sends the reader to the dock's own list of
@@ -4113,7 +4136,7 @@ export function AppShell({
       unitCount: openDossier?.units.length ?? 0,
       onDismiss: () => setDossier(null)
     }),
-    [hexLabel, level, setLevel, model, selectRegion, openDossier]
+    [hexLabel, lookAtHex, openDossier]
   );
 
   useEffect(() => {
@@ -6340,6 +6363,7 @@ export function AppShell({
                     caretCompletions={caretCompletions}
                     editorRef={ordersEditor}
                     onWalkProblems={walkProblems}
+                    onShowProblemsIn={showProblemsIn}
                     walkPosition={
                       walkStop.standing && walkStop.index !== null
                         ? { at: walkStop.index + 1, of: problemTargets.length }

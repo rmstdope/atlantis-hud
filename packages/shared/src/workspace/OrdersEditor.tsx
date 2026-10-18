@@ -77,6 +77,12 @@ type OrdersEditorProps = {
   snippets: readonly OrderSnippet[];
   /** What may stand at an argument position, asked of the core once per half-typed word. */
   caretCompletions: CaretLookup;
+  /**
+   * Goes to another hex and opens its Problems: the button on a sailing passenger's landing-hex
+   * marker (`ah-zjcj`). Omitted, that marker has no button. Must be stable: it is a dependency of
+   * the diagnostics effect.
+   */
+  onShowProblemsIn?: (regionId: string) => void;
   onChange: (text: string) => void;
 };
 
@@ -125,6 +131,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     orders,
     snippets,
     caretCompletions,
+    onShowProblemsIn,
     onChange
   },
   ref
@@ -591,7 +598,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   }, [savedAt, unitId]);
 
   // The `Show problems` button on a pooled-shortfall pointer opens the region panel's Problems
-  // section, wherever the reader had left it (`ah-eurs`).
+  // section, wherever the reader had left it (`ah-eurs`); a landing-hex marker's goes to the hex
+  // it names (`ah-zjcj`).
   const showRegionProblems = useWorkspaceStore((state) => state.showRegionProblems);
 
   // Diagnostics are pushed rather than pulled: validation already runs debounced in the shell,
@@ -606,10 +614,13 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     editor.dispatch(
       setDiagnostics(
         editor.state,
-        toEditorDiagnostics(editor.state.doc.toString(), problems, showRegionProblems)
+        toEditorDiagnostics(editor.state.doc.toString(), problems, {
+          here: showRegionProblems,
+          elsewhere: onShowProblemsIn
+        })
       )
     );
-  }, [problems, unitId, showRegionProblems]);
+  }, [problems, unitId, showRegionProblems, onShowProblemsIn]);
 
   useImperativeHandle(ref, () => ({
     focus() {
