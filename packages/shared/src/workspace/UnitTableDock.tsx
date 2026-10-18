@@ -1078,8 +1078,8 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
 
   /**
    * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
-   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing,
-   * and nothing then clears it (ah-1lac review).
+   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing
+   * (ah-1lac review), until the effect below forgets it (ah-91i4).
    */
   const armyListOpen = armyListShown(menu, {
     canEditArmies,
