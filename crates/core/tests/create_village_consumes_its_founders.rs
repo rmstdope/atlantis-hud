@@ -6,7 +6,8 @@
 //! after PRODUCE and before ENTERTAIN, and assesses maintenance after both, so the founders pay no
 //! upkeep. The navigator's description of `ah-mw1r` (2026-10-09) reads it as consuming "1000 men or
 //! leaders and 100 wagons".
-//! Trident only: `grammar.rs` offers CREATE under no other ruleset.
+//! `newage arcanum rules/create_village` says the same, word for word, so Arcanum founds alike
+//! (`ah-s15o`); `grammar.rs` offers CREATE under both New Age worlds and not New Origins.
 
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, ItemChangeCause};
@@ -200,4 +201,27 @@ fn a_region_the_rule_refuses_founds_nothing() {
             "{region}"
         );
     }
+}
+
+/// `newage arcanum rules/create_village` gives the same order and the same price as Trident's:
+/// *"1000 people (men or leaders) and 100 wagons; all of these are consumed"* (`ah-s15o`).
+#[test]
+fn an_arcanum_founding_consumes_its_founders_too() {
+    let text = report_text();
+    let preview = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+        &text,
+        "[]",
+        &script_for(CREATE, ""),
+    )
+    .expect("the Arcanum ruleset loads");
+    let unit = common::expect_preview_row(&text, &preview, "900");
+    let founded: Vec<(&str, i64)> = unit
+        .item_changes
+        .iter()
+        .filter(|change| change.cause == ItemChangeCause::CreateSpent)
+        .map(|change| (change.tag.as_str(), change.delta))
+        .collect();
+    assert_eq!(founded, vec![("ORC", -1000), ("WAGO", -100)]);
 }

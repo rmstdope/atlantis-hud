@@ -9999,8 +9999,9 @@ fn apply(
         // of the order, in `ah-mw1r`'s description (2026-10-09), reads it as consuming "1000 men or
         // leaders and 100 wagons", after PRODUCE and before ENTERTAIN, which
         // `rules/sequenceofevents` puts before maintenance - so the founders pay no upkeep
-        // (`ah-mw1r.3`). Trident only, as `grammar.rs` offers it.
-        Intent::MonthLong("CREATE") if super::grammar::is_trident(ruleset) => {
+        // (`ah-mw1r.3`). `newage arcanum rules/create_village` says the same, so every world
+        // `grammar.rs` offers it in founds alike (`ah-s15o`).
+        Intent::MonthLong("CREATE") if super::grammar::founds_villages(ruleset) => {
             create_village(ledger, hex, actor, placed, ruleset);
         }
         // `PRODUCE` naming no item: the month is spoken for and nothing can be said about what it
@@ -14626,7 +14627,7 @@ fn founding_refused_here_because(region: &ReportRegion) -> Option<String> {
         })
 }
 
-/// A Trident `CREATE VILLAGE` that will not found a village, or may not, with the reason
+/// A New Age `CREATE VILLAGE` that will not found a village, or may not, with the reason
 /// (`ah-m24v`, `ah-flx2`, `ah-e97l`). The region's own refusals come first, then a unit short of
 /// people or wagons, each certain and under [`codes::CREATE_VILLAGE_REFUSED`]; only a founding
 /// none of them refuses is judged on distance, under [`codes::VILLAGE_NEAR_A_SETTLEMENT`], so a
@@ -14638,7 +14639,8 @@ fn check_village_site(
     ruleset: Option<&Ruleset>,
     findings: &mut Vec<Finding>,
 ) {
-    let Some(ruleset) = ruleset.filter(|ruleset| super::grammar::is_trident(Some(ruleset))) else {
+    let Some(ruleset) = ruleset.filter(|ruleset| super::grammar::founds_villages(Some(ruleset)))
+    else {
         return;
     };
     let here = founding_refused_here_because(hex.region);
@@ -14761,7 +14763,7 @@ fn settle_foundings<'a>(
     geometry: Option<crate::movement::graph::MapGeometry>,
     price: impl Fn(usize, &Hex<'_>) -> Ledger<'a>,
 ) {
-    if !super::grammar::is_trident(ruleset) {
+    if !super::grammar::founds_villages(ruleset) {
         return;
     }
     // Every founding the report does not already refuse, as (hex, unit, line), in engine order.

@@ -110,11 +110,20 @@ fn held(text: &str, remembered: &str, tag: &str, unchanged: i64) -> i64 {
 }
 
 fn validate(text: &str, remembered: &str) -> OrderValidationResult {
+    validate_in(
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        text,
+        remembered,
+    )
+}
+
+/// The same, under `ruleset`.
+fn validate_in(ruleset: &str, text: &str, remembered: &str) -> OrderValidationResult {
     validate_orders_request(
         &mut ReportCache::new(),
         &ValidateOrdersRequest {
             raw_orders: script(text),
-            ruleset_json: Some(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON.to_string()),
+            ruleset_json: Some(ruleset.to_string()),
             raw_report: Some(text.to_string()),
             disabled_codes: None,
             map_json: None,
@@ -299,6 +308,29 @@ fn a_founder_formed_this_month_is_refused_next_to_a_settlement() {
             known_passages_json: None,
             remembered_json: Some("[]".to_string()),
         },
+    );
+    assert_eq!(
+        warnings(&result),
+        vec![
+            "CREATE VILLAGE will be refused: Oldtown [village] at (11,11) is within 2 hexes, and a \
+             village must be at least 3 hexes from any other settlement"
+                .to_string()
+        ]
+    );
+}
+
+/// `newage arcanum rules/create_village` carries the same requirements, word for word, so an
+/// Arcanum founding is judged alike (`ah-s15o`).
+#[test]
+fn an_arcanum_settlement_next_door_refuses_the_founding() {
+    let mut exits = all_exits(10, 10);
+    exits[2] = exit("Southeast", 11, 11, Some("Oldtown [village]"));
+    let text = report_with(&exits, &[]);
+
+    let result = validate_in(
+        atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+        &text,
+        "[]",
     );
     assert_eq!(
         warnings(&result),

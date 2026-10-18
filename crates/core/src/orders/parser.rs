@@ -458,11 +458,11 @@ mod tests {
         let cases = [
             (
                 atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
-                "CAPITAL\nEXPLORE RMAP\nQUEST\n",
+                "CAPITAL\nEXPLORE RMAP\nQUEST\nCREATE VILLAGE \"New Hope\"\n",
                 false,
             ),
             (
-                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+                atlantis_hud_fixtures::RULESET_JSON,
                 "CREATE VILLAGE \"New Hope\"\n",
                 true,
             ),
