@@ -25867,9 +25867,20 @@ fn check_transport_reach(
                         transport_target_sentence(&id, *order, refused, goods().as_ref());
                     // The same line as a DISTRIBUTE would deliver, so the refusal says so - in the
                     // words `transportTargetSentence` appends in the hover (`ah-7j90`). DISTRIBUTE
-                    // carries only what TRANSPORT does, whatever the amount form.
-                    if judged.distribute_would_deliver && transportable().is_some() {
-                        sentence.push_str(" DISTRIBUTE would deliver them.");
+                    // carries only what TRANSPORT does, whatever the amount form. A refusal that
+                    // names no amount (`ALL`) gives "them" nothing to refer to, so that hint names
+                    // the goods by the code the exact-amount refusal writes (`ah-q3bp`).
+                    if judged.distribute_would_deliver {
+                        if let Some(tag) = transportable() {
+                            if goods().is_some() {
+                                sentence.push_str(" DISTRIBUTE would deliver them.");
+                            } else {
+                                sentence.push_str(&format!(
+                                    " DISTRIBUTE would deliver the {}.",
+                                    tag.to_ascii_uppercase()
+                                ));
+                            }
+                        }
                     }
                     (codes::TRANSPORT_TARGET_REFUSED, sentence)
                 }
@@ -60989,9 +61000,10 @@ BUILD
     }
 
     /// `ah-7j90`: the order line's refusal keeps its words and gains the hint whatever the amount
-    /// form, since DISTRIBUTE carries SILV. `ALL` names no amount here, as today.
+    /// form, since DISTRIBUTE carries SILV. `ALL` names no amount here, so the hint names the goods
+    /// by their code instead of a "them" with nothing to refer to (`ah-q3bp`).
     #[test]
-    fn a_refused_transport_of_all_says_distribute_would_deliver_them() {
+    fn a_refused_transport_of_all_says_distribute_would_deliver_the_item() {
         let mut home = shipping_quartermaster();
         home.units.push(unit("901"));
 
@@ -61001,7 +61013,30 @@ BUILD
         ));
         assert_eq!(
             finding.message,
-            "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver them."
+            "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."
+        );
+    }
+
+    /// `ah-q3bp`: each refused `ALL` line names its own item, in the canonical upper-case code
+    /// however the order spelled it.
+    #[test]
+    fn every_refused_transport_of_all_names_its_own_item() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+
+        let messages: Vec<String> = target_findings(
+            vec![home],
+            "unit 900\nTRANSPORT 901 ALL silv\nTRANSPORT 901 ALL IRON\n",
+        )
+        .into_iter()
+        .map(|finding| finding.message)
+        .collect();
+        assert_eq!(
+            messages,
+            vec![
+                "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV.",
+                "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the IRON.",
+            ]
         );
     }
 
