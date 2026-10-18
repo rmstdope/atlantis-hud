@@ -12541,10 +12541,11 @@ fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<S
 /// Who owns a structure when this month's `PROMOTE`s run: the first unit in the object's list
 /// once ENTER and LEAVE have run (`Object::GetOwner`; `rules/sequenceofevents`). The rule
 /// [`crate::movement::fleet::fleet_owner`] states, read from this hex's units (`ah-c1p2`): the
-/// report's occupants who stayed, in report order; then the units formed in place, whose block
-/// writes no ENTER or LEAVE (the engine adds one to its former's object as the `FORM` is parsed,
-/// before any ENTER runs - `ah-7ful`); then the reported units that boarded - a reported occupant
-/// that ENTERs the structure it stands in boards again; then the formed units that boarded. A
+/// report's occupants who stayed, in report order; then the units formed in place - still in
+/// their former's structure once ENTER and LEAVE have run, and named by no ENTER of their own
+/// (the engine adds one to its former's object as the `FORM` is parsed, before any ENTER runs -
+/// `ah-7ful`); then the reported units that boarded - a reported occupant that ENTERs the
+/// structure it stands in boards again; then the formed units that boarded. A
 /// formed unit counts men or none: `Game::DeleteEmptyUnits` runs only after PROMOTE, EVICT and
 /// DESTROY (`Game::RunOrders`). A unit of another faction stays where the report shows it. `None`
 /// when nobody stands in it.
@@ -58460,9 +58461,15 @@ BUILD
         // `ah-7ful` review: an ENTER the engine refuses ("ENTER: Can't enter that.") moves the
         // formed unit nowhere, so it keeps the place it took when its FORM was parsed.
         assert_eq!(
-            evict_refusals("unit 900\nFORM 1\nENTER 7\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n")
-                .len(),
-            1
+            evict_refusals(
+                "unit 900\nFORM 1\nENTER 7\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"
+            ),
+            vec![(
+                Some("901".to_string()),
+                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
+                 this unit, so nothing changes"
+                    .to_string()
+            )]
         );
         // `ah-7ful` review: a formed unit that boards by its own ENTER is an entrant, and stands
         // behind the reported units that board, so 901 owns the Castle and its EVICT runs.
