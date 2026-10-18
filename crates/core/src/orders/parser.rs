@@ -261,6 +261,7 @@ impl Document {
             unit_id: None,
             formed: None,
             counted_in: None,
+            problems_in: None,
             severity: OrderDiagnosticSeverity::Error,
         });
     }
@@ -354,6 +355,7 @@ impl Document {
             unit_id: None,
             formed: None,
             counted_in: None,
+            problems_in: None,
             severity,
         });
     }

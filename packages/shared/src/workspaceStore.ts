@@ -228,6 +228,13 @@ export type WorkspaceState = {
   /** Whether the region panel's Problems section is shown. On by default. */
   regionProblemsShown: boolean;
   /**
+   * A hex's Problems asked to flash one line, by `Show problems in <hex>` on a sailing passenger's
+   * landing-hex marker (`ah-zjcj`), until the region panel showing that hex consumes it. The
+   * epoch tells one press from the next. Session-only: never persisted, and dropped with the game,
+   * so a reload or a new report never replays the flash.
+   */
+  problemsFlash: { regionId: string; epoch: number } | null;
+  /**
    * The map view - pan, zoom, restore bookkeeping - as one piece of state; see `mapViewState.ts`.
    * Not persisted by this store: the per-game localStorage record is the persistence (ah-ian).
    */
@@ -320,6 +327,10 @@ export type WorkspaceState = {
    * shut the very section the reader asked to see (`ah-eurs`).
    */
   showRegionProblems: () => void;
+  /** Opens the Problems section and asks `regionId`'s for a flash (`ah-zjcj`). */
+  flashRegionProblems: (regionId: string) => void;
+  /** Clears the flash request, if `epoch` is still the one standing. */
+  consumeProblemsFlash: (epoch: number) => void;
   /** Shows or hides the whole set at once, which is what a nine-box panel owes the player. */
   setAllBadges: (on: boolean) => void;
   /** Turns the biome symbols on or off. */
@@ -436,6 +447,9 @@ type Persisted = Pick<
   | "regionProblemsShown"
 >;
 
+/** How many `flashRegionProblems` requests there have been; see `problemsFlash`. */
+let problemsFlashCount = 0;
+
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
     (set) => ({
@@ -459,6 +473,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       biomeSymbols: false,
       hexCoordinates: true,
       regionProblemsShown: true,
+      problemsFlash: null,
       planner: { armed: false, destinationId: null },
       unitSlotTab: null,
       mapView: NO_MAP_VIEW,
@@ -471,6 +486,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedUnit: null,
           hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
+          problemsFlash: null,
           mapView: mapViewOpened(game.gameId, saved)
         }),
 
@@ -481,6 +497,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedUnit: null,
           hexUnits: NO_HEX_UNITS,
           selectionEpoch: 0,
+          problemsFlash: null,
           mapView: NO_MAP_VIEW
         }),
 
@@ -619,6 +636,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       toggleRegionProblems: () =>
         set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
       showRegionProblems: () => set({ regionProblemsShown: true }),
+      flashRegionProblems: (regionId) =>
+        set(() => ({
+          regionProblemsShown: true,
+          // Counted across requests rather than from the standing one, which is null once
+          // consumed: a later press must never reuse an epoch a panel has already seen.
+          problemsFlash: { regionId, epoch: ++problemsFlashCount }
+        })),
+      consumeProblemsFlash: (epoch) =>
+        set((state) => (state.problemsFlash?.epoch === epoch ? { problemsFlash: null } : state)),
 
       // Anything the planner has to say - armed, working, routed or refused - takes the shared
       // slot, so an auto-switch always wins over a tab the player chose earlier. Clearing gives the
@@ -726,6 +752,7 @@ export function resetWorkspaceStore() {
     biomeSymbols: false,
     hexCoordinates: true,
     regionProblemsShown: true,
+    problemsFlash: null,
     unitSlotTab: null,
     mapView: NO_MAP_VIEW
   });

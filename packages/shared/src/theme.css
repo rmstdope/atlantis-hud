@@ -363,6 +363,27 @@
 }
 
 /*
+ * The one-shot flash on the Problems line `Show problems in <hex>` was sent to (ah-zjcj): lit in
+ * the selection colour, then back to normal over about a second, like the lock-on pulse above.
+ * Kept under reduced motion - it is a change of colour, not movement. RegionPanel.tsx drops the
+ * class on `animationend`, so it runs once.
+ */
+@keyframes region-problem-flash {
+  from {
+    background-color: color-mix(in srgb, var(--color-select) 35%, transparent);
+    outline: 1px solid var(--color-select);
+  }
+  to {
+    background-color: transparent;
+    outline: 1px solid transparent;
+  }
+}
+
+.region-problem-flash {
+  animation: region-problem-flash 1s ease-out;
+}
+
+/*
  * A province's outline and name.
  *
  * Unlike `.map-label`, the name is deliberately NOT divided back out by `--map-scale`: every name

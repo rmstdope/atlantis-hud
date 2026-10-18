@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { structureEntryId, type GameDataIndex } from "../gameData";
 import { resourceChecksOf, type ResourceCheck } from "../resourceChecks";
@@ -20,6 +20,7 @@ import {
   SeverityMark,
   StaleBanner
 } from "./primitives";
+import { problemToFlash } from "./problemsFlash";
 import { RegionNotes } from "./RegionNotes";
 import { manifestSegments } from "./vesselManifest";
 
@@ -94,6 +95,7 @@ export function RegionPanel({
   /** Absent while the ruleset has not loaded; nothing is then linked. */
   onOpenGameData?: (entryId: string) => void;
 }) {
+  const flash = useProblemsFlash(hex?.regionId ?? null);
   /** Both must be present: a link with nothing to open is worse than plain text. */
   const linkable = gameData !== null && onOpenGameData !== undefined ? onOpenGameData : null;
   const stale = hex?.knowledge === "stale";
@@ -139,7 +141,11 @@ export function RegionPanel({
       ) : null}
 
       <Problems
+        // A fresh list per hex: a flashed line belongs to the hex it was flashed in.
+        key={hex.regionId}
         problems={problems}
+        flash={flash.epoch}
+        onFlashTaken={flash.taken}
         regionId={hex.regionId}
         known={known}
         onSelectUnit={onSelectUnit}
@@ -365,34 +371,92 @@ function RegionProblemsToggle({ count }: { count: number }) {
  *
  * Hidden while `regionProblemsShown` is off - the header chip stays put and keeps the count, so
  * the diagnostics are put away rather than lost.
+ *
+ * Arriving by `Show problems in <hex>` (`ah-zjcj`), the shortfall line naming a passenger's STUDY
+ * flashes once and takes focus; `flash` is that request, handed down by `useProblemsFlash`, and
+ * taken here whether or not a line matched (the hooks run even while the list renders nothing).
+ * The line stays focusable until the keyboard leaves it, and not a moment longer, so a later
+ * visit never finds it marked.
  */
 function Problems({
   problems,
+  flash = null,
+  onFlashTaken,
   regionId,
   known,
   onSelectUnit
 }: {
   problems: OrderDiagnostic[];
+  /** A standing request to flash this hex's shortfall line, by its epoch; see `useProblemsFlash`. */
+  flash?: number | null;
+  onFlashTaken?: () => void;
   /** The hex these findings are in, which is what tells two `new-1`s apart (`ah-9o0c.2`). */
   regionId: string;
   known?: ReadonlySet<string>;
   onSelectUnit?: (unitId: string, regionId?: string) => void;
 }) {
   const shown = useWorkspaceStore((state) => state.regionProblemsShown);
+  // The line that was flashed, `animating` until its flash has run, and kept until focus leaves
+  // it: dropping its `tabIndex` while it holds focus would drop the keyboard to the page.
+  const [flashed, setFlashed] = useState<{ index: number; animating: boolean } | null>(null);
+  const list = useRef<HTMLUListElement | null>(null);
+
+  useEffect(() => {
+    if (flash === null) {
+      return;
+    }
+    onFlashTaken?.();
+    const index = problemToFlash(problems);
+    setFlashed(index === null ? null : { index, animating: true });
+    // Only a new request flashes: `problems` moving under a standing one is not another press.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flash]);
+
+  useEffect(() => {
+    if (flashed?.animating) {
+      list.current?.querySelector<HTMLElement>("[data-flash]")?.focus();
+    }
+  }, [flashed]);
 
   if (problems.length === 0 || !shown) {
     return null;
   }
 
+  const target = flashed;
+
   return (
     <Section title="Problems" count={problems.length}>
-      <ul data-testid="region-problems" className={`m-0 list-none p-0 ${PROBLEM_CARD}`}>
+      <ul
+        ref={list}
+        data-testid="region-problems"
+        className={`m-0 list-none p-0 ${PROBLEM_CARD}`}
+      >
         {problems.map((problem, index) => (
           <li
             key={`${problem.code}-${problem.unitId ?? "hex"}-${index}`}
             data-testid="region-problem"
             data-code={problem.code}
-            className="flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0"
+            data-flash={target?.index === index ? "" : undefined}
+            tabIndex={target?.index === index ? -1 : undefined}
+            onAnimationEnd={
+              target?.index === index
+                ? () => setFlashed({ ...target, animating: false })
+                : undefined
+            }
+            onBlur={
+              target?.index === index
+                ? () => {
+                    // Another window taking focus blurs the line too, and it gets focus back on
+                    // return - unless its tabIndex has gone, when the keyboard falls to the page.
+                    if (document.hasFocus()) {
+                      setFlashed(null);
+                    }
+                  }
+                : undefined
+            }
+            className={`flex gap-1.5 border-t border-edge-soft px-1.5 py-0.5 first:border-t-0${
+              target?.index === index && target.animating ? " region-problem-flash" : ""
+            }`}
           >
             <SeverityMark severity={problem.severity} />
             <ProblemWho
@@ -435,4 +499,28 @@ function provedTitle(check: ResourceCheck): string {
   return check.provedOn === null
     ? `A unit with ${check.skill.skillName} ${check.skill.level} stands here, and the report names ${found}.`
     : `A unit with ${check.skill.skillName} ${check.skill.level} stood here on turn ${check.provedOn}, and that report named ${found}.`;
+}
+
+/**
+ * The `Show problems in <hex>` request (`ah-zjcj`) as the Region panel takes it: consumed here,
+ * where it is always mounted - folded or not - so a request made while the panel was folded is
+ * spent then rather than flashing on some later visit. Handed on to the Problems list only while
+ * the panel is open; `taken` is the list saying it has it, so unfolding later replays nothing.
+ */
+function useProblemsFlash(regionId: string | null): { epoch: number | null; taken: () => void } {
+  const request = useWorkspaceStore((state) => state.problemsFlash);
+  const consume = useWorkspaceStore((state) => state.consumeProblemsFlash);
+  const folded = useWorkspaceStore((state) => state.collapsed.region);
+  const [pending, setPending] = useState<{ regionId: string; epoch: number } | null>(null);
+
+  useEffect(() => {
+    if (request === null || request.regionId !== regionId) {
+      return;
+    }
+    consume(request.epoch);
+    setPending(folded ? null : { regionId: request.regionId, epoch: request.epoch });
+  }, [request, regionId, folded, consume]);
+
+  const taken = useCallback(() => setPending(null), []);
+  return { epoch: pending?.regionId === regionId ? pending.epoch : null, taken };
 }

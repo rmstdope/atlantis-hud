@@ -444,6 +444,57 @@ describe("the region panel's problems toggle", () => {
   });
 });
 
+/**
+ * The request `Show problems in <hex>` leaves for the landing hex's Problems (`ah-zjcj`): open
+ * them, and flash one line once. Session-only, so a reload never replays the flash.
+ */
+describe("the landing-hex problems flash", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("opens the problems section and asks that hex for a flash", () => {
+    store().toggleRegionProblems();
+    store().flashRegionProblems("1:38,44");
+
+    expect(store().regionProblemsShown).toBe(true);
+    expect(store().problemsFlash?.regionId).toBe("1:38,44");
+  });
+
+  it("asks afresh on every press, so a second press flashes again", () => {
+    store().flashRegionProblems("1:38,44");
+    const first = store().problemsFlash?.epoch;
+    store().flashRegionProblems("1:38,44");
+    expect(store().problemsFlash?.epoch).not.toBe(first);
+  });
+
+  it("is consumed once, and only by the request it was", () => {
+    store().flashRegionProblems("1:38,44");
+    const stale = store().problemsFlash!.epoch;
+    store().flashRegionProblems("1:38,44");
+
+    store().consumeProblemsFlash(stale);
+    expect(store().problemsFlash).not.toBeNull();
+
+    store().consumeProblemsFlash(store().problemsFlash!.epoch);
+    expect(store().problemsFlash).toBeNull();
+  });
+
+  it("is never remembered across a reload", async () => {
+    store().flashRegionProblems("1:38,44");
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+
+    expect(persisted).not.toHaveProperty("problemsFlash");
+  });
+
+  it("is dropped with the game", () => {
+    store().flashRegionProblems("1:38,44");
+    store().closeGame();
+    expect(store().problemsFlash).toBeNull();
+  });
+});
+
 describe("the biome symbols toggle (ah-d9jb.4)", () => {
   beforeEach(resetWorkspaceStore);
 

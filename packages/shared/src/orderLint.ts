@@ -10,9 +10,11 @@ import type { OrderDiagnostic } from "@atlantis/core-client";
  * keystroke behind `text`: a line that has left the document is dropped rather than pointed at
  * whatever now sits there, and a span running past its line is clamped to it.
  *
- * `showRegionProblems` opens the region panel's Problems section, and is what the pointer at a
- * line contributing to a pooled shortfall offers as a button. Omitting it leaves the pointer
- * without one, which is what a caller with no panel to open wants.
+ * `pointers.here` opens the region panel's Problems section, and is what the pointer at a line
+ * contributing to a pooled shortfall offers as a button. `pointers.elsewhere` goes to another
+ * hex's Problems, for the one pointer whose shortfall is in another hex: a sailing passenger's
+ * STUDY refused where its fleet lands (`ah-zjcj`). Omitting a handler leaves its pointers without
+ * a button, which is what a caller with no panel to open wants - never a button to the wrong hex.
  *
  * A diagnostic with no columns - or whose columns collapse to nothing - covers its whole line: an
  * underline that marks nothing reads as no problem at all. On an empty line there is nothing to
@@ -22,7 +24,7 @@ import type { OrderDiagnostic } from "@atlantis/core-client";
 export function toEditorDiagnostics(
   text: string,
   problems: OrderDiagnostic[],
-  showRegionProblems?: () => void
+  pointers: ShortfallPointers = {}
 ): Diagnostic[] {
   const lines = text.split("\n");
 
@@ -63,11 +65,33 @@ export function toEditorDiagnostics(
       // A pooled shortfall is reported against the hex, so this line's own mark can only point at
       // where the numbers are. CodeMirror renders an action as a button in the tooltip, which is
       // reachable from the keyboard where an anchor in the message would not be (`ah-eurs`).
-      actions:
-        problem.code === "part-of-hex-shortfall" && showRegionProblems !== undefined
-          ? [{ name: "Show problems", apply: () => showRegionProblems() }]
-          : undefined
+      actions: shortfallActions(problem, pointers)
     });
   }
   return result;
+}
+
+/** Where a pooled-shortfall pointer's button can take the player; see `toEditorDiagnostics`. */
+export type ShortfallPointers = {
+  /** Opens the Problems of the hex on screen. */
+  here?: () => void;
+  /** Goes to another hex, by id, and opens its Problems. */
+  elsewhere?: (regionId: string) => void;
+};
+
+function shortfallActions(
+  problem: OrderDiagnostic,
+  { here, elsewhere }: ShortfallPointers
+): Diagnostic["actions"] {
+  if (problem.code !== "part-of-hex-shortfall") {
+    return undefined;
+  }
+  const target = problem.problemsIn;
+  if (target !== undefined) {
+    // The button names where it goes in the sentence's own words (`ah-zjcj`).
+    return elsewhere === undefined
+      ? undefined
+      : [{ name: `Show problems in ${target.label}`, apply: () => elsewhere(target.regionId) }];
+  }
+  return here === undefined ? undefined : [{ name: "Show problems", apply: () => here() }];
 }

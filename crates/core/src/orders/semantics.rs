@@ -539,6 +539,9 @@ pub struct Finding {
     /// its row, its orders - stays in the hex it is listed in (`ah-6cka`). `None` for every
     /// finding counted where it sits.
     pub counted_in: Option<String>,
+    /// The hex whose Problems the message sends the player to, where that is not `region_id`: a
+    /// sailing passenger's landing-hex marker (`ah-1uja`, `ah-zjcj`). `None` everywhere else.
+    pub problems_in: Option<crate::ProblemsElsewhere>,
 }
 
 /// Where the report shows each unit, by unit number, across every region it covers.
@@ -4525,6 +4528,7 @@ impl<'a> Hex<'a> {
             column_end: None,
             formed: None,
             counted_in: None,
+            problems_in: None,
         }
     }
 }
@@ -6407,6 +6411,7 @@ impl Ordered<'_> {
             column_end: None,
             formed: self.formed.clone(),
             counted_in: None,
+            problems_in: None,
         }
     }
 
@@ -6427,6 +6432,7 @@ impl Ordered<'_> {
             column_end: at.map(|placed| placed.column_end),
             formed: self.formed.clone(),
             counted_in: None,
+            problems_in: None,
         }
     }
 }
@@ -17853,7 +17859,7 @@ struct StudyElsewhere {
     /// points at when that purse refuses it (`ah-1uja`). `None` where nothing of ours shares
     /// there (`ah-oi3u`): no hex is then short "between its units", and the passenger's own
     /// sentence carries the refusal.
-    landing: Option<String>,
+    landing: Option<crate::ProblemsElsewhere>,
     /// Who lent it the fee there, as [`SilverChange::other`] names them, and how much each - in
     /// the order the purse drew on them (`ah-kjq5`). Empty until it has settled, and where
     /// nothing there lent.
@@ -17927,10 +17933,10 @@ impl WalkingSilver {
     /// The hex `unit_id`'s fleet lands in, where its STUDY was sent to be judged by the purse
     /// there ([`send_studies_where_fleets_arrive`]); `None` for a unit whose STUDY is this hex's
     /// own, or one landing where nothing of ours shares (`ah-oi3u`).
-    fn landing_of(&self, unit_id: &str) -> Option<&str> {
+    fn landing_of(&self, unit_id: &str) -> Option<&crate::ProblemsElsewhere> {
         self.studies_elsewhere
             .get(unit_id)
-            .and_then(|elsewhere| elsewhere.landing.as_deref())
+            .and_then(|elsewhere| elsewhere.landing.as_ref())
     }
 
     /// What `unit_id`'s STUDY asks of the purse where its fleet arrives, at `moment`: none of it
@@ -18319,8 +18325,10 @@ fn send_studies_where_fleets_arrive(
     });
     for (index, who, arrives) in &sent {
         let (there, there_ledger) = &hexes[*arrives];
-        let landing = purse_settles(there, there_ledger)
-            .then(|| hex_label(&there.region.terrain, there.region.coordinate));
+        let landing = purse_settles(there, there_ledger).then(|| crate::ProblemsElsewhere {
+            region_id: there.region.region_id.clone(),
+            label: hex_label(&there.region.terrain, there.region.coordinate),
+        });
         hexes[*index]
             .1
             .relief_mut()
@@ -21740,15 +21748,19 @@ fn report_shortfalls(
             else {
                 continue;
             };
-            findings.push(ordered.finding(
+            let label = &landing.label;
+            let mut marker = ordered.finding(
                 hex,
                 codes::PART_OF_HEX_SHORTFALL,
                 format!(
-                    "The hex where the fleet lands, {landing}, is short of silver between its \
-                     units, so this STUDY is refused. See Problems for {landing}."
+                    "The hex where the fleet lands, {label}, is short of silver between its \
+                     units, so this STUDY is refused. See Problems for {label}."
                 ),
                 Some(placed),
-            ));
+            );
+            // Its Problems are the landing hex's, not this one's (`ah-zjcj`).
+            marker.problems_in = Some(landing.clone());
+            findings.push(marker);
         }
     }
 
@@ -29437,6 +29449,7 @@ fn check_upkeep_fund(
             column_end: None,
             formed: None,
             counted_in,
+            problems_in: None,
         });
     }
 }
@@ -30021,6 +30034,7 @@ fn check_faction_orders(
             column_end: Some(placed.column_end),
             formed: None,
             counted_in: None,
+            problems_in: None,
         });
     }
 }
@@ -47446,6 +47460,28 @@ BUILD
             pointer.message,
             "This hex is short of silver between its units. See Problems for the hex."
         );
+    }
+
+    /// `ah-zjcj`: an ordinary pointer is about the hex it sits in, so it names no other hex's
+    /// Problems - only a sailing passenger's landing-hex marker does.
+    #[test]
+    fn a_pooled_shortfall_pointer_points_at_no_other_hex() {
+        let regions = vec![region(vec![
+            sharing(with_item(unit("9"), 20, "sword", "SWOR")),
+            unit("5"),
+            an_ally("4"),
+        ])];
+        let findings = check_turn(
+            &report(regions),
+            "unit 5\nGIVE 0 30 swords\n",
+            Some(&ruleset()),
+            disabling_all(&[codes::GIVE_TARGET_NOT_HERE, codes::UNIT_DOES_NOTHING]),
+        );
+        let pointer = findings
+            .iter()
+            .find(|finding| finding.code == codes::PART_OF_HEX_SHORTFALL)
+            .expect("a pointer");
+        assert_eq!(pointer.problems_in, None);
     }
 
     /// The pointer is its own code, so a player who silences it still gets the hex's finding - and
@@ -82639,6 +82675,15 @@ BUILD
             .expect("the marker");
         assert_eq!(marker.region_id, "1:7,55", "under the hex it sails from");
         assert!(marker.line.is_some(), "on its STUDY line: {marker:?}");
+        // `ah-zjcj`: and it says which hex's Problems its sentence sends the player to, so the
+        // tooltip's button can go there rather than to the hex on screen.
+        assert_eq!(
+            marker.problems_in,
+            Some(crate::ProblemsElsewhere {
+                region_id: "1:7,53".to_string(),
+                label: "mountain (7,53)".to_string(),
+            })
+        );
     }
 
     /// `ah-65kt`: a passenger refused where its fleet lands is told so by the landing hex's marker

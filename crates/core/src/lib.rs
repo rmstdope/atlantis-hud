@@ -106,7 +106,25 @@ pub struct OrderDiagnostic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub counted_in: Option<String>,
+    /// The hex whose Problems the message sends the player to, where that is not the hex it sits
+    /// in: a sailing passenger's STUDY refused by the purse where its fleet lands is marked on its
+    /// own line, here, and names the landing hex (`ah-1uja`), whose Problems hold the shortfall
+    /// (`ah-zjcj`). Absent on every other diagnostic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub problems_in: Option<ProblemsElsewhere>,
     pub severity: OrderDiagnosticSeverity,
+}
+
+/// A hex a diagnostic's message points the player at (`ah-zjcj`): its id, to go there, and the
+/// hex as the message names it, so whatever offers the way there can say where it goes in the
+/// message's own words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ProblemsElsewhere {
+    pub region_id: String,
+    pub label: String,
 }
 
 /// Validation result for one draft of Atlantis orders.

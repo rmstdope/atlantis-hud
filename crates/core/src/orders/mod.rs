@@ -232,6 +232,7 @@ fn into_diagnostic(finding: semantics::Finding) -> OrderDiagnostic {
         unit_id: finding.unit_id,
         formed: finding.formed,
         counted_in: finding.counted_in,
+        problems_in: finding.problems_in,
         severity: OrderDiagnosticSeverity::Warning,
     }
 }

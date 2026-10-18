@@ -138,7 +138,7 @@ describe("the pooled-shortfall pointer's action", () => {
     const result = toEditorDiagnostics(
       "GIVE 0 20000 HORS",
       [problem({ code: "part-of-hex-shortfall", severity: "warning" })],
-      shown
+      { here: shown }
     );
 
     expect(result[0].actions).toHaveLength(1);
@@ -148,7 +148,10 @@ describe("the pooled-shortfall pointer's action", () => {
   });
 
   it("leaves every other code without an action", () => {
-    const result = toEditorDiagnostics("WROK", [problem({ code: "parse" })], vi.fn());
+    const result = toEditorDiagnostics("WROK", [problem({ code: "parse" })], {
+      here: vi.fn(),
+      elsewhere: vi.fn()
+    });
     expect(result[0].actions).toBeUndefined();
   });
 
@@ -156,6 +159,46 @@ describe("the pooled-shortfall pointer's action", () => {
     const result = toEditorDiagnostics("GIVE 0 20000 HORS", [
       problem({ code: "part-of-hex-shortfall" })
     ]);
+    expect(result[0].actions).toBeUndefined();
+  });
+
+  /** A sailing passenger's landing-hex marker (`ah-1uja`), as the core hands it over. */
+  const landing = problem({
+    code: "part-of-hex-shortfall",
+    severity: "warning",
+    regionId: "1:36,44",
+    problemsIn: { regionId: "1:38,44", label: "ocean (38,44)" }
+  });
+
+  it("sends a landing-hex marker to the hex it names, and says so (ah-zjcj)", () => {
+    const here = vi.fn();
+    const elsewhere = vi.fn();
+    const result = toEditorDiagnostics("STUDY FISH", [landing], { here, elsewhere });
+
+    expect(result[0].actions).toHaveLength(1);
+    expect(result[0].actions?.[0].name).toBe("Show problems in ocean (38,44)");
+    result[0].actions?.[0].apply({} as never, 0, 0);
+    expect(elsewhere).toHaveBeenCalledWith("1:38,44");
+    expect(here).not.toHaveBeenCalled();
+  });
+
+  it("keeps the plain button on a pointer about the hex on screen, with both handlers given", () => {
+    const here = vi.fn();
+    const elsewhere = vi.fn();
+    const result = toEditorDiagnostics(
+      "GIVE 0 20000 HORS",
+      [problem({ code: "part-of-hex-shortfall" })],
+      { here, elsewhere }
+    );
+
+    expect(result[0].actions?.[0].name).toBe("Show problems");
+    result[0].actions?.[0].apply({} as never, 0, 0);
+    expect(here).toHaveBeenCalledTimes(1);
+    expect(elsewhere).not.toHaveBeenCalled();
+  });
+
+  it("offers no button on a landing-hex marker with nowhere to send it, never the wrong hex", () => {
+    const result = toEditorDiagnostics("STUDY FISH", [landing], { here: vi.fn() });
     expect(result[0].actions).toBeUndefined();
   });
 });
