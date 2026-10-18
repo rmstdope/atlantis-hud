@@ -1508,6 +1508,19 @@ mod tests {
         );
     }
 
+    /// `ah-fcro`: a `PROMOTE FACTION 3 NEW 1` is kept like any other target `ParseUnit` accepts
+    /// (../Atlantis `parseorders.cpp` `ProcessPromoteOrder` overwrites `u->promote`), so written
+    /// last it replaces 900's `PROMOTE 901`. It names a unit another faction forms this month,
+    /// which this reader cannot see (`Object::GetUnitId` looks it up by that faction's alias), so
+    /// the hull stays with 900 rather than going to 901.
+    #[test]
+    fn a_last_promote_of_another_factions_new_unit_overwrites_an_earlier_one() {
+        assert_eq!(
+            scene_owner("unit 900\nPROMOTE 901\nPROMOTE FACTION 3 NEW 1\n", "329"),
+            Some("900".to_string())
+        );
+    }
+
     /// A last `PROMOTE NEW 1` names the unit 900 formed: the engine appends it to its parent's
     /// object as it is formed (../Atlantis `parseorders.cpp`: `temp->MoveUnit(former->object)`),
     /// so it is in the hull and is promoted, as `orders::semantics` reads it for DESTROY and EVICT

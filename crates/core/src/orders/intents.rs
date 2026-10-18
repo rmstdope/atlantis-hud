@@ -767,7 +767,16 @@ fn is_valid_destroy_order(command: &Token, arguments: &[Token], ruleset: Option<
         && super::grammar::consumed_arguments(command, arguments, ruleset).is_some()
 }
 
-/// The target of a syntactically valid `PROMOTE` order, if any.
+/// The prefix of a [`promoted_unit`] target naming a unit another faction forms this month,
+/// `faction-<f>-new-<alias>`. No unit a report shows has such an id, so a reader looking the
+/// target up among the units it can see finds nobody (`ah-fcro`).
+pub(crate) const ANOTHER_FACTIONS_NEW_UNIT: &str = "faction-";
+
+/// The target of a syntactically valid `PROMOTE` order, if any: a unit number, `new-<alias>` for
+/// a unit of ours formed this month, or `faction-<f>-new-<alias>` for one another faction forms.
+/// The engine keeps the last of any of them as the unit's `PROMOTE` (../Atlantis
+/// `parseorders.cpp` `ProcessPromoteOrder` overwrites `u->promote`), so another faction's is
+/// carried too rather than leaving an earlier `PROMOTE` to be read as the last (`ah-fcro`).
 pub(crate) fn promoted_unit(
     command: &Token,
     arguments: &[Token],
@@ -784,7 +793,10 @@ pub(crate) fn promoted_unit(
     match target {
         forms::Party::Unit(unit_id) => Some(unit_id),
         forms::Party::New(alias) => Some(format!("new-{alias}")),
-        forms::Party::Foreign { .. } | forms::Party::Discard => None,
+        forms::Party::Foreign { faction, alias } => {
+            Some(format!("{ANOTHER_FACTIONS_NEW_UNIT}{faction}-new-{alias}"))
+        }
+        forms::Party::Discard => None,
     }
 }
 
@@ -1315,6 +1327,19 @@ mod tests {
         assert_eq!(targets, ["new-2"], "{unit:?}");
         assert!(unit.intents.is_empty(), "{unit:?}");
         assert!(unit.unread.is_empty(), "{unit:?}");
+    }
+
+    /// `ah-fcro`: `ProcessPromoteOrder` (../Atlantis `parseorders.cpp`) keeps any target
+    /// `ParseUnit` accepts, another faction's new unit included, so it is carried too.
+    #[test]
+    fn another_factions_new_promote_target_is_carried() {
+        let unit = only_unit("unit 5\nPROMOTE 7\nPROMOTE FACTION 3 NEW 1\n");
+        let targets: Vec<&str> = unit
+            .promotes
+            .iter()
+            .map(|one| one.target.as_str())
+            .collect();
+        assert_eq!(targets, ["7", "faction-3-new-1"], "{unit:?}");
     }
 
     #[test]
