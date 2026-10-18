@@ -1014,6 +1014,13 @@ test("another unit's problem list starts at the top", async ({ page }) => {
   await openEditor(page);
   await shrinkOrders(page);
 
+  // Both units get problems first, so the list stays on screen across the switch below - only the
+  // reset can bring it back to the top, not the list going away and coming back.
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, OTHER_OWN_UNIT);
+  await fillOrders(page, FIVE_PROBLEMS);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
   await fillOrders(page, FIVE_PROBLEMS);
   const list = page.getByTestId("orders-diagnostics");
   await list.evaluate((element) => {
@@ -1021,15 +1028,10 @@ test("another unit's problem list starts at the top", async ({ page }) => {
   });
   await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
-  // The other unit has problems of its own, so the list stays on screen across the change - only
-  // the reset can bring it back to the top, not the list going away and coming back.
   await selectHex(page, "1:26,52");
   await selectUnit(page, OTHER_OWN_UNIT);
-  await fillOrders(page, FIVE_PROBLEMS);
-  await selectHex(page, "1:7,53");
-  await selectUnit(page, OWN_UNIT);
 
+  await expect(page.getByTestId("panel-orders")).toContainText(`unit ${OTHER_OWN_UNIT}`);
   await expect(page.getByTestId("orders-diagnostic")).toHaveCount(5);
-  await expect(page.getByTestId("panel-orders")).toContainText(`unit ${OWN_UNIT}`);
   expect(await list.evaluate((element) => element.scrollTop)).toBe(0);
 });

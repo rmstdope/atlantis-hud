@@ -15,9 +15,18 @@ const ROUNDING_PX = 1;
  * How many rows end below the list's visible bottom - a partly shown row counts as hidden.
  *
  * `rowBottoms` and `visibleBottom` are in the list's own scrolled coordinates (a row's
- * `offsetTop + offsetHeight`; the list's `scrollTop + clientHeight`).
+ * `offsetTop + offsetHeight`; the list's `scrollTop + clientHeight`). `contentBottom` is the
+ * list's `scrollHeight`: a list scrolled to its end hides nothing, whatever the rows' whole-pixel
+ * offsets add up to against a fractional `scrollTop`.
  */
-export function rowsBelow(rowBottoms: readonly number[], visibleBottom: number): number {
+export function rowsBelow(
+  rowBottoms: readonly number[],
+  visibleBottom: number,
+  contentBottom = Infinity
+): number {
+  if (visibleBottom >= contentBottom - ROUNDING_PX) {
+    return 0;
+  }
   return rowBottoms.filter((bottom) => bottom > visibleBottom + ROUNDING_PX).length;
 }
 
@@ -44,7 +53,10 @@ export function revealRow(
  * Which of this unit's problems the F8 walk stands on.
  *
  * The walk's targets are re-based to the same block lines `diagnosticsForUnit` hands the panel
- * (`diagnosticNav.ts`), so a place and a code identify the row; they are different objects.
+ * (`diagnosticNav.ts`), so a place and a code identify the row; they are different objects. With
+ * one exception: a finding wholly above the block's orders sits on the `unit` line, which the panel
+ * lists with no line (ah-6c76) and the walk clamps to line 1 - so when nothing matches by place, a
+ * line-less row with the same code and message is the one.
  */
 export function walkedRowIndex(
   problems: readonly OrderDiagnostic[],
@@ -59,7 +71,16 @@ export function walkedRowIndex(
       candidate.lineStart === walked.lineStart &&
       candidate.columnStart === walked.columnStart
   );
-  return index === -1 ? null : index;
+  if (index !== -1) {
+    return index;
+  }
+  const lineless = problems.findIndex(
+    (candidate) =>
+      candidate.lineStart === null &&
+      candidate.code === walked.code &&
+      candidate.message === walked.message
+  );
+  return lineless === -1 ? null : lineless;
 }
 
 /**

@@ -33,6 +33,11 @@ describe("rowsBelow", () => {
   it("counts nothing in an empty list", () => {
     expect(rowsBelow([], 0)).toBe(0);
   });
+
+  it("counts nothing once the list is scrolled to its end, whatever the rows' rounding says", () => {
+    // Whole-pixel offsets against a fractional scrollTop can drift further than the allowance.
+    expect(rowsBelow([17, 33, 50, 66, 85], 82.5, 83)).toBe(0);
+  });
 });
 
 describe("revealRow", () => {
@@ -64,6 +69,13 @@ describe("walkedRowIndex", () => {
 
   it("tells two problems on one line apart by column", () => {
     expect(walkedRowIndex(problems, problem(3, 0))).toBe(1);
+  });
+
+  it("finds a finding on the unit line, which the walk clamps to line 1 and the list shows with no line", () => {
+    const listed = [problem(null, null, "pool"), problem(2, 0)];
+    const walked = { ...problem(1, null, "pool") };
+
+    expect(walkedRowIndex(listed, walked)).toBe(0);
   });
 
   it("finds a problem with no line", () => {

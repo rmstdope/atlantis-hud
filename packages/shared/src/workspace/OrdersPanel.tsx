@@ -206,9 +206,9 @@ export function OrdersPanel({
           </p>
           {problems.length > 0 ? (
             // Keyed on the unit, so another unit's list starts at the top rather than wherever
-            // this one was scrolled to (ah-nup4).
+            // this one was scrolled to (ah-nup4). With its hex: two hexes can each hold a `new-1`.
             <ProblemList
-              key={unitId ?? ""}
+              key={`${hex?.regionId ?? ""}:${unitId ?? ""}`}
               problems={problems}
               text={validatedBlock}
               walked={walkedProblem ?? null}
@@ -318,7 +318,8 @@ function ProblemList({
       setHidden(
         rowsBelow(
           rows.map((row) => row.offsetTop + row.offsetHeight),
-          element.scrollTop + element.clientHeight
+          element.scrollTop + element.clientHeight,
+          element.scrollHeight
         )
       );
       setFloor(rows[0] ? rows[0].offsetHeight : null);
