@@ -5899,6 +5899,86 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
 });
 
 /**
+ * `ah-sa9p`, found verifying `ah-ottr`: narrowing the Silver column itself, down to its 36 px floor
+ * (`COLUMN_MIN_PX`), cut the month-end figure to nothing while `▾…` kept its room. ah-ottr's agreed
+ * experience: "The month-end figure is never the part that gets cut first, and a shortfall is never
+ * hidden completely" - so at every width the figure is cut only once the shortfall is `▾…`, and
+ * neither the figure nor the shortfall is ever hidden.
+ */
+test("however narrow the Silver column, neither the figure nor the shortfall disappears", async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@claim 50\n@study obse\nCLAIM 2000\nBUY 50 GEM\n");
+
+  const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
+  await expect(page.getByTestId(`silver-shortfall-${OWN_UNIT}`)).toBeVisible();
+  // What is on screen: each part's box clipped to the cell's content box, and to its own box.
+  const layout = () =>
+    cell.evaluate(async (node) => {
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      const left = box.left + parseFloat(style.paddingLeft);
+      const right = box.right - parseFloat(style.paddingRight);
+      const shown = (element: HTMLElement) => {
+        const part = element.getBoundingClientRect();
+        return Math.max(0, Math.min(part.right, right) - Math.max(part.left, left));
+      };
+      const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
+      const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
+      return {
+        cell: Math.round(box.width),
+        figureShown: shown(figure),
+        figureCut: figure.scrollWidth > figure.clientWidth,
+        shortShown: shown(short),
+        form: short.dataset.form
+      };
+    });
+  const settled = async () => {
+    let last = await layout();
+    await expect
+      .poll(async () => {
+        const now = await layout();
+        const same = JSON.stringify(now) === JSON.stringify(last);
+        last = now;
+        return same;
+      })
+      .toBe(true);
+    return last;
+  };
+
+  // The splitter between Long Order and Silver: each ArrowRight gives Silver's width to Long Order.
+  const splitter = page.getByTestId("column-splitter-longOrder-silver");
+  let now = await settled();
+  const seen: (typeof now)[] = [now];
+  for (let step = 0; step < 40; step++) {
+    await splitter.focus();
+    await page.keyboard.press("ArrowRight");
+    const next = await settled();
+    if (next.cell === now.cell) {
+      break;
+    }
+    now = next;
+    seen.push(now);
+  }
+  // It really reached the floor.
+  expect(now.cell).toBeLessThanOrEqual(40);
+  // At least one glyph of each, whatever the width: the figure's `…` and the red `▾` (each ~7 px).
+  for (const step of seen) {
+    expect(step.figureShown, JSON.stringify(step)).toBeGreaterThanOrEqual(6);
+    expect(step.shortShown, JSON.stringify(step)).toBeGreaterThanOrEqual(6);
+    // The shortfall gave way first: the figure is cut only once nothing narrower is left of it.
+    if (step.figureCut) {
+      expect(step.form, JSON.stringify(step)).toBe("arrow");
+    }
+  }
+});
+
+/**
  * `ah-kyy6`: the same unit as above, at the layout a player who never dragged a column sees. At
  * 1400 px the Silver column's default share is wide enough for the shortfall in words, so it opens
  * as `<N> short` rather than ah-ottr's narrow-column `\u25be<N>`.

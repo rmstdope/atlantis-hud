@@ -2508,7 +2508,7 @@ function UnitRow({
         {shortfall !== null ? (
           // Only the digits truncate: the ⚠ stays, and nothing outside the button clips its focus
           // ring (`ah-ottr`).
-          <span data-silver-figure className="min-w-0 truncate">
+          <span data-silver-figure className="min-w-[1ch] truncate">
             {figure}
           </span>
         ) : (
@@ -2928,12 +2928,13 @@ function UnitRow({
           silverFigureCell
         ) : (
           // One row, so a narrow column cuts the figure only after the shortfall has shrunk to
-          // `▾…` (`ah-ottr`): the shortfall never shrinks, the figure truncates.
+          // `▾` (`ah-ottr`, `ah-sa9p`): the shortfall never shrinks, the figure truncates - down to
+          // one character, its `…`, never to nothing.
           <span className="inline-flex max-w-full items-baseline">
             {warned ? (
               silverFigureCell
             ) : (
-              <span data-silver-figure className="min-w-0 truncate">
+              <span data-silver-figure className="min-w-[1ch] truncate">
                 {silverFigureCell}
               </span>
             )}

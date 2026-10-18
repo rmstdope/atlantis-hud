@@ -501,25 +501,35 @@ export function silverShortfall(shown: number | null, silver: UnitSilver | null)
 
 /**
  * How much of the shortfall a narrow Silver column can hold (`ah-ottr`): spelled out, then `▾`
- * and the number, then `▾` alone - so the figure is never what is cut first and a shortfall is
- * never hidden completely.
+ * and the number, then `▾…`, then the red `▾` alone (`ah-sa9p`) - so the figure is never what is
+ * cut first and a shortfall is never hidden completely.
  */
-export type ShortfallForm = "long" | "short" | "cut";
+export type ShortfallForm = "long" | "short" | "cut" | "arrow";
 
-/** What one form reads: `8650 short`, `▾8650`, `▾…`. */
+/** What one form reads: `8650 short`, `▾8650`, `▾…`, `▾`. */
 export function shortfallText(form: ShortfallForm, amount: number): string {
-  if (form === "long") {
-    return `${amount} short`;
+  switch (form) {
+    case "long":
+      return `${amount} short`;
+    case "short":
+      return `\u25be${amount}`;
+    case "cut":
+      return "\u25be\u2026";
+    case "arrow":
+      return "\u25be";
   }
-  return form === "short" ? `\u25be${amount}` : "\u25be\u2026";
 }
 
-/** The next form to try: one step narrower while the text overflows, and no narrower than `cut`. */
+const NARROWER: Record<ShortfallForm, ShortfallForm> = {
+  long: "short",
+  short: "cut",
+  cut: "arrow",
+  arrow: "arrow"
+};
+
+/** The next form to try: one step narrower while the text overflows, and no narrower than `▾`. */
 export function nextShortfallForm(form: ShortfallForm, overflowing: boolean): ShortfallForm {
-  if (!overflowing) {
-    return form;
-  }
-  return form === "long" ? "short" : "cut";
+  return overflowing ? NARROWER[form] : form;
 }
 
 declare const unitRowKeyBrand: unique symbol;
