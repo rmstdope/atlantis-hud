@@ -2817,6 +2817,11 @@ struct Working {
     /// could not pay for, filled by `apply_item_effects` and read by `apply_transport_phase`
     /// (`ah-7ale.4`).
     refused_shipments: std::collections::BTreeSet<(usize, usize)>,
+    /// `(sender index, 1-based document line)` of every refused `ALL SILV` shipment, with the
+    /// silver it would have taken as it ran - the ledger's figure, since this walk does not
+    /// spend silver on STUDY or CAST (`ah-7jsv`). Filled by `apply_item_effects`, read by
+    /// `goods_named`.
+    unshipped_silver: BTreeMap<(usize, usize), i64>,
     /// Every unit id the report names, ours and everyone else's. A target in here but not in
     /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls
     /// "which your report does not show" (`ah-bxgs`).
@@ -2970,6 +2975,7 @@ impl Working {
             ruleset,
             transports: Vec::new(),
             refused_shipments: std::collections::BTreeSet::new(),
+            unshipped_silver: BTreeMap::new(),
             shipping,
             known_units,
             shown_in_region,
@@ -3222,6 +3228,11 @@ impl Working {
             for line in &effect.refused_shipments {
                 if let Ok(line) = usize::try_from(*line) {
                     self.refused_shipments.insert((index, line));
+                }
+            }
+            for (line, left) in &effect.unshipped_silver {
+                if let Ok(line) = usize::try_from(*line) {
+                    self.unshipped_silver.insert((index, line), *left);
                 }
             }
         }
@@ -4318,6 +4329,26 @@ impl Working {
         }
     }
 
+    /// [`Self::goods_claimed`] for one refused line, with a refused `ALL SILV` naming the silver
+    /// `ALL` would have taken when the shipments run rather than the report's holding
+    /// (`ah-7jsv`). Where nothing would be left to take, the sentence names no amount and says the
+    /// order moves nothing.
+    fn goods_named(
+        &self,
+        pending: &PendingTransport,
+        moving: &[(String, String, i64)],
+    ) -> (i64, String) {
+        let (amount, tag) = self.goods_claimed(moving);
+        if !tag.eq_ignore_ascii_case("SILV") {
+            return (amount, tag);
+        }
+        match self.unshipped_silver.get(&(pending.sender, pending.line)) {
+            Some(&left) if left > 0 => (left, tag),
+            Some(_) => (0, String::new()),
+            None => (amount, tag),
+        }
+    }
+
     /// One phase of transport, over every queued line that belongs to it.
     ///
     /// Each unit's holdings as the phase opened are the allowance every send in this phase is
@@ -4374,7 +4405,7 @@ impl Working {
                 Self::transport_target(verdict.acceptance)
             {
                 // One record for the order, naming the goods only where there is a claim to make.
-                let (amount, tag) = self.goods_claimed(&moving);
+                let (amount, tag) = self.goods_named(pending, &moving);
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4396,7 +4427,7 @@ impl Working {
             let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
                 let (reason, reach_opt) = Self::refusal(refused);
-                let (amount, tag) = self.goods_claimed(&moving);
+                let (amount, tag) = self.goods_named(pending, &moving);
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4425,7 +4456,7 @@ impl Working {
                     .options
                     .emits(super::semantics::codes::TRANSPORT_OUT_OF_REACH)
                 {
-                    let (amount, tag) = self.goods_claimed(&moving);
+                    let (amount, tag) = self.goods_named(pending, &moving);
                     issues[pending.sender].push((
                         pending.sequence,
                         TransportTargetIssue {
