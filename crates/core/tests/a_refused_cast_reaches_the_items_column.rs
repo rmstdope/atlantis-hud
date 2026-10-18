@@ -60,9 +60,20 @@ fn refused_casts_in(report_text: &str, script: &str) -> Vec<RefusedCast> {
         &format!("{template}\nunit 683\n{script}\n"),
     )
     .expect("the ruleset loads");
-    common::expect_preview_row(&report_text, &preview, "683")
+    let orders = format!("{template}\nunit 683\n{script}\n");
+    // The line the CAST is written on, wherever the template leaves it (`ah-rjz2`).
+    let cast_line = orders
+        .lines()
+        .position(|line| line.starts_with("CAST"))
+        .map_or(0, |index| index as i64 + 1);
+    let mut casts = common::expect_preview_row(&report_text, &preview, "683")
         .refused_casts
-        .clone()
+        .clone();
+    for cast in &mut casts {
+        assert_eq!(cast.line, cast_line, "{cast:?}");
+        cast.line = 0;
+    }
+    casts
 }
 
 const WIND: &str = "summon wind [SWIN] 3 (180)";
@@ -72,6 +83,7 @@ fn a_refused_cast_short_of_a_material_reaches_the_preview() {
     assert_eq!(
         refused_casts(", 75 ironwood [IRWD]", WIND, "CAST Summon_Wind"),
         [RefusedCast {
+            line: 0,
             product: Some(RefusedProduct {
                 tag: "CLOU".to_string(),
                 name: "Cloudship".to_string(),

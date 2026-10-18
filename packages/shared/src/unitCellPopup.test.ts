@@ -4689,9 +4689,12 @@ describe("upkeep a faction-mate paid, for a unit that shares nothing", () => {
   });
 });
 
-// `ah-44at`: a CAST the game refuses reads the way a refused STUDY does. `data/SWIN` level 3 makes
-// a Cloudship [CLOU] "at a cost of 75 floater hides [FLOA] and 75 ironwood [IRWD]"; the worked
-// example is Ivanhoe (683), holding 75 ironwood and no hides, with nobody to lend him any.
+// `ah-44at`, revised by `ah-rjz2`: a CAST the game refuses takes nothing (`RunCreateArtifact`,
+// `spells.cpp`), so the core moves none of its materials and the popup draws no red figure: the
+// product is struck through with its reason, and a cast short of a material ends the hover with the
+// Items ⚠ sentence. `data/SWIN` level 3 makes a Cloudship [CLOU] "at a cost of 75 floater hides
+// [FLOA] and 75 ironwood [IRWD]"; the worked example is Ivanhoe (683), holding 75 ironwood and no
+// hides, with nobody to lend him any.
 describe("a refused cast in the items popup", () => {
   type Change = NonNullable<PreviewedUnit["itemChanges"]>[number];
   type Refused = NonNullable<PreviewedUnit["refusedCasts"]>[number];
@@ -4706,13 +4709,13 @@ describe("a refused cast in the items popup", () => {
     isMan: false
   });
   const cloudship = (short: Refused["short"], silverShort = 0): Refused => ({
+    line: 3,
     product: { tag: "CLOU", name: "Cloudship", fewest: 0, most: 1 },
     silverShort,
     short
   });
   const FLOA = (amount: number) => ({ tag: "FLOA", name: "floater hide", plural: "floater hides", amount });
   const IRWD = (amount: number) => ({ tag: "IRWD", name: "ironwood", plural: "ironwood", amount });
-  // Every `spent` name below is what the core emits: the catalogue's singular (`item_name`).
   const ivanhoe = (overrides: Partial<PreviewedUnit>) =>
     unit({ unitId: "683", name: "Ivanhoe", ...overrides });
   const popupOf = (overrides: Partial<PreviewedUnit>) =>
@@ -4723,114 +4726,47 @@ describe("a refused cast in the items popup", () => {
     change: { direction: "up", from: "none" },
     struck: true
   };
+  const ITEMS_WARNED =
+    "⚠ in the cell: a check warns about this unit's items. Select the unit to read it in the Problems panel.";
 
-  it("ends the missing material red, strikes the product through and says why", () => {
+  it("draws no missing material, strikes the product through, says why and ends with the ⚠", () => {
     const popup = popupOf({
       items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
-      previewChanges: [{ field: "items", original: "9571 SILV, 75 IRWD" }],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
-    expect(popup.lines).toEqual([
-      { label: "floater hides FLOA", value: "-75", change: { direction: "down", from: "none" } },
-      STRUCK_CLOUDSHIP,
-      { label: "ironwood IRWD", value: "75" }
-    ]);
-    expect(popup.notes).toEqual([
-      "floater hides: consumed 75 by a spell.",
-      "Cloudship: not created — the cast is 75 floater hides short."
-    ]);
-    expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides short."
-    );
+    expect(popup.lines).toEqual([STRUCK_CLOUDSHIP, { label: "ironwood IRWD", value: "75" }]);
+    expect(popup.notes).toEqual(["Cloudship: not created — the cast is 75 floater hides short."]);
+    expect(popup.warning).toBe(ITEMS_WARNED);
   });
 
-  it("names a single missing item in the singular", () => {
+  it("leaves a partly held material where it is", () => {
     const popup = popupOf({
-      items: [],
-      previewChanges: [{ field: "items", original: "" }],
-      itemChanges: [spent("FLOA", "floater hide", -1)],
-      refusedCasts: [cloudship([FLOA(1)])]
-    });
-    expect(popup.lines[0]?.label).toBe("floater hide FLOA");
-    expect(popup.notes[0]).toBe("floater hide: consumed 1 by a spell.");
-    expect(popup.warning).toBe("A red figure in the cell: this unit ends the month 1 floater hide short.");
-  });
-
-  it("groups a large red figure as the figure it is paired with", () => {
-    const popup = popupOf({
-      items: [],
-      previewChanges: [{ field: "items", original: "2000 FLOA" }],
-      itemChanges: [spent("FLOA", "floater hide", -3500)],
-      refusedCasts: [cloudship([FLOA(1500)])]
-    });
-    expect(popup.lines[0]).toMatchObject({
-      value: (-1500).toLocaleString(),
-      change: { direction: "down", from: (2000).toLocaleString() }
-    });
-  });
-
-  it("pairs from what the report listed when the items list did not change", () => {
-    const popup = popupOf({
-      items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
-      refusedCasts: [cloudship([FLOA(75)])]
-    });
-    expect(popup.lines[0]).toEqual({
-      label: "floater hides FLOA",
-      value: "-75",
-      change: { direction: "down", from: "none" }
-    });
-    expect(popup.lines[1]).toEqual(STRUCK_CLOUDSHIP);
-  });
-
-  it("ends a partly held material at its shortfall", () => {
-    const popup = popupOf({
-      items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
-      previewChanges: [{ field: "items", original: "50 FLOA, 75 IRWD" }],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
+      items: [
+        { name: "floater hides", tag: "FLOA", amount: 50 },
+        { name: "ironwood", tag: "IRWD", amount: 75 }
+      ],
       refusedCasts: [cloudship([FLOA(25)])]
     });
-    expect(popup.lines[0]).toEqual({
-      label: "floater hides FLOA",
-      value: "-25",
-      change: { direction: "down", from: "50" }
-    });
-    expect(popup.notes[1]).toBe("Cloudship: not created — the cast is 25 floater hides short.");
-    expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 25 floater hides short."
-    );
+    expect(popup.lines).toContainEqual({ label: "floater hides FLOA", value: "50" });
+    expect(popup.lines.some((line) => line.value.startsWith("-"))).toBe(false);
+    expect(popup.notes).toEqual(["Cloudship: not created — the cast is 25 floater hides short."]);
   });
 
-  it("names every short material in one red sentence, in the order of the lines", () => {
-    const popup = popupOf({
-      items: [],
-      previewChanges: [{ field: "items", original: "" }],
-      itemChanges: [spent("FLOA", "floater hide", -75), spent("IRWD", "ironwood", -75)],
-      refusedCasts: [cloudship([FLOA(75), IRWD(75)])]
-    });
-    expect(popup.lines.map((line) => `${line.label} ${line.value}`)).toEqual([
-      "floater hides FLOA -75",
-      "ironwood IRWD -75",
-      "Cloudship CLOU 0-1"
-    ]);
+  it("names every short material in the product's reason", () => {
+    const popup = popupOf({ items: [], refusedCasts: [cloudship([FLOA(75), IRWD(75)])] });
+    expect(popup.lines).toEqual([STRUCK_CLOUDSHIP]);
     expect(popup.notes).toEqual([
-      "floater hides: consumed 75 by a spell.",
-      "ironwood: consumed 75 by a spell.",
       "Cloudship: not created — the cast is 75 floater hides and 75 ironwood short."
     ]);
-    expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides and 75 ironwood short."
-    );
+    expect(popup.warning).toBe(ITEMS_WARNED);
   });
 
-  it("strikes a cast refused for silver through, naming the silver, and leaves its goods alone", () => {
+  it("strikes a cast refused for silver through, naming the silver, with no Items ⚠", () => {
     const popup = popupOf({
       items: [
         { name: "floater hides", tag: "FLOA", amount: 75 },
         { name: "ironwood", tag: "IRWD", amount: 75 }
       ],
-      previewChanges: [{ field: "items", original: "75 FLOA, 75 IRWD" }],
       refusedCasts: [cloudship([], 200)]
     });
     expect(popup.lines).toEqual([
@@ -4842,18 +4778,14 @@ describe("a refused cast in the items popup", () => {
     expect(popup.warning).toBeNull();
   });
 
-  it("names the silver for a cast short of both, and still ends the material red", () => {
+  it("names the silver for a cast short of both, and still carries the Items ⚠", () => {
     const popup = popupOf({
       items: [{ name: "ironwood", tag: "IRWD", amount: 75 }],
-      previewChanges: [{ field: "items", original: "75 IRWD" }],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)], 200)]
     });
-    expect(popup.lines[0]?.value).toBe("-75");
-    expect(popup.notes[1]).toBe("Cloudship: not created — the cast is 200 silver short.");
-    expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides short."
-    );
+    expect(popup.lines.some((line) => line.value.startsWith("-"))).toBe(false);
+    expect(popup.notes).toEqual(["Cloudship: not created — the cast is 200 silver short."]);
+    expect(popup.warning).toBe(ITEMS_WARNED);
   });
 
   it("leaves a cast that goes ahead as it is today", () => {
@@ -4868,7 +4800,6 @@ describe("a refused cast in the items popup", () => {
       ]
     });
     expect(popup.lines.some((line) => line.struck)).toBe(false);
-    expect(popup.lines.some((line) => line.value.startsWith("-"))).toBe(false);
     expect(popup.notes).toContain("Cloudship: created 0-1 by casting.");
     expect(popup.warning).toBeNull();
   });
@@ -4881,10 +4812,9 @@ describe("a refused cast in the items popup", () => {
       itemChanges: [
         spent("FLOA", "floater hide", -75),
         spent("IRWD", "ironwood", -75),
-        { ...spent("CLOU", "Cloudship", 1), cause: "cast-created" },
-        spent("FLOA", "floater hide", -75, 4)
+        { ...spent("CLOU", "Cloudship", 1), cause: "cast-created" }
       ],
-      refusedCasts: [cloudship([FLOA(75)])]
+      refusedCasts: [{ ...cloudship([FLOA(75)]), line: 4 }]
     });
     const cloudships = popup.lines.filter((line) => line.label === "Cloudship CLOU");
     expect(cloudships).toEqual([
@@ -4893,46 +4823,31 @@ describe("a refused cast in the items popup", () => {
     ]);
   });
 
-  it("gives a unit with nothing left its red line and sentences, never 'No items.'", () => {
-    const popup = popupOf({
-      items: [],
-      previewChanges: [{ field: "items", original: "" }],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
-      refusedCasts: [cloudship([FLOA(75)])]
-    });
-    expect(popup.lines).toHaveLength(2);
+  it("gives a caster with no items the struck line and the ⚠, never 'No items.'", () => {
+    const popup = popupOf({ items: [], refusedCasts: [cloudship([FLOA(75)])] });
+    expect(popup.lines).toEqual([STRUCK_CLOUDSHIP]);
     expect(popup.notes).not.toContain("No items.");
-    expect(popup.warning).not.toBeNull();
+    expect(popup.warning).toBe(ITEMS_WARNED);
   });
 
-  it("keeps the red and struck lines inside the cap on a crowded unit", () => {
+  it("keeps the struck line inside the cap on a crowded unit", () => {
     const many = Array.from({ length: 20 }, (_, index) => ({
       name: `good ${index}`,
       tag: `G${index}`,
       amount: 100 + index
     }));
-    const popup = popupOf({
-      items: many,
-      previewChanges: [
-        { field: "items", original: many.map((item) => `${item.amount} ${item.tag}`).join(", ") }
-      ],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
-      refusedCasts: [cloudship([FLOA(75)])]
-    });
-    expect(popup.lines[0]?.value).toBe("-75");
-    expect(popup.lines[1]?.struck).toBe(true);
+    const popup = popupOf({ items: many, refusedCasts: [cloudship([FLOA(75)])] });
+    expect(popup.lines[0]?.struck).toBe(true);
   });
 
-  it("says the red sentence before the partly-counted one", () => {
+  it("ends with the ⚠ sentence, after the partly-counted one", () => {
     const popup = popupOf({
       items: [],
-      previewChanges: [{ field: "items", original: "" }],
       uncounted: ["buy all HORS"],
-      itemChanges: [spent("FLOA", "floater hide", -75)],
       refusedCasts: [cloudship([FLOA(75)])]
     });
     expect(popup.warning).toBe(
-      "A red figure in the cell: this unit ends the month 75 floater hides short. “?” in the cell: this month is only partly counted, so these figures may be off."
+      `“?” in the cell: this month is only partly counted, so these figures may be off. ${ITEMS_WARNED}`
     );
   });
 });
@@ -5414,5 +5329,102 @@ describe("the month each column popup states", () => {
         expect(popup.notes).not.toContain(sentence);
       }
     }
+  });
+});
+
+// `ah-rjz2`: an order the game refuses for want of silver takes nothing, so the core leaves its
+// cost out of every figure and lists it in `refused`; the popup strikes it through and says why.
+describe("a refused order in the silver popup", () => {
+  const drone = (overrides: Partial<UnitSilver> = {}): UnitSilver =>
+    aUnitSilver({
+      held: 24,
+      income: 0,
+      lateIncome: 0,
+      expense: 0,
+      wantedForOrders: 0,
+      atMonthEnd: 24,
+      shortForOrders: 0,
+      upkeep: 10,
+      refused: [{ cause: "studied", line: 3, cost: 50, available: 24, afterSpending: false }],
+      ...overrides
+    });
+  const silverPopup = (silver: UnitSilver, silverWarned = true) =>
+    columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({ silver, silverWarned, countUpkeep: true })
+      )
+    );
+  const WARNED =
+    "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel.";
+
+  it("ends at what the game leaves, with the fee struck through and the reason under it", () => {
+    const popup = silverPopup(drone());
+    expect(popup.lines).toEqual([
+      { label: "silver", value: "14", change: { direction: "down", from: "24" } },
+      { label: "studied", value: "-50", struck: true },
+      { label: "upkeep", value: "-10", tone: "down" }
+    ]);
+    expect(popup.notes).toContain(
+      "studied: not paid — the STUDY is refused, as it costs 50 and this unit can draw on only 24. It does not work this month either."
+    );
+    expect(popup.warning).toBe(WARNED);
+    expect(popup.alert).toBeNull();
+  });
+
+  it("strikes the study after a purchase the month paid for", () => {
+    const popup = silverPopup(
+      drone({
+        held: 8,
+        expense: 5,
+        wantedForOrders: 5,
+        atMonthEnd: 3,
+        upkeep: 0,
+        changes: [{ amount: -5, cause: "bought", line: 2, other: null }],
+        refused: [{ cause: "studied", line: 3, cost: 10, available: 3, afterSpending: true }]
+      })
+    );
+    expect(popup.lines.map((line) => [line.label, line.value, line.struck ?? false])).toEqual([
+      ["silver", "3", false],
+      ["bought", "-5", false],
+      ["studied", "-10", true]
+    ]);
+    expect(popup.notes).toContain(
+      "studied: not paid — the STUDY is refused, as it costs 10 and only 3 is left to pay it then. It does not work this month either."
+    );
+  });
+
+  it("strikes a cast's silver through as 'paid to cast'", () => {
+    const popup = silverPopup(
+      drone({
+        held: 50,
+        atMonthEnd: 50,
+        upkeep: 0,
+        refused: [{ cause: "cast-spent", line: 2, cost: 200, available: 50, afterSpending: false }]
+      })
+    );
+    expect(popup.lines).toContainEqual({ label: "paid to cast", value: "-200", struck: true });
+    expect(popup.notes).toContain(
+      "paid to cast: not paid — the CAST is refused, as it costs 200 and this unit can draw on only 50."
+    );
+  });
+
+  it("names nothing struck for a month that cannot be added up", () => {
+    const popup = silverPopup(drone({ doubt: "unpriced-skill", atMonthEnd: null, income: null }));
+    expect(popup.lines.some((line) => line.struck)).toBe(false);
+  });
+
+  it("strikes nothing for a study that goes ahead", () => {
+    const popup = silverPopup(
+      drone({
+        expense: 50,
+        atMonthEnd: -26,
+        refused: [],
+        changes: [{ amount: -50, cause: "studied", line: 3, other: null }]
+      }),
+      false
+    );
+    expect(popup.lines.some((line) => line.struck)).toBe(false);
   });
 });

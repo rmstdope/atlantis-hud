@@ -30,7 +30,6 @@ import {
 import { rowKeyOf } from "./unitTable";
 import { withoutSilver } from "./silverTag";
 import { itemCellParts } from "./unfinishedMark";
-import type { ShortItem } from "./refusedCast";
 import { previewPairs, type PreviewPair } from "./unitPreviewRows";
 
 /**
@@ -359,10 +358,9 @@ export function changeFor(
 export function formatItems(
   items: readonly ItemAmount[],
   created: readonly CreatedItem[] = [],
-  short: readonly ShortItem[] = [],
   options: { withSilver?: boolean } = {}
 ): string {
-  return itemCellParts(items, created, short, options)
+  return itemCellParts(items, created, options)
     .map((part) => part.text)
     .join(", ");
 }

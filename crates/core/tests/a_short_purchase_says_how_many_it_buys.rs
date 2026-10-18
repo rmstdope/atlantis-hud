@@ -74,10 +74,10 @@ fn a_purchase_it_can_pay_none_of_buys_none() {
 fn a_shortfall_on_anything_but_a_purchase_carries_no_purchase() {
     // Without its $50 claim 18642 holds nothing to pay its study with.
     let unit = seven_of_eight_under("", &[("@claim 50\n@study obse", "@study obse")]);
-    assert!(
-        unit.short_for_orders.is_some_and(|short| short > 0),
-        "18642 holds no silver of its own, so its study is short: {unit:?}"
-    );
-    assert_eq!(unit.short_on, Some(SilverSpender::Study), "{unit:?}");
+    // 18642 holds no silver of its own, so its study is refused: carried on its own rather than
+    // as a shortfall, so nothing is named and no purchase carried (`ah-rjz2`).
+    assert_eq!(unit.short_for_orders, Some(0), "{unit:?}");
+    assert_eq!(unit.short_on, None, "{unit:?}");
+    assert_eq!(unit.refused.len(), 1, "{unit:?}");
     assert_eq!(unit.short_buy, None, "{unit:?}");
 }

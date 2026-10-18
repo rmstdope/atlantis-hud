@@ -78,20 +78,23 @@ fn the_silver_column_gives_the_whole_purse_and_says_the_study_is_short() {
 
         assert_eq!(silver.doubt, None, "{script:?}: the month is priced");
         assert_eq!(silver.income, Some(0), "{script:?}: nothing comes in");
+        // The study has nothing left to pay it, so the game refuses it and takes nothing; the
+        // column carries it on its own rather than as a shortfall (`ah-rjz2`).
         assert_eq!(
             silver.expense,
-            Some(200),
-            "{script:?}: 100 given away and 100 studied"
-        );
-        assert_eq!(
-            silver.at_month_end,
-            Some(-100),
-            "{script:?}: the study is unpaid for"
-        );
-        assert_eq!(
-            silver.short_for_orders,
             Some(100),
-            "{script:?}: and that is what the shortfall says"
+            "{script:?}: 100 given away, and the refused study takes nothing"
+        );
+        assert_eq!(silver.at_month_end, Some(0), "{script:?}: all given away");
+        assert_eq!(silver.short_for_orders, Some(0), "{script:?}");
+        assert_eq!(
+            silver
+                .refused
+                .iter()
+                .map(|spend| (spend.cost, spend.available))
+                .collect::<Vec<_>>(),
+            [(100, 0)],
+            "{script:?}: the study is refused"
         );
 
         let received = review

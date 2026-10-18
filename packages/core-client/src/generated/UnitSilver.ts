@@ -3,6 +3,7 @@ import type { BuyAllShown } from "./BuyAllShown";
 import type { FormedSubject } from "./FormedSubject";
 import type { NoStudyFee } from "./NoStudyFee";
 import type { ProductionCap } from "./ProductionCap";
+import type { RefusedSpend } from "./RefusedSpend";
 import type { SharedSilverCoverage } from "./SharedSilverCoverage";
 import type { ShipmentPriced } from "./ShipmentPriced";
 import type { ShortBuy } from "./ShortBuy";
@@ -472,4 +473,13 @@ sharedSilverCoverage?: SharedSilverCoverage,
  * [`UnitSilver::buy_all`] is: a partial ledger under a figure that is not a number would
  * invite a consumer to add the entries up and disagree with the column beside it.
  */
-changes: Array<SilverChange>, };
+changes: Array<SilverChange>, 
+/**
+ * This unit's orders the game refuses as a whole for want of silver - a `STUDY`
+ * (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough funds.") or a create-artifact `CAST`
+ * (`spells.cpp`: `RunCreateArtifact`) - in document order (`ah-rjz2`). A refused order takes
+ * nothing, so its cost is in no total and no entry of [`Self::changes`]: it is carried here
+ * for the interface to strike through, with what the unit could draw on. Empty for every unit
+ * whose orders all go ahead.
+ */
+refused: Array<RefusedSpend>, };

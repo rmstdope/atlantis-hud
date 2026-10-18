@@ -100,17 +100,18 @@ fn rows() -> Vec<Row> {
         },
         // The one row the tax split did **not** cause: even the hopeful purse - the whole $100
         // pool - buys no $200 amulet, so `ah-ofpb.4`'s floor still charges for one and the shipped
-        // `not-enough-silver` warning still fires. Unchanged from what Psylocke measured
-        // (`castMade=0`, `cappedBy=Silver`, `monthEnd=-150`), and what the parent `ah-ud89`'s
-        // *Agreed with the navigator* says must stay that way.
+        // `not-enough-silver` warning still fires. The game refuses the cast and takes nothing
+        // (`spells.cpp`: `RunCreateArtifact`), so the column hands the $200 back and carries the
+        // cast as refused: the navigator's answer of 2026-10-17 (`ah-rjz2`) supersedes the
+        // `monthEnd=-150` that `ah-ud89` kept.
         Row {
             pool: 100,
             alone: false,
             income: 50,
             cast_made: 0,
             capped_by: Some(ProductionCap::Silver),
-            expense: 200,
-            at_month_end: -150,
+            expense: 0,
+            at_month_end: 50,
             amulets: 0,
         },
         // The control: one taxer at pool $200 is uncontended, so nothing moved for it.
