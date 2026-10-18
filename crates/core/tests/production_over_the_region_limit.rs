@@ -72,29 +72,93 @@ fn the_refused_swamps_floater_hides_are_neither_produced_nor_shipped() {
     );
 }
 
-#[test]
-fn the_region_limit_warning_names_the_refused_swamp() {
+/// `(unit, line text, message)` of every region-limit warning `orders` draws, in reported order.
+fn region_limit_warnings(orders: &str) -> Vec<(String, String, String)> {
     let ruleset = ruleset();
     let text = atlantis_hud_fixtures::G5_F21_T24.text;
     let mut parsed = parse_report_full(text);
     classify_units(&mut parsed, &ruleset);
+    let lines: Vec<&str> = orders.lines().collect();
 
-    let review = review_turn(
-        &parsed,
-        &template(text),
-        Some(&ruleset),
-        CheckOptions::default(),
-    );
-
-    let warnings: Vec<_> = review
+    review_turn(&parsed, orders, Some(&ruleset), CheckOptions::default())
         .findings
-        .iter()
+        .into_iter()
         .filter(|finding| finding.code.as_str() == "too-many-trade-regions")
-        .collect();
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
+        .map(|finding| {
+            let line = finding
+                .line
+                .map(|line| lines[line - 1].to_string())
+                .unwrap_or_default();
+            (finding.unit_id.unwrap_or_default(), line, finding.message)
+        })
+        .collect()
+}
+
+fn warning(unit: &str, line: &str, message: &str) -> (String, String, String) {
+    (unit.to_string(), line.to_string(), message.to_string())
+}
+
+/// Each refused order is warned on its own line, and the faction-wide sentence sits on the first
+/// refused order the game reaches - not on Drones (2404), whose TAX the limit lets through
+/// (`ah-jhc2`). Units 9579 and 9557 fish from the oceans the swamp's production is walked after,
+/// which the limit lets through too: only the swamp is refused.
+#[test]
+fn each_refused_order_is_warned_and_the_sentence_sits_on_the_first() {
+    let short =
+        "this faction may tax and trade in 10 regions and this one is past the limit, so this \
+                 PRODUCE will be refused";
+    let warnings = region_limit_warnings(&template(atlantis_hud_fixtures::G5_F21_T24.text));
+
     assert_eq!(
-        warnings[0].message,
-        "PRODUCE, TAX and PILLAGE orders in 11 regions; this faction may tax and trade in 10, so \
-         1 region's orders will be refused: swamp (35,47)"
+        warnings,
+        [
+            warning("11852", "@produce floa", short),
+            warning(
+                "11852",
+                "@produce floa",
+                "PRODUCE, TAX and PILLAGE orders in 11 regions; this faction may tax and trade in \
+                 10, so 1 region's orders will be refused: swamp (35,47)"
+            ),
+            warning("11853", "@produce floa", short),
+        ]
     );
+    assert!(warnings.iter().all(|(unit, ..)| unit != "2404"));
+}
+
+/// Drone (9935) taxing the plain (34,50): with two more taxed regions ahead of it the tax walk
+/// spends the limit before it reaches the plain, so its TAX is refused and warned on its own line.
+#[test]
+fn a_refused_tax_in_the_plain_is_warned_on_drone_9935() {
+    let mut orders = template(atlantis_hud_fixtures::G5_F21_T24.text);
+    for unit in ["9935", "8572", "9936"] {
+        orders = orders.replace(&format!("unit {unit}\n"), &format!("unit {unit}\nTAX\n"));
+    }
+
+    let warnings = region_limit_warnings(&orders);
+    let on_9935: Vec<_> = warnings
+        .iter()
+        .filter(|(unit, ..)| unit == "9935")
+        .collect();
+
+    assert_eq!(
+        on_9935,
+        [
+            &warning(
+                "9935",
+                "TAX",
+                "this faction may tax and trade in 10 regions and this one is past the limit, so \
+                 this TAX will be refused"
+            ),
+            // The tax phase runs before any production, so the plain is the first refused region
+            // the game reaches, and its TAX carries the sentence.
+            &warning(
+                "9935",
+                "TAX",
+                "PRODUCE, TAX and PILLAGE orders in 14 regions; this faction may tax and trade in \
+                 10, so 4 regions' orders will be refused: plain (34,50), ocean (38,44), ocean \
+                 (37,45), swamp (35,47)"
+            ),
+        ]
+    );
+    assert!(warnings.iter().all(|(unit, ..)| unit != "2404"));
 }
