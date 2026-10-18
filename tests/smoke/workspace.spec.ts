@@ -2677,9 +2677,11 @@ test("the interface is not blocked while the core reads a report", async ({ page
 
   // Reported so the figure this threshold is calibrated against can be read off a CI run rather
   // than guessed at. A guard calibrated on the fastest machine available is a guard that fails
-  // everywhere else, so the number below comes from CI: 400ms for the web project and 464ms for
-  // the desktop shell. 900 sits about twice the slower of those, and below the 1204-1945ms this
-  // same measurement gave before the change.
+  // everywhere else, so the figures below come from CI. 900 was set at about twice 400ms (web) and
+  // 464ms (desktop shell), below the 1204-1945ms this measurement gave before the core cached its
+  // parse - but those figures, and the 900ms that later turned this red, carried the reload's
+  // checks. Measuring the import alone, CI gave 122ms (web) and 95ms (desktop shell) (`ah-q767`),
+  // so 900 now has room for a large regression only.
   console.log(`report load: worst main-thread block ${Math.round(worstBlockMs)}ms`);
   expect(worstBlockMs).toBeLessThan(900);
 

@@ -1035,6 +1035,9 @@ pub struct Ruleset {
     pub movement: MovementRules,
     pub risk: RiskThresholds,
     pub gaps: Gaps,
+    /// The item catalogue. Edit it only before the first [`Ruleset::item_spelled`] lookup, or on a
+    /// clone: that lookup indexes it once, and a release build answers later lookups from that
+    /// index without looking at the catalogue again.
     pub items: BTreeMap<String, ItemEntry>,
     /// Empty for a ruleset generated before study costs were scraped. A missing catalogue means
     /// nothing can be priced, not that everything is free.
