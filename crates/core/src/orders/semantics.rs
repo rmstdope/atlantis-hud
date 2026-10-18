@@ -28212,7 +28212,11 @@ fn check_faction(
     findings: &mut Vec<Finding>,
 ) {
     check_quartermasters(report, hexes, ruleset, applied, options, findings);
-    check_trade_regions(report, hexes, ruleset, applied, options, findings);
+    // Ahead of everything already found, so that the line sort `validate_turn` runs - stable -
+    // shows a region-limit warning before any other warning on the same order (`ah-jhc2`).
+    let mut regional = Vec::new();
+    check_trade_regions(report, hexes, ruleset, applied, options, &mut regional);
+    findings.splice(0..0, regional);
     check_claims(report, hexes, ruleset, options, findings);
 }
 
@@ -28288,21 +28292,6 @@ fn spends_faction_allowance(ordered: &Ordered<'_>) -> bool {
     ordered.formed.is_none() || ordered.after_the_market().men > 0
 }
 
-/// A counting order's place: the hex, the unit and the line a region-limit warning sits on.
-type RegionAnchor<'a, 'b> = (&'a Hex<'b>, &'a Ordered<'b>, &'a PlacedIntent);
-
-/// Keeps whichever of `anchor` and `candidate` comes first in the document.
-fn earlier_anchor<'a, 'b>(
-    anchor: Option<RegionAnchor<'a, 'b>>,
-    candidate: Option<RegionAnchor<'a, 'b>>,
-) -> Option<RegionAnchor<'a, 'b>> {
-    match (anchor, candidate) {
-        (Some(first), Some(second)) if second.2.line < first.2.line => Some(second),
-        (None, second) => second,
-        (first, _) => first,
-    }
-}
-
 /// One region limit judged: `kinds` is how the sentence names the counting orders, `may` and
 /// `may_not` what the faction may do, and `refused` what the excess costs.
 struct RegionLimit {
@@ -28317,47 +28306,142 @@ struct RegionLimit {
     refused: &'static str,
 }
 
-/// Pushes one `too-many-trade-regions` finding on `anchor` when `limit` is exceeded, or nothing
-/// when there is no line to sit on (a hexless finding is dropped by the client on purpose,
-/// `orderEditor.ts:194`).
-fn push_region_finding(
-    anchor: Option<RegionAnchor<'_, '_>>,
+impl RegionLimit {
+    /// The faction-wide sentence, or `None` while the orders stay within the limit.
+    fn sentence(&self) -> Option<String> {
+        let used = i64::try_from(self.used).unwrap_or(i64::MAX);
+        let allowance = self.allowance;
+        if used <= allowance {
+            return None;
+        }
+        let Self {
+            kinds,
+            may,
+            may_not,
+            refused,
+            ..
+        } = self;
+        Some(if allowance == 0 {
+            format!(
+                "this faction may not {may_not} in any region, so every {kinds} order will be \
+                 refused"
+            )
+        } else {
+            let excess = used - allowance;
+            let regions = if excess == 1 { "region's" } else { "regions'" };
+            let named = if self.refused_in.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", self.refused_in.join(", "))
+            };
+            format!(
+                "{kinds} orders in {used} regions; this faction may {may} in {allowance}, so \
+                 {excess} {regions} {refused} will be refused{named}"
+            )
+        })
+    }
+
+    /// The short line on one refused order (`ah-jhc2`): that this order is one of those refused.
+    fn short_line(&self, kind: RegionUseKind) -> String {
+        let order = match kind {
+            RegionUseKind::Produce => "this PRODUCE",
+            RegionUseKind::Tax => "this TAX",
+            RegionUseKind::Pillage => "this PILLAGE",
+            RegionUseKind::TaxByFlag => "this unit's taxing",
+        };
+        let Self {
+            allowance,
+            may,
+            may_not,
+            ..
+        } = self;
+        if *allowance == 0 {
+            format!("this faction may not {may_not} in any region, so {order} will be refused")
+        } else {
+            let regions = if *allowance == 1 { "region" } else { "regions" };
+            format!(
+                "this faction may {may} in {allowance} {regions} and this one is past the limit, \
+                 so {order} will be refused"
+            )
+        }
+    }
+}
+
+/// Warns every use in `refused` - the uses one limit refuses, each with the position of its
+/// region in that limit's walk - on its own line, and puts the limit's faction-wide sentence
+/// directly after the short line on the first refused order the game reaches (`ah-jhc2`).
+///
+/// A use sits on its order line, or on its `unit` line when it taxes by flag with no TAX line. A
+/// flag taxer with no block in the document has no line to sit on: it is skipped, and the
+/// sentence goes to the next refused order the game reaches (a hexless finding is dropped by the
+/// client on purpose, `orderEditor.ts:194`).
+fn push_region_findings(
+    mut refused: Vec<(usize, &RegionUse<'_, '_>)>,
     limit: &RegionLimit,
     findings: &mut Vec<Finding>,
 ) {
-    let Some((hex, ordered, placed)) = anchor else {
+    let Some(sentence) = limit.sentence() else {
         return;
     };
-    let used = i64::try_from(limit.used).unwrap_or(i64::MAX);
-    let allowance = limit.allowance;
-    if used <= allowance {
-        return;
+    let line_of = |used: &RegionUse<'_, '_>| {
+        used.placed
+            .map(|placed| placed.line)
+            .or(used.ordered.block_line)
+    };
+    refused.retain(|(_, used)| line_of(used).is_some());
+    // The game reaches the regions in walk order, and within one region it pillages before it
+    // taxes and taxes before it produces (`region_refusals`).
+    let rank = |kind: RegionUseKind| match kind {
+        RegionUseKind::Pillage => 0,
+        RegionUseKind::Tax | RegionUseKind::TaxByFlag => 1,
+        RegionUseKind::Produce => 2,
+    };
+    let first = refused
+        .iter()
+        .min_by_key(|(position, used)| (*position, rank(used.kind), line_of(used)))
+        .map(|(_, used)| std::ptr::from_ref::<RegionUse<'_, '_>>(*used));
+    // A unit with several PRODUCE lines runs only one of them (`rules/produce`: a month-long
+    // order spends the month), but the agreed experience warns each line of a refused producer:
+    // none of them will produce. The lines that lost the month are never where the game reaches
+    // the region, so they never carry the sentence.
+    let mut lines: Vec<(usize, &RegionUse<'_, '_>, Option<&PlacedIntent>)> = Vec::new();
+    for (_, used) in &refused {
+        lines.push((line_of(used).unwrap_or_default(), *used, used.placed));
+        if used.kind == RegionUseKind::Produce {
+            for placed in used.ordered.all_intents.iter().filter(|placed| {
+                matches!(
+                    placed.intent,
+                    Intent::Produce { .. } | Intent::MonthLong("PRODUCE")
+                ) && !used
+                    .ordered
+                    .intents
+                    .iter()
+                    .any(|kept| kept.line == placed.line)
+            }) {
+                lines.push((placed.line, *used, Some(placed)));
+            }
+        }
     }
-    let RegionLimit {
-        kinds,
-        may,
-        may_not,
-        refused,
-        ..
-    } = limit;
-    let message = if allowance == 0 {
-        format!(
-            "this faction may not {may_not} in any region, so every {kinds} order will be refused"
-        )
-    } else {
-        let excess = used - allowance;
-        let regions = if excess == 1 { "region's" } else { "regions'" };
-        let named = if limit.refused_in.is_empty() {
-            String::new()
-        } else {
-            format!(": {}", limit.refused_in.join(", "))
+    lines.sort_by_key(|(line, ..)| *line);
+    for (_, used, placed) in lines {
+        let finding = |message: String| match placed {
+            Some(placed) => used.ordered.finding(
+                used.hex,
+                codes::TOO_MANY_TRADE_REGIONS,
+                message,
+                Some(placed),
+            ),
+            None => used
+                .ordered
+                .finding_at_block(used.hex, codes::TOO_MANY_TRADE_REGIONS, message),
         };
-        format!(
-            "{kinds} orders in {used} regions; this faction may {may} in {allowance}, so {excess} \
-             {regions} {refused} will be refused{named}"
-        )
-    };
-    findings.push(ordered.finding(hex, codes::TOO_MANY_TRADE_REGIONS, message, Some(placed)));
+        findings.push(finding(limit.short_line(used.kind)));
+        if placed.map(|placed| placed.line) == used.placed.map(|placed| placed.line)
+            && first == Some(std::ptr::from_ref(used))
+        {
+            findings.push(finding(sentence.clone()));
+        }
+    }
 }
 
 /// Which kind of order uses a tax or trade slot.
@@ -28675,11 +28759,9 @@ fn region_limit_refusals(
 /// engine refuses that whole region's orders.
 ///
 /// Which region loses is the engine's walk, and [`region_refusals`] follows it, so the warning
-/// names the regions refused after the count and the allowance (`ah-gcrc`). It belongs to the
-/// faction rather than to any one region, and every finding needs a hex - a hexless one is dropped
-/// by the client on purpose (`orderEditor.ts:194`). So it lands on the first line in the document
-/// that counts toward the limit it warns about: one line for one mistake, on something the player
-/// can click.
+/// names the regions refused after the count and the allowance (`ah-gcrc`). Every order the limit
+/// refuses is warned on its own line, and the faction-wide sentence sits beside the first of them
+/// the game reaches (`ah-jhc2`): an order the limit lets through carries nothing.
 fn check_trade_regions(
     report: &ParsedReport,
     hexes: &[(Hex<'_>, Ledger<'_>)],
@@ -28699,30 +28781,22 @@ fn check_trade_regions(
     let mut producing: BTreeSet<&str> = BTreeSet::new();
     // TAX, the taxing flag, and PILLAGE.
     let mut taxing: BTreeSet<&str> = BTreeSet::new();
-    let mut first_produce: Option<RegionAnchor<'_, '_>> = None;
-    let mut first_tax_or_pillage: Option<RegionAnchor<'_, '_>> = None;
 
     let uses = region_uses(hexes.iter().map(|(hex, _)| hex), ruleset);
-    // Only what reaches `ActivityCheck` can spend a region, so only that is counted and anchors
-    // the warning (`ah-lb2o`): an order the engine refuses first is another warning's to name.
-    for used in uses
+    // Only what reaches `ActivityCheck` can spend a region, so only that is counted and warned
+    // (`ah-lb2o`): an order the engine refuses first is another warning's to name.
+    let reaching: Vec<&RegionUse<'_, '_>> = uses
         .iter()
         .filter(|used| reaches_activity_check(used, ruleset))
-    {
-        let anchor = used.placed.map(|placed| (used.hex, used.ordered, placed));
-        match used.kind {
-            RegionUseKind::Produce => {
-                if let Some(region) = used.region {
-                    producing.insert(region.region_id.as_str());
-                }
-                first_produce = earlier_anchor(first_produce, anchor);
-            }
-            RegionUseKind::Tax | RegionUseKind::TaxByFlag | RegionUseKind::Pillage => {
-                if let Some(region) = used.region {
-                    taxing.insert(region.region_id.as_str());
-                }
-                first_tax_or_pillage = earlier_anchor(first_tax_or_pillage, anchor);
-            }
+        .collect();
+    for used in &reaching {
+        let Some(region) = used.region else {
+            continue;
+        };
+        if used.kind == RegionUseKind::Produce {
+            producing.insert(region.region_id.as_str());
+        } else {
+            taxing.insert(region.region_id.as_str());
         }
     }
     let refusals = region_refusals(report, &uses, allowances, ruleset);
@@ -28738,25 +28812,51 @@ fn check_trade_regions(
         }
         named
     };
+    let position = |regions: &[&ReportRegion], region: &ReportRegion| {
+        regions
+            .iter()
+            .position(|other| other.region_id == region.region_id)
+    };
+    // The reaching uses of `produce` (or of the tax kinds) whose region `regions` refuses, each
+    // with that region's place in the walk plus `offset`.
+    let refused_uses = |produce: bool, regions: &[&ReportRegion], offset: usize| {
+        reaching
+            .iter()
+            .filter(|used| (used.kind == RegionUseKind::Produce) == produce)
+            .filter_map(|used| {
+                let at = position(regions, used.region?)?;
+                Some((offset + at, *used))
+            })
+            .collect::<Vec<_>>()
+    };
 
     match allowances {
-        RegionAllowances::Pooled(allowance) => push_region_finding(
-            earlier_anchor(first_produce, first_tax_or_pillage),
-            &RegionLimit {
-                allowance,
-                used: producing.union(&taxing).count(),
-                refused_in: labels(&[refusals.taxing, refusals.producing].concat()),
-                kinds: "PRODUCE, TAX and PILLAGE",
-                may: "tax and trade",
-                may_not: "tax or trade",
-                refused: "orders",
-            },
-            findings,
-        ),
+        RegionAllowances::Pooled(allowance) => {
+            // The tax phase walks first, so its refused regions come first in the game's order.
+            let mut refused = refused_uses(false, &refusals.taxing, 0);
+            refused.extend(refused_uses(
+                true,
+                &refusals.producing,
+                refusals.taxing.len(),
+            ));
+            push_region_findings(
+                refused,
+                &RegionLimit {
+                    allowance,
+                    used: producing.union(&taxing).count(),
+                    refused_in: labels(&[refusals.taxing, refusals.producing].concat()),
+                    kinds: "PRODUCE, TAX and PILLAGE",
+                    may: "tax and trade",
+                    may_not: "tax or trade",
+                    refused: "orders",
+                },
+                findings,
+            );
+        }
         RegionAllowances::Separate { tax, trade } => {
             if let Some(allowance) = trade {
-                push_region_finding(
-                    first_produce,
+                push_region_findings(
+                    refused_uses(true, &refusals.producing, 0),
                     &RegionLimit {
                         allowance,
                         used: producing.len(),
@@ -28770,8 +28870,8 @@ fn check_trade_regions(
                 );
             }
             if let Some(allowance) = tax {
-                push_region_finding(
-                    first_tax_or_pillage,
+                push_region_findings(
+                    refused_uses(false, &refusals.taxing, 0),
                     &RegionLimit {
                         allowance,
                         used: taxing.len(),
@@ -76506,6 +76606,15 @@ BUILD
             .collect()
     }
 
+    /// The faction-wide sentences among the region-limit findings, without the short line each
+    /// refused order carries (`ah-jhc2`).
+    fn trade_sentences(findings: &[Finding]) -> Vec<&Finding> {
+        trade_findings(findings)
+            .into_iter()
+            .filter(|finding| !finding.message.contains(", so this "))
+            .collect()
+    }
+
     #[test]
     fn pillaging_counts_toward_a_pooled_regions_counter() {
         let regions = vec![
@@ -76518,9 +76627,11 @@ BUILD
 
         // The pillaged region, listed last, is recorded first (`RunPillageOrders` runs in the tax
         // phase), so the second producing region is the one refused.
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let sentences = trade_sentences(&findings);
+        assert_eq!(sentences.len(), 1, "{sentences:?}");
+        assert_eq!(sentences[0].unit_id.as_deref(), Some("6"));
         assert_eq!(
-            findings[0].message,
+            sentences[0].message,
             "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
              1 region's orders will be refused: mountain (8,53)"
         );
@@ -76535,13 +76646,15 @@ BUILD
         let orders = "unit 5\nAVOID 1\nunit 6\nPILLAGE\nunit 5\nTAX\n";
         let findings = check_trade(regions, orders, "Regions", 1);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
-        assert_eq!(findings[0].unit_id.as_deref(), Some("6"));
-        assert_eq!(findings[0].region_id, "1:8,53");
+        // The PILLAGE is walked first and fits, so unit 5's TAX is the order refused.
+        let sentences = trade_sentences(&findings);
+        assert_eq!(sentences.len(), 1, "{sentences:?}");
+        assert_eq!(sentences[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(sentences[0].region_id, "1:7,53");
     }
 
     #[test]
-    fn a_flag_taxer_counts_but_the_warning_sits_on_the_first_real_line() {
+    fn a_refused_flag_taxer_with_no_block_leaves_nothing_to_warn_on() {
         let regions = vec![
             region_at(
                 "1:7,53",
@@ -76553,9 +76666,9 @@ BUILD
         ];
         let findings = check_trade(regions, "unit 6\nPILLAGE\n", "Regions", 1);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
-        assert_eq!(findings[0].unit_id.as_deref(), Some("6"));
-        assert!(findings[0].message.contains("in 2 regions"));
+        // The PILLAGE is walked first and fits; the refused order is unit 5's taxing, which has no
+        // line in the document. Unit 6's PILLAGE is not refused, so it carries nothing (`ah-jhc2`).
+        assert!(trade_findings(&findings).is_empty(), "{findings:?}");
     }
 
     #[test]
@@ -76618,7 +76731,8 @@ BUILD
         let findings =
             check_trade_statuses(regions, orders, &[("Tax Regions", 1), ("Trade Regions", 5)]);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
         assert_eq!(
             findings[0].message,
@@ -76658,11 +76772,9 @@ BUILD
         let findings =
             check_trade_statuses(regions, orders, &[("Tax Regions", 1), ("Trade Regions", 1)]);
 
-        assert_eq!(
-            codes(&findings),
-            ["too-many-trade-regions", "too-many-trade-regions"]
-        );
-        assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("6"));
         assert_eq!(
             findings[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
@@ -76690,7 +76802,8 @@ BUILD
             &[("Tax Regions", 0), ("Trade Regions", 5)],
         );
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
             "this faction may not tax in any region, so every TAX and PILLAGE order will be refused"
@@ -76722,7 +76835,8 @@ BUILD
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Trade Regions", 2);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
             "PRODUCE orders in 3 regions; this faction may trade in 2, so 1 region's production \
@@ -76739,7 +76853,8 @@ BUILD
         let findings = check_trade(regions, orders, "Trade Regions", 1);
 
         // The fisherman produces where the fleet arrives, the ocean listed after the home hex.
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
@@ -76790,10 +76905,9 @@ BUILD
     }
 
     #[test]
-    fn the_warning_lands_on_the_first_produce_in_the_document() {
-        // The first PRODUCE in the document is unit 6's, in the second region - deliberately not
-        // the first region, so the test cannot pass by accident on "the first region" instead of
-        // "the first PRODUCE line".
+    fn the_sentence_lands_on_the_refused_produce_not_the_first_in_the_document() {
+        // The first PRODUCE in the document is unit 6's, in the second region, which fits. The
+        // third region is the one refused, so the sentence sits on unit 7's PRODUCE (`ah-jhc2`).
         let regions = vec![
             grain_region("1:7,53", 7, 53, vec![farmer("5")]),
             grain_region("1:8,53", 8, 53, vec![farmer("6")]),
@@ -76803,9 +76917,10 @@ BUILD
                       unit 5\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Trade Regions", 2);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
-        assert_eq!(findings[0].unit_id.as_deref(), Some("6"));
-        assert_eq!(findings[0].region_id, "1:8,53");
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].unit_id.as_deref(), Some("7"));
+        assert_eq!(findings[0].region_id, "1:9,53");
     }
 
     #[test]
@@ -76820,7 +76935,7 @@ BUILD
                       unit 7\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Trade Regions", 2);
 
-        assert!(findings[0].message.ends_with(
+        assert!(trade_sentences(&findings)[0].message.ends_with(
             "so 2 regions' production will be refused: mountain (8,53), mountain (9,53)"
         ));
     }
@@ -76835,11 +76950,306 @@ BUILD
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nTAX\n";
         let findings = check_trade(regions, orders, "Regions", 2);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(
             findings[0].message,
             "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
              1 region's orders will be refused: mountain (8,53)"
+        );
+    }
+
+    // --- each refused order is warned on its own line (`ah-jhc2`) -------------------------------
+
+    /// `(unit, line, message)` of every region-limit finding, in the order they are reported.
+    fn trade_lines(findings: &[Finding]) -> Vec<(String, Option<usize>, String)> {
+        trade_findings(findings)
+            .into_iter()
+            .map(|finding| {
+                (
+                    finding.unit_id.clone().unwrap_or_default(),
+                    finding.line,
+                    finding.message.clone(),
+                )
+            })
+            .collect()
+    }
+
+    fn row(unit: &str, line: usize, message: &str) -> (String, Option<usize>, String) {
+        (unit.to_string(), Some(line), message.to_string())
+    }
+
+    #[test]
+    fn every_refused_produce_is_warned_on_its_own_line() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+            grain_region("1:9,53", 9, 53, vec![farmer("7"), farmer("8")]),
+        ];
+        // Unit 8's two PRODUCE lines are both refused, and so is unit 7's; unit 5 and 6 fit. Only
+        // unit 8's last PRODUCE runs (a month-long order spends the month), so that is the order
+        // the game reaches and the one carrying the sentence.
+        let orders = "unit 5\nPRODUCE grain\nunit 8\nPRODUCE grain\nPRODUCE grain\n\
+                      unit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n";
+        let findings = check_trade(regions, orders, "Regions", 2);
+
+        let short = "this faction may tax and trade in 2 regions and this one is past the limit, \
+                     so this PRODUCE will be refused";
+        assert_eq!(
+            trade_lines(&findings),
+            [
+                row("8", 4, short),
+                row("8", 5, short),
+                row(
+                    "8",
+                    5,
+                    "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade \
+                     in 2, so 1 region's orders will be refused: mountain (9,53)"
+                ),
+                row("7", 9, short),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_refused_tax_is_warned_on_its_tax_line() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+        ];
+        let orders = "unit 6\nAVOID 1\nTAX\nunit 5\nTAX\n";
+        let findings = check_trade(regions, orders, "Regions", 1);
+
+        let found = trade_findings(&findings);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].unit_id.as_deref(), Some("6"));
+        assert_eq!(found[0].line, Some(3));
+        assert_eq!(
+            found[0].message,
+            "this faction may tax and trade in 1 region and this one is past the limit, so this \
+             TAX will be refused"
+        );
+        assert!(found[0].column_start.is_some());
+        assert!(found[1]
+            .message
+            .starts_with("PRODUCE, TAX and PILLAGE orders in 2 regions"));
+        assert_eq!(found[1].line, Some(3));
+    }
+
+    #[test]
+    fn a_refused_pillage_is_warned_and_comes_before_tax_in_its_region() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![
+                    with_skill(unit("6"), "COMB", 1),
+                    with_skill(unit("7"), "COMB", 1),
+                ],
+            ),
+        ];
+        // The engine pillages before it taxes, so mountain (8,53)'s PILLAGE is recorded first and
+        // mountain (7,53)'s TAX is refused. Reversed here: a limit of none refuses both, and the
+        // first the game reaches is the PILLAGE, below the TAX in the document.
+        let orders = "unit 6\nTAX\nunit 7\nPILLAGE\nunit 5\nTAX\n";
+        let findings = check_trade(regions, orders, "Regions", 0);
+
+        let none = |order: &str| {
+            format!(
+                "this faction may not tax or trade in any region, so this {order} will be refused"
+            )
+        };
+        let sentence =
+            "this faction may not tax or trade in any region, so every PRODUCE, TAX and PILLAGE \
+             order will be refused";
+        assert_eq!(
+            trade_lines(&findings),
+            [
+                row("6", 2, &none("TAX")),
+                row("7", 4, &none("PILLAGE")),
+                row("7", 4, sentence),
+                row("5", 6, &none("TAX")),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_flag_taxer_is_warned_on_its_unit_line() {
+        let regions = vec![
+            region_at("1:7,53", 7, 53, vec![with_skill(unit("6"), "COMB", 1)]),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![taxing_by_flag(with_skill(unit("5"), "COMB", 1))],
+            ),
+        ];
+        let orders = "unit 6\nPILLAGE\nunit 5\nAVOID 1\n";
+        let findings = check_trade(regions, orders, "Regions", 1);
+
+        let found = trade_findings(&findings);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(found[0].line, Some(3));
+        assert_eq!(found[0].column_start, None);
+        assert_eq!(
+            found[0].message,
+            "this faction may tax and trade in 1 region and this one is past the limit, so this \
+             unit's taxing will be refused"
+        );
+        assert_eq!(found[1].line, Some(3));
+        assert!(found[1].message.ends_with("refused: mountain (8,53)"));
+    }
+
+    #[test]
+    fn a_flag_taxer_with_no_block_is_not_warned_and_the_sentence_moves_on() {
+        let regions = vec![
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![taxing_by_flag(with_skill(unit("5"), "COMB", 1))],
+            ),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+        ];
+        // Limit of none: the flag taxer is refused first, but has no line; the PRODUCE carries
+        // both warnings.
+        let findings = check_trade(regions, "unit 6\nPRODUCE grain\n", "Regions", 0);
+
+        assert_eq!(
+            trade_lines(&findings),
+            [
+                row(
+                    "6",
+                    2,
+                    "this faction may not tax or trade in any region, so this PRODUCE will be \
+                     refused"
+                ),
+                row(
+                    "6",
+                    2,
+                    "this faction may not tax or trade in any region, so every PRODUCE, TAX and \
+                     PILLAGE order will be refused"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn separate_limits_each_warn_in_their_own_words() {
+        let (regions, orders) = over_both_separate_counters();
+        let findings =
+            check_trade_statuses(regions, orders, &[("Tax Regions", 1), ("Trade Regions", 1)]);
+
+        // Pillage is reached first, so unit 8's region is recorded and unit 7's TAX refused.
+        assert_eq!(
+            trade_lines(&findings),
+            [
+                row(
+                    "6",
+                    4,
+                    "this faction may trade in 1 region and this one is past the limit, so this \
+                     PRODUCE will be refused"
+                ),
+                row(
+                    "6",
+                    4,
+                    "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's \
+                     production will be refused: mountain (8,53)"
+                ),
+                row(
+                    "7",
+                    6,
+                    "this faction may tax in 1 region and this one is past the limit, so this \
+                     TAX will be refused"
+                ),
+                row(
+                    "7",
+                    6,
+                    "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's \
+                     taxing will be refused: mountain (9,53)"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_limit_of_none_warns_every_counting_order() {
+        let (regions, orders) = over_both_separate_counters();
+        let findings =
+            check_trade_statuses(regions, orders, &[("Tax Regions", 0), ("Trade Regions", 0)]);
+
+        let found: Vec<&str> = trade_findings(&findings)
+            .into_iter()
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            found,
+            [
+                "this faction may not trade in any region, so this PRODUCE will be refused",
+                "this faction may not trade in any region, so every PRODUCE order will be refused",
+                "this faction may not trade in any region, so this PRODUCE will be refused",
+                "this faction may not tax in any region, so this TAX will be refused",
+                "this faction may not tax in any region, so this PILLAGE will be refused",
+                "this faction may not tax in any region, so every TAX and PILLAGE order will be \
+                 refused",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_order_the_engine_refuses_first_gets_no_region_limit_line() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6"), unit("7")]),
+        ];
+        // Unit 7 cannot farm, so its PRODUCE never reaches the region check.
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nPRODUCE grain\n";
+        let findings = check_trade(regions, orders, "Regions", 1);
+
+        let units: Vec<&str> = trade_findings(&findings)
+            .into_iter()
+            .filter_map(|finding| finding.unit_id.as_deref())
+            .collect();
+        assert_eq!(units, ["6", "6"]);
+    }
+
+    /// Where a refused order carries another warning too, the region-limit warning is shown first
+    /// (`ah-jhc2`): `validate_turn`'s line sort is stable, and the region-limit findings are put
+    /// ahead of everything found before them.
+    #[test]
+    fn the_region_limit_warning_comes_before_another_warning_on_the_same_line() {
+        let regions = vec![
+            grain_region("1:7,53", 7, 53, vec![farmer("5")]),
+            grain_region("1:8,53", 8, 53, vec![farmer("6")]),
+        ];
+        // Unit 6's first PRODUCE loses the month to its second, and both are refused.
+        let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nPRODUCE grain\n";
+        let disabled: Vec<Code> = TRADE_TEST_DISABLED
+            .iter()
+            .copied()
+            .filter(|code| *code != codes::TWO_MONTH_LONG_ORDERS)
+            .collect();
+        let result = crate::orders::validate_turn(
+            orders,
+            Some(&ruleset()),
+            Some(&report_with_statuses(&[("Regions", 1)], regions)),
+            disabling_all(&disabled),
+        );
+
+        let on_line_4: Vec<&str> = result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.line_start == Some(4))
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect();
+        assert_eq!(
+            on_line_4,
+            ["too-many-trade-regions", "two-month-long-orders"],
+            "{:?}",
+            result.diagnostics
         );
     }
 
@@ -76897,7 +77307,7 @@ BUILD
         assert!(produced_by(&review, "5") > 0, "the first region fits");
         assert_eq!(produced_by(&review, "6"), 0, "the second region is refused");
         assert_eq!(
-            trade_findings(&review.findings)[0].message,
+            trade_sentences(&review.findings)[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
              will be refused: mountain (8,53)"
         );
@@ -76921,7 +77331,7 @@ BUILD
         assert!(produced_by(&review, "5") > 0);
         assert_eq!(produced_by(&review, "6"), 0);
         assert_eq!(
-            trade_findings(&review.findings)[0].message,
+            trade_sentences(&review.findings)[0].message,
             "PRODUCE, TAX and PILLAGE orders in 3 regions; this faction may tax and trade in 2, so \
              1 region's orders will be refused: mountain (8,53)"
         );
@@ -77065,10 +77475,10 @@ BUILD
         assert_eq!(slots, [("1:7,53", false), ("1:8,53", true)]);
     }
 
-    /// Only the uses that reach `ActivityCheck` are counted, and the warning sits on the first of
-    /// those: the unskilled producer listed first is neither counted nor the anchor (`ah-lb2o`).
+    /// Only the uses that reach `ActivityCheck` are counted (`ah-lb2o`): the unskilled producer
+    /// listed first is neither counted nor warned, and the refused region is the third.
     #[test]
-    fn the_trade_limit_counts_and_anchors_only_the_orders_that_reach_it() {
+    fn the_trade_limit_counts_and_warns_only_the_orders_that_reach_it() {
         let regions = vec![
             grain_region("1:6,53", 6, 53, vec![with_men(unit("4"), 5)]),
             grain_region("1:7,53", 7, 53, vec![farmer("5")]),
@@ -77080,14 +77490,14 @@ BUILD
             &[("Trade Regions", 1)],
         );
 
-        let warnings = trade_findings(&review.findings);
+        let warnings = trade_sentences(&review.findings);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert_eq!(
             warnings[0].message,
             "PRODUCE orders in 2 regions; this faction may trade in 1, so 1 region's production \
              will be refused: mountain (8,53)"
         );
-        assert_eq!(warnings[0].unit_id.as_deref(), Some("5"));
+        assert_eq!(warnings[0].unit_id.as_deref(), Some("6"));
     }
 
     /// `RunUnitProduce` refuses a manufacturing PRODUCE in a refused region before it consumes
@@ -77147,7 +77557,7 @@ BUILD
             &[("Regions", 1)],
         );
 
-        assert!(trade_findings(&review.findings)[0]
+        assert!(trade_sentences(&review.findings)[0]
             .message
             .ends_with("orders will be refused: mountain (8,53)"));
     }
@@ -77171,7 +77581,7 @@ BUILD
             &[("Regions", 1)],
         );
 
-        assert!(trade_findings(&review.findings)[0]
+        assert!(trade_sentences(&review.findings)[0]
             .message
             .ends_with("orders will be refused: mountain (8,53)"));
         assert_eq!(produced_by(&review, "7"), 0);
@@ -77234,7 +77644,7 @@ BUILD
             &[("Tax Regions", 1), ("Trade Regions", 5)],
         );
 
-        assert!(trade_findings(&review.findings)[0]
+        assert!(trade_sentences(&review.findings)[0]
             .message
             .ends_with("taxing will be refused: mountain (8,53)"));
         let (income, line) = income_of(&review, "5", SilverChangeCause::Taxed);
@@ -77285,7 +77695,7 @@ BUILD
         ];
         let review = review_turn(
             &report_with_statuses(&[("Tax Regions", 1), ("Trade Regions", 5)], regions),
-            "unit 5\nTAX\n",
+            "unit 5\nTAX\nunit 6\n",
             Some(&ruleset()),
             CheckOptions::default(),
         );
@@ -77386,7 +77796,7 @@ BUILD
                 Some(&ruleset()),
                 disabling_all(&[]),
             );
-            assert_eq!(trade_findings(&review.findings).len(), 1);
+            assert_eq!(trade_sentences(&review.findings).len(), 1);
             review
                 .findings
                 .into_iter()
@@ -77442,7 +77852,7 @@ BUILD
             &[("Tax Regions", 1), ("Trade Regions", 5)],
         );
 
-        assert!(trade_findings(&review.findings)[0]
+        assert!(trade_sentences(&review.findings)[0]
             .message
             .ends_with("taxing will be refused: mountain (8,53)"));
         assert_eq!(
@@ -77521,7 +77931,14 @@ BUILD
                 .map(|finding| finding.code.as_str())
                 .collect()
         };
-        assert_eq!(on("6"), Vec::<&str>::new(), "the TAX line");
+        assert_eq!(
+            on("6"),
+            vec![
+                codes::TOO_MANY_TRADE_REGIONS.as_str(),
+                codes::TOO_MANY_TRADE_REGIONS.as_str()
+            ],
+            "the TAX line: refused, and so warned by the region limit alone (`ah-jhc2`)"
+        );
         assert_eq!(
             on("8"),
             vec![codes::TAXED_A_GUARDED_HEX.as_str()],
@@ -77542,7 +77959,7 @@ BUILD
             &[("Tax Regions", 1), ("Trade Regions", 5)],
         );
 
-        assert!(trade_findings(&review.findings)[0]
+        assert!(trade_sentences(&review.findings)[0]
             .message
             .ends_with("taxing will be refused: mountain (8,53)"));
         let (income, line) = income_of(&review, "5", SilverChangeCause::Pillaged);
@@ -77584,7 +78001,8 @@ BUILD
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\nunit 7\nAUTOTAX 1\n";
         let findings = check_trade(regions, orders, "Regions", 2);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
     /// A unit taxing by its flag taxes its region as surely as one with a `TAX` line, so the
@@ -77604,7 +78022,8 @@ BUILD
         let orders = "unit 5\nPRODUCE grain\nunit 6\nPRODUCE grain\n";
         let findings = check_trade(regions, orders, "Regions", 2);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
+        let findings = trade_sentences(&findings);
+        assert_eq!(findings.len(), 1, "{findings:?}");
     }
 
     /// A region that both produces and taxes must count once against the pooled allowance, not
@@ -77636,7 +78055,7 @@ BUILD
         let findings = check_trade(regions, orders, "Regions", 0);
 
         assert_eq!(
-            findings[0].message,
+            trade_sentences(&findings)[0].message,
             "this faction may not tax or trade in any region, so every PRODUCE, TAX and PILLAGE \
              order will be refused"
         );
@@ -77732,9 +78151,10 @@ BUILD
     }
 
     /// Taxing alone uses up regions under the pooled counter, so a faction with no PRODUCE is still
-    /// warned - on its first TAX line (ah-enaj, which reversed the old silence here).
+    /// warned (ah-enaj, which reversed the old silence here) - on each refused TAX line, the
+    /// sentence on the first the game reaches (`ah-jhc2`).
     #[test]
-    fn taxing_without_producing_is_warned_on_the_first_tax_line() {
+    fn taxing_without_producing_is_warned_on_the_refused_tax_lines() {
         let regions = vec![
             region_at("1:7,53", 7, 53, vec![with_skill(unit("5"), "COMB", 1)]),
             region_at("1:8,53", 8, 53, vec![with_skill(unit("6"), "COMB", 1)]),
@@ -77743,8 +78163,12 @@ BUILD
         let orders = "unit 5\nTAX\nunit 6\nTAX\nunit 7\nTAX\n";
         let findings = check_trade(regions, orders, "Regions", 1);
 
-        assert_eq!(codes(&findings), ["too-many-trade-regions"]);
-        assert_eq!(findings[0].unit_id.as_deref(), Some("5"));
+        let units: Vec<Option<&str>> = trade_findings(&findings)
+            .into_iter()
+            .map(|finding| finding.unit_id.as_deref())
+            .collect();
+        assert_eq!(units, [Some("6"), Some("6"), Some("7")]);
+        assert_eq!(trade_sentences(&findings)[0].unit_id.as_deref(), Some("6"));
     }
 
     #[test]
@@ -78863,9 +79287,10 @@ BUILD
                     "Tax Regions",
                     0,
                     1,
+                    // The formed unit's region is listed last, so it is the one the walk refuses.
                     vec![
-                        region(vec![with_item(with_men(unit("1922"), 2), 1, "sword", "SWOR")]),
                         region_at("1:8,53", 8, 53, vec![with_skill(unit("2000"), "COMB", 1)]),
+                        region(vec![with_item(with_men(unit("1922"), 2), 1, "sword", "SWOR")]),
                     ],
                 ),
                 "unit 1922\nFORM 1\nTAX\nEND\nGIVE NEW 1 1 HUMN\nGIVE NEW 1 1 SWOR\nunit 2000\nTAX\n",
@@ -78876,7 +79301,10 @@ BUILD
             let finding = review
                 .findings
                 .iter()
-                .find(|finding| finding.code == codes::TOO_MANY_TRADE_REGIONS)
+                .find(|finding| {
+                    finding.code == codes::TOO_MANY_TRADE_REGIONS
+                        && !finding.message.contains(", so this ")
+                })
                 .expect("two taxed regions exceed the allowance");
             assert_eq!(finding.unit_id.as_deref(), Some("new-1"));
             assert_eq!(finding.line, Some(3));
@@ -78890,7 +79318,7 @@ BUILD
             assert_eq!(
                 finding.message,
                 "TAX and PILLAGE orders in 2 regions; this faction may tax in 1, so 1 region's \
-                 taxing will be refused: mountain (8,53)"
+                 taxing will be refused: mountain (7,53)"
             );
         }
 
