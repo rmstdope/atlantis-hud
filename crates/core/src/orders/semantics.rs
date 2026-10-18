@@ -61295,8 +61295,8 @@ BUILD
             .collect()
     }
 
-    /// `rules/transport`: DISTRIBUTE has TRANSPORT's syntax and meaning, so it transports silver
-    /// to an eligible nearby quartermaster.
+    /// `rules/transport`: a TRANSPORT to a nearby quartermaster owning a Caravanserai moves the
+    /// silver out of the sender's forecast and into the receiver's.
     #[test]
     fn a_transported_silver_updates_both_forecasts() {
         let mut target = with_skill(unit("901"), "QUAM", 1);
@@ -61365,6 +61365,57 @@ BUILD
             other: Some("unit 901".to_string()),
             place: None,
         }));
+    }
+
+    /// `ah-v4pk`. The same shipment written as DISTRIBUTE is refused: `CheckTransportOrders` asks
+    /// a DISTRIBUTE's issuer for the quartermaster skill, never its target, so a plain unit's
+    /// DISTRIBUTE to a quartermaster owning a Caravanserai moves nothing and the silver stays put.
+    #[test]
+    fn a_distribute_from_a_plain_unit_leaves_both_forecasts_alone() {
+        let mut target = with_skill(unit("901"), "QUAM", 1);
+        target.structure_id = Some("500".to_string());
+        let sender = with_silver(unit("900"), 500);
+        let mut nearby = region(vec![sender, target]);
+        nearby.structures = vec![Structure {
+            structure_id: "500".to_string(),
+            name: "Caravan".to_string(),
+            kind: "Caravanserai".to_string(),
+            ..Default::default()
+        }];
+
+        let baseline = review_turn(
+            &report(vec![nearby.clone()]),
+            "unit 900\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let distributed = review_turn(
+            &report(vec![nearby]),
+            "unit 900\nDISTRIBUTE 901 200 SILV\n",
+            Some(&ruleset()),
+            CheckOptions::default(),
+        );
+        let month_end = |review: &TurnReview, id: &str| {
+            review
+                .silver
+                .iter()
+                .find(|forecast| forecast.unit_id == id)
+                .expect("the unit is forecast")
+                .at_month_end
+        };
+
+        assert_eq!(month_end(&distributed, "900"), month_end(&baseline, "900"));
+        assert_eq!(month_end(&distributed, "901"), month_end(&baseline, "901"));
+        let refusals: Vec<_> = distributed
+            .findings
+            .iter()
+            .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+            .map(|finding| finding.message.as_str())
+            .collect();
+        assert_eq!(
+            refusals,
+            vec!["This unit is not a quartermaster, so 200 SILV stay with this unit."]
+        );
     }
 
     #[test]
