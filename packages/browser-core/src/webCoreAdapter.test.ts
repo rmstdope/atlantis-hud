@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createWebCoreAdapter, type CoreWasmModule } from "./webCoreAdapter";
+import { createWebCoreAdapter, OFF_THREAD_QUERIES, type CoreWasmModule } from "./webCoreAdapter";
+import { QueryWorkerUnavailable } from "./queryWorkerProtocol";
 import { CORE_QUERIES } from "@atlantis/core-client";
 import {
   aKnownMap,
@@ -1680,6 +1681,80 @@ describe("the core's declared queries in the browser", () => {
     await expect(adapter.shelterSeats("report", "ruleset")).rejects.toBe(
       "arguments could not be read: invalid length 0"
     );
+  });
+});
+
+/**
+ * ah-iauy: the two order checks run in a worker, so the main thread is never blocked by them. Every
+ * other query stays where it was - they are cheap, and some (completions) are asked per keystroke
+ * and must not queue behind a check.
+ */
+describe("the order checks off the main thread", () => {
+  const offThreadAsked = () => {
+    const asked: string[] = [];
+    const call = async (name: string, args: unknown[]) => {
+      asked.push(name);
+      return { offThread: name, args };
+    };
+    return { asked, call };
+  };
+
+  it("sends the order checks, and only them, to the worker", async () => {
+    const worker = offThreadAsked();
+    const mainThread: string[] = [];
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        query: (name: string, args: unknown[]) => {
+          mainThread.push(name);
+          return { query: name, args };
+        }
+      }),
+      createMemoryWebStore(),
+      worker.call
+    );
+
+    await expect(adapter.validateOrders({} as ValidateOrdersRequest)).resolves.toEqual({
+      offThread: "validate_orders",
+      args: [{}]
+    });
+    await adapter.previewOrders({} as never);
+    await adapter.shelterSeats("report", "ruleset");
+
+    expect(worker.asked).toEqual(["validate_orders", "preview_orders"]);
+    expect(mainThread).toEqual(["shelter_seats"]);
+    expect([...OFF_THREAD_QUERIES].sort()).toEqual(["preview_orders", "validate_orders"]);
+  });
+
+  // A worker that cannot start must not leave the warnings unanswered: the check runs where it
+  // always did, freeze and all.
+  it("runs a check on the main thread when the worker is unavailable", async () => {
+    const adapter = createWebCoreAdapter(fakeWasm(), createMemoryWebStore(), () =>
+      Promise.reject(new QueryWorkerUnavailable())
+    );
+
+    await expect(adapter.validateOrders({} as ValidateOrdersRequest)).resolves.toEqual({
+      query: "validate_orders",
+      args: [{}]
+    });
+  });
+
+  // The core's own refusal is an answer, not a broken worker: asking again on the main thread would
+  // only refuse again, at the cost of the freeze this exists to avoid.
+  it("passes the core's refusal through without asking again", async () => {
+    let mainThreadAsked = false;
+    const adapter = createWebCoreAdapter(
+      fakeWasm({
+        query: () => {
+          mainThreadAsked = true;
+          return null;
+        }
+      }),
+      createMemoryWebStore(),
+      () => Promise.reject("arguments could not be read")
+    );
+
+    await expect(adapter.previewOrders({} as never)).rejects.toBe("arguments could not be read");
+    expect(mainThreadAsked).toBe(false);
   });
 });
 
