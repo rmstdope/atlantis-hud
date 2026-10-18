@@ -972,11 +972,12 @@ test("in a short window every point of Add to army is the button's, and the orde
   await expect(button).toBeInViewport();
   const at = (await button.boundingBox())!;
 
-  // The layout this guards: the orders splitter's strip crosses the button's rows.
+  // The layout this guards: the right column used to run down over the dock here, its orders
+  // splitter's strip across the button's rows (ah-9r8k). Since ah-hgyl the dock yields and the
+  // column scrolls instead, so the strip stands wholly above the dock; the probes below still hold
+  // the button to being its own, whichever way the layout later changes.
   const grip = page.getByTestId("panel-splitter");
   const strip = (await grip.boundingBox())!;
-  expect(strip.y).toBeLessThan(at.y + at.height);
-  expect(strip.y + strip.height).toBeGreaterThan(at.y);
 
   // Every point of the button, top to bottom, is the button's own.
   const covered = await page.evaluate(
@@ -1025,9 +1026,9 @@ test("in a short window every point of Add to army is the button's, and the orde
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("add-to-army-panel")).toHaveCount(0);
 
-  // The splitter still resizes from its own strip wherever that strip is clear of the dock. At
-  // this height the whole strip lies over the dock (and its orders panel under it), so it is
-  // checked where the column has room again.
+  // The splitter still resizes from its own strip. A drag needs room for the editor to grow, which
+  // the column only has in a taller window; that the strip takes the mouse at this height is
+  // `workspace.spec.ts`'s short-window test (ah-hgyl).
   await page.setViewportSize({ width: 1200, height: 720 });
   await expect(grip).toBeInViewport();
   const clear = (await grip.boundingBox())!;

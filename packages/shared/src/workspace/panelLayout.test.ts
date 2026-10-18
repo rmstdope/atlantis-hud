@@ -11,6 +11,8 @@ import {
   ordersSlotStyle,
   railHasRoomToDrag,
   railRemFor,
+  railRowStyle,
+  railRowReserveRem,
   railWidthStyle,
   rightColumnFloorsRem,
   rightColumnRemFor,
@@ -345,6 +347,21 @@ describe("clampUnitsHeight", () => {
 });
 
 describe("dragUnitsHeight", () => {
+  // ah-hgyl: a dock dragged taller than leaves the right column its floors would lie over the
+  // orders splitter again, so the reserve the row of rails holds is the drag's ceiling too.
+  it("stops where the row of rails above it keeps its reserve", () => {
+    // host 40 -> seven tenths is 28, but a 16rem reserve leaves only 24.
+    const result = dragUnitsHeight(20, 20, 40, 16);
+    expect(result.rem).toBe(24);
+    expect(result.atLimit).toBe(true);
+  });
+
+  it("holds its floor when the reserve leaves less than the floor", () => {
+    const result = dragUnitsHeight(10, 5, 20, 16);
+    expect(result.rem).toBe(UNITS_MIN_REM);
+    expect(result.atLimit).toBe(true);
+  });
+
   it("caps at seven tenths of the host", () => {
     // host 40 -> ceiling 28, below UNITS_MAX_REM.
     const result = dragUnitsHeight(20, 20, 40);
@@ -394,11 +411,43 @@ describe("unitsSlotClass", () => {
     expect(className).not.toContain("h-[20.625rem]");
     expect(className).not.toContain("max-h-");
     expect(className).toContain("min-h-[5.75rem]");
-    expect(className).toContain("flex-none");
   });
 
   it("stays a title bar once folded even with a custom height", () => {
     expect(unitsSlotClass(folded("units"), true)).toBe("flex-none");
+  });
+
+  // ah-hgyl: in a short window the dock gives way to the right column's floors, down to its own.
+  it("may shrink when open, pinned or dragged, so a short window takes room from it first", () => {
+    for (const custom of [false, true]) {
+      const className = unitsSlotClass(OPEN, custom);
+      expect(className).toContain("flex-initial");
+      expect(className).not.toContain("flex-none");
+    }
+  });
+});
+
+describe("railRowReserveRem", () => {
+  it("is the right column's floors and the gap below them while both panels are open", () => {
+    expect(railRowReserveRem(OPEN)).toBe(rightColumnFloorsRem() + RAIL_GAP_REM);
+  });
+
+  it("is nothing once the unit or the orders panel is folded", () => {
+    expect(railRowReserveRem(folded("unit"))).toBe(0);
+    expect(railRowReserveRem(folded("orders"))).toBe(0);
+  });
+});
+
+describe("railRowStyle", () => {
+  it("reserves the right column's floors, but never the dock's own floor and gap", () => {
+    expect(railRowStyle(OPEN)).toEqual({
+      minHeight: `min(${rightColumnFloorsRem()}rem, 100% - ${RAIL_GAP_REM + UNITS_MIN_REM}rem)`
+    });
+  });
+
+  it("reserves nothing once the unit or the orders panel is folded, and the column needs no floor", () => {
+    expect(railRowStyle(folded("unit"))).toBeNull();
+    expect(railRowStyle(folded("orders"))).toBeNull();
   });
 });
 

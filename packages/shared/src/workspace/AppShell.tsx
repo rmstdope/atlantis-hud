@@ -311,6 +311,8 @@ import {
   ORDERS_MIN_REM,
   RAIL_LEFT_DEFAULT_REM,
   RAIL_RIGHT_DEFAULT_REM,
+  railRowReserveRem,
+  railRowStyle,
   railWidthStyle,
   slotClass,
   unitsSlotClass,
@@ -6202,7 +6204,10 @@ export function AppShell({
           slot is the flexible one; only this file knows what sits next to what.
         */}
         <div className="pointer-events-none absolute inset-0 flex flex-col gap-2.5 p-2.5 pt-12">
-          <div className="flex min-h-0 flex-1 justify-between gap-2.5">
+          <div
+            className="flex min-h-0 flex-1 justify-between gap-2.5"
+            style={railRowStyle(collapsed) ?? undefined}
+          >
             <div
               ref={leftRailRef}
               className="relative flex min-h-0 flex-col"
@@ -6238,99 +6243,110 @@ export function AppShell({
 
             <div
               ref={rightRailRef}
-              className="relative flex min-h-0 flex-col gap-2.5"
+              className="relative flex min-h-0 flex-col"
               style={railWidthStyle(rightRailWidthRem ?? RAIL_RIGHT_DEFAULT_REM) ?? undefined}
               data-map-overlay="right"
             >
               {/*
-                One slot for the unit and the movement planner, as two tabs. The column has 249px
-                at 1280x720 and two panels is what fits in it; stacking the planner as a third put
-                the orders editor underneath the units pane (ah-zh5i.2). The planner is still
-                behind its feature flag, off by default, and with it off this is the unit panel
-                exactly as it always was.
+                The column's own scroller (ah-hgyl). In a window too short for both panels' floors,
+                even after the units dock has yielded (`railRowStyle`), the column scrolls here
+                instead of running on under the dock with the orders splitter. Inside the rail and
+                not on it, so the rail's width splitter, which stands just outside its left edge,
+                is not clipped away. The `-m-2 p-2` gives the panels' `shadow-lg` room inside the
+                clip box, so the column looks the same as the region rail in every window; the
+                splitter subtracts the padding when it measures the column.
               */}
-              <div className={slotClass(collapsed)}>
-                <UnitMovementSlot
-                  unit={unit}
-                  hex={hex}
-                  preview={unitPreview}
-                  gameData={gameData}
-                  onOpenGameData={
-                    gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
-                  }
-                  magicTree={magicTree}
-                  standing={
-                    unit === null
-                      ? null
-                      : (mages.find((mage) => mage.unitId === unit.unitId) ?? null)
-                  }
-                  onOpenMagicTree={
-                    magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
-                  }
-                  derivedSkills={unitDerivedSkills}
-                  events={unitEvents}
-                  totalEvents={eventMessages.length}
-                  onOpenEvents={openTurnReportEvents}
-                  planner={
-                    movementPlanner
-                      ? {
-                          armed: planner.armed,
-                          busy: planning,
-                          answer: route,
-                          onArm: armPlanner,
-                          onClear: () => {
-                            clearPlan();
-                            setRoute(null);
-                          },
-                          onApply: applyRoute
-                        }
-                      : null
-                  }
-                />
-              </div>
-              {!collapsed.unit && !collapsed.orders ? (
-                <PanelSplitter
-                  slot={ordersSlotRef}
-                  heightRem={ordersHeightRem}
-                  defaultRem={ORDERS_DEFAULT_REM}
-                  minRem={ORDERS_MIN_REM}
-                  maxRem={ORDERS_MAX_REM}
-                  drag={dragOrdersHeight}
-                  label="Resize orders panel"
-                  testId="panel-splitter"
-                  onCommit={setOrdersHeight}
-                />
-              ) : null}
-              <div
-                ref={ordersSlotRef}
-                className={ordersSlotClass(collapsed, ordersHeightRem != null)}
-                style={ordersSlotStyle(collapsed, ordersHeightRem) ?? undefined}
-              >
-                <OrdersPanel
-                  unit={unit}
-                  unitId={selectedUnitId}
-                  formed={formedSelection}
-                  orders={orders}
-                  regionUnitIds={selectedUnitRegionIds}
-                  hex={hex}
-                  document={ordersDocument}
-                  externalRevision={externalOrdersRevision}
-                  ownFactionName={factionLabel ?? "your faction"}
-                  onChange={onOrdersChange}
-                  validated={validated}
-                  save={save}
-                  commands={orderCommands}
-                  orderVocabulary={orderVocabulary}
-                  snippets={snippets}
-                  caretCompletions={caretCompletions}
-                  editorRef={ordersEditor}
-                  onWalkProblems={walkProblems}
-                  walkPosition={
-                    walkStop.standing && walkStop.index !== null
-                      ? { at: walkStop.index + 1, of: problemTargets.length }
-                      : null
-                  }
-                />
+              <div className="-m-2 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2">
+                {/*
+                  One slot for the unit and the movement planner, as two tabs. The column has 249px
+                  at 1280x720 and two panels is what fits in it; stacking the planner as a third put
+                  the orders editor underneath the units pane (ah-zh5i.2). The planner is still
+                  behind its feature flag, off by default, and with it off this is the unit panel
+                  exactly as it always was.
+                */}
+                <div className={slotClass(collapsed)}>
+                  <UnitMovementSlot
+                    unit={unit}
+                    hex={hex}
+                    preview={unitPreview}
+                    gameData={gameData}
+                    onOpenGameData={
+                      gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
+                    }
+                    magicTree={magicTree}
+                    standing={
+                      unit === null
+                        ? null
+                        : (mages.find((mage) => mage.unitId === unit.unitId) ?? null)
+                    }
+                    onOpenMagicTree={
+                      magicTree === null ? undefined : (tag) => setMagicTreeOpen({ tag })
+                    }
+                    derivedSkills={unitDerivedSkills}
+                    events={unitEvents}
+                    totalEvents={eventMessages.length}
+                    onOpenEvents={openTurnReportEvents}
+                    planner={
+                      movementPlanner
+                        ? {
+                            armed: planner.armed,
+                            busy: planning,
+                            answer: route,
+                            onArm: armPlanner,
+                            onClear: () => {
+                              clearPlan();
+                              setRoute(null);
+                            },
+                            onApply: applyRoute
+                          }
+                        : null
+                    }
+                  />
+                </div>
+                {!collapsed.unit && !collapsed.orders ? (
+                  <PanelSplitter
+                    slot={ordersSlotRef}
+                    heightRem={ordersHeightRem}
+                    defaultRem={ORDERS_DEFAULT_REM}
+                    minRem={ORDERS_MIN_REM}
+                    maxRem={ORDERS_MAX_REM}
+                    drag={dragOrdersHeight}
+                    label="Resize orders panel"
+                    testId="panel-splitter"
+                    onCommit={setOrdersHeight}
+                  />
+                ) : null}
+                <div
+                  ref={ordersSlotRef}
+                  className={ordersSlotClass(collapsed, ordersHeightRem != null)}
+                  style={ordersSlotStyle(collapsed, ordersHeightRem) ?? undefined}
+                >
+                  <OrdersPanel
+                    unit={unit}
+                    unitId={selectedUnitId}
+                    formed={formedSelection}
+                    orders={orders}
+                    regionUnitIds={selectedUnitRegionIds}
+                    hex={hex}
+                    document={ordersDocument}
+                    externalRevision={externalOrdersRevision}
+                    ownFactionName={factionLabel ?? "your faction"}
+                    onChange={onOrdersChange}
+                    validated={validated}
+                    save={save}
+                    commands={orderCommands}
+                    orderVocabulary={orderVocabulary}
+                    snippets={snippets}
+                    caretCompletions={caretCompletions}
+                    editorRef={ordersEditor}
+                    onWalkProblems={walkProblems}
+                    walkPosition={
+                      walkStop.standing && walkStop.index !== null
+                        ? { at: walkStop.index + 1, of: problemTargets.length }
+                        : null
+                    }
+                  />
+                </div>
               </div>
               <RailSplitter
                 side="right"
@@ -6350,7 +6366,9 @@ export function AppShell({
               defaultRem={UNITS_DEFAULT_REM}
               minRem={UNITS_MIN_REM}
               maxRem={UNITS_MAX_REM}
-              drag={dragUnitsHeight}
+              drag={(startRem, deltaRem, hostRem) =>
+                dragUnitsHeight(startRem, deltaRem, hostRem, railRowReserveRem(collapsed))
+              }
               label="Resize units pane"
               testId="units-splitter"
               onCommit={setUnitsHeight}
@@ -6359,10 +6377,11 @@ export function AppShell({
           <div
             ref={unitsSlotRef}
             // `relative z-10`, the splitters' own layer, and later in the document than any of them
-            // (ah-9r8k). In a short window the right column runs down over the dock's title bar;
-            // the panels there already paint under the dock, but the orders splitter's `z-10` lifted
-            // it over the dock too, and a click on Add to army resized the orders panel. Every
-            // popup the dock opens is portalled, so this layer caps none of them.
+            // (ah-9r8k). A guard now rather than a cure: the right column once ran down over the
+            // dock's title bar in a short window, and the orders splitter's `z-10` lifted it over
+            // the dock, so a click on Add to army resized the orders panel. Since ah-hgyl the dock
+            // yields and the column scrolls, so nothing of it reaches the dock; should that come
+            // back, the dock still wins. Every popup it opens is portalled, so this caps none.
             className={`relative z-10 ${unitsSlotClass(collapsed, unitsHeightRem != null)}`}
             style={unitsSlotStyle(collapsed, unitsHeightRem) ?? undefined}
             data-map-overlay="bottom"
