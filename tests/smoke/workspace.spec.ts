@@ -2687,10 +2687,14 @@ test("the interface is not blocked while the core reads a report", async ({ page
  * and 59KB of JSON, 2-4ms under the throttle); what is left in this window is the edit itself and
  * drawing the answer.
  *
- * Measured locally: 70ms before and 20ms after unthrottled; 460ms before and about 140ms after
- * under the throttle - where 140ms is the floor, since this sampler reads 130-150ms gaps on the
- * same page under that throttle with the worker idle. The threshold sits well under the "before"
- * figure, so putting the checks back on the main thread fails it.
+ * Calibrated against CI, as the report-load guard above is. After: 126ms and 202ms on CI's smoke
+ * shards (PR #1782), most of it the edit itself and drawing the answer. Before: these same checks
+ * on this turn blocked CI for 650-950ms, as measured by ah-q767 when they were landing inside the
+ * report-load guard's window. 450ms is about twice the slower "after" and under every "before", so
+ * putting the checks back on the main thread fails it. Locally, for reference: 70ms before and
+ * 20ms after unthrottled; 460ms before and 140-220ms after under the throttle, where about 140ms is
+ * the throttle's own floor - this sampler reads 130-150ms gaps on the same page with the worker
+ * idle.
  *
  * `ATLANTIS_CPU_THROTTLE=6` applies the throttle the acceptance names, through the DevTools
  * protocol, for a local run; CI runners are roughly that slow already and run it unthrottled.
@@ -2735,7 +2739,7 @@ test("the interface is not blocked while the orders are checked", async ({ page 
   });
 
   console.log(`order checks (throttle ${throttle}x): worst main-thread block ${Math.round(worstBlockMs)}ms`);
-  expect(worstBlockMs).toBeLessThan(300);
+  expect(worstBlockMs).toBeLessThan(450);
 });
 
 /**
