@@ -19988,6 +19988,20 @@ fn study_judged_elsewhere(ledger: &Ledger<'_>, unit_id: &str) -> Option<StudyOut
         .and_then(|elsewhere| elsewhere.outcome)
 }
 
+/// The STUDY fee of a passenger refused by the purse where its fleet lands, which that hex's
+/// marker tells it of (`ah-1uja`); `0` for any other unit. The engine takes nothing for a refused
+/// study (`monthorders.cpp`: `Do1StudyOrder`, "STUDY: Not enough funds."), so the unit's own
+/// sentence hands it back and is left with what else it is short of - its upkeep, which falls due
+/// where it ends the month (`rules/sequenceofevents`; `ah-65kt`).
+fn refused_where_fleet_lands(ledger: &Ledger<'_>, unit_id: &str) -> i64 {
+    let walking = &ledger.relief().walking;
+    if walking.landing_of(unit_id).is_some() {
+        walking.refused_elsewhere(unit_id)
+    } else {
+        0
+    }
+}
+
 /// The purse this hex's `SHARE` flags open for orders, settled between the units that claim it.
 ///
 /// **The same moments the warning judges at** - [`Sharing`], [`Sharing::silver_short_reading`] and
@@ -20378,7 +20392,10 @@ fn unit_shortfall_moment(ledger: &Ledger<'_>, unit_id: &str, short: i64) -> Shor
     let at_give = silver_short_at_give(ledger, unit_id);
     let at_cast = silver_short_at_cast(ledger, unit_id);
     let at_market = silver_short_at_market(ledger, unit_id);
-    let at_study = silver_short_at_study(ledger, unit_id);
+    // A STUDY refused where the fleet lands took nothing here (`ah-65kt`).
+    let at_study = (silver_short_at_study(ledger, unit_id)
+        - refused_where_fleet_lands(ledger, unit_id))
+    .max(0);
     if at_give >= short && at_give >= at_study {
         ShortfallMoment::Give
     } else if at_give.max(at_cast).max(at_market).max(at_study) < short {
@@ -20735,8 +20752,11 @@ fn judge_shortfalls(
             // cut, which runs at the market (`ah-y70h`).
             // A passenger sailing out of a hex where nothing shares may have been lent its STUDY
             // fee where its fleet lands (`ah-pa6z`): its row was charged the fee, never the loan.
+            // One refused there, with the landing hex's marker on its line, is handed its fee back
+            // the same way (`ah-65kt`).
             let lent_elsewhere = match study_judged_elsewhere(ledger, unit_id) {
                 Some(StudyOutcome::Paid { lent, .. }) if tag == SILVER && !pooled => lent,
+                _ if tag == SILVER && !pooled => refused_where_fleet_lands(ledger, unit_id),
                 _ => 0,
             };
             let balance = balance + lent_elsewhere;
@@ -21354,7 +21374,14 @@ fn report_shortfalls(
         let Some(ordered) = hex.find(unit_id) else {
             continue;
         };
-        let at = ledger.charged_at.get(&(unit_id.clone(), tag.clone()));
+        // A passenger's STUDY refused where its fleet lands is told on its line by that hex's
+        // marker alone, and took nothing: what is left short is the unit's, on its row
+        // (`ah-65kt`).
+        let refused_on_landing = tag == SILVER && refused_where_fleet_lands(ledger, unit_id) > 0;
+        let at = ledger
+            .charged_at
+            .get(&(unit_id.clone(), tag.clone()))
+            .filter(|at| !(refused_on_landing && matches!(at.intent, Intent::Study { .. })));
         let finding = if tag == SILVER {
             // `rules/buy` buys as many as the unit can afford, so the sentence goes on to say
             // what it gets instead of what it asked for. Appended rather than replacing anything,
@@ -21418,7 +21445,7 @@ fn report_shortfalls(
             // A STUDY the unit cannot pay for is refused outright (`monthorders.cpp`:
             // `Do1StudyOrder`, "STUDY: Not enough funds."), and the sentence says so rather than
             // leaving it to be inferred (`ah-wr2w`).
-            if matches!(study_of(unit_id), StudyOutcome::Refused { .. }) {
+            if !refused_on_landing && matches!(study_of(unit_id), StudyOutcome::Refused { .. }) {
                 bought.push_str(if bought.is_empty() {
                     ", so its STUDY is refused"
                 } else {
@@ -80903,11 +80930,14 @@ BUILD
 
         assert_eq!(silver_of(&review, "901").borrowed_for_orders, 0);
         assert_eq!(silver_of(&review, "902").at_month_end, Some(1));
+        // The marker below tells it of the refused STUDY; its own sentence is left with its upkeep
+        // alone, on its row (`ah-65kt`).
         assert!(
             review.findings.iter().any(|finding| {
                 finding.code == codes::NOT_ENOUGH_SILVER
                     && finding.unit_id.as_deref() == Some("901")
-                    && finding.message.contains("STUDY")
+                    && finding.line.is_none()
+                    && !finding.message.contains("STUDY")
             }),
             "{:?}",
             review.findings
@@ -81363,6 +81393,61 @@ BUILD
             .expect("the marker");
         assert_eq!(marker.region_id, "1:7,55", "under the hex it sails from");
         assert!(marker.line.is_some(), "on its STUDY line: {marker:?}");
+    }
+
+    /// `ah-65kt`: a passenger refused where its fleet lands is told so by the landing hex's marker
+    /// alone - no per-unit "short $N ... so its STUDY is refused" sentence beside it, whatever the
+    /// resident holds. The engine took nothing for that STUDY (`monthorders.cpp`:
+    /// `Do1StudyOrder`), so what is left short is its upkeep, on its row and counted where it ends
+    /// the month (`rules/sequenceofevents`; `rules/economy_maintenance`: no sharing "between units
+    /// in different regions").
+    #[test]
+    fn a_passenger_refused_where_it_lands_gets_no_per_unit_study_sentence() {
+        for there in [1, 60, 99] {
+            let review = a_passenger_studying_between_two_sharers(there);
+            assert_eq!(
+                markers_on(&review, "901"),
+                vec![LANDING_REFUSES_STUDY],
+                "resident holds {there}"
+            );
+            let short: Vec<&Finding> = review
+                .findings
+                .iter()
+                .filter(|finding| {
+                    finding.code == codes::NOT_ENOUGH_SILVER
+                        && finding.unit_id.as_deref() == Some("901")
+                })
+                .collect();
+            assert!(
+                short
+                    .iter()
+                    .all(|finding| !finding.message.contains("STUDY") && finding.line.is_none()),
+                "resident holds {there}: {short:?}"
+            );
+        }
+    }
+
+    /// `ah-65kt`: ... and where nothing there pays its upkeep either, that is the sentence it gets,
+    /// on its row, counted in the hex it lands in.
+    #[test]
+    fn a_passenger_refused_where_it_lands_is_told_only_of_its_upkeep() {
+        let review = a_passenger_studying_between_two_sharers(1);
+        let short: Vec<(&str, Option<&str>)> = review
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding.code == codes::NOT_ENOUGH_SILVER
+                    && finding.unit_id.as_deref() == Some("901")
+            })
+            .map(|finding| (finding.message.as_str(), finding.counted_in.as_deref()))
+            .collect();
+        assert_eq!(
+            short,
+            vec![(
+                "short $40: this unit can have $60 and its orders and upkeep spend $100",
+                Some("1:7,53")
+            )]
+        );
     }
 
     /// `ah-1uja`: where the hex the passenger sails from is short too, its STUDY line still names
