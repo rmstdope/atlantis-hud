@@ -201,6 +201,9 @@ impl Document {
                     );
                 }
             }
+            // A PROMOTE the game throws away for its faction 0 or NEW 0 is the semantic
+            // `promote-no-target` warning's to explain, in place of this error (`ah-wjos`).
+            Err(_) if super::intents::refused_promote(line.command, line.arguments).is_some() => {}
             Err(mismatch) => self.report_mismatch(
                 line.number,
                 line.text,
@@ -613,6 +616,18 @@ mod tests {
         assert_eq!(codes("TAKE FROM NEW 0 1 SWOR\n"), ["bad-argument"]);
         // Unit zero is the discard target and stays legal, as does any positive alias.
         clean("GIVE 0 ALL SWOR\nFORM 1\nEND\nGIVE NEW 1 1 SWOR\n");
+    }
+
+    /// `ah-wjos`: a `PROMOTE FACTION <f> NEW 0` is thrown away by the game ("PROMOTE: No target
+    /// given.", ../Atlantis `parseorders.cpp` `ProcessPromoteOrder`), and the semantic
+    /// `promote-no-target` warning says so in place of this error - on PROMOTE lines only.
+    #[test]
+    fn a_promote_of_new_zero_under_faction_is_not_a_syntax_error() {
+        clean("PROMOTE FACTION 7 NEW 0\n");
+        clean("PROMOTE FACTION 0 NEW 0\n");
+        clean("promote faction 7 new 00\n");
+        assert_eq!(codes("PROMOTE NEW 0\n"), ["bad-argument"]);
+        assert_eq!(codes("GIVE FACTION 15 NEW 0 1 SWOR\n"), ["bad-argument"]);
     }
 
     /// SAIL's second form is the *bare* command - "I help crew this fleet" - not a fallback for a
