@@ -816,6 +816,25 @@ describe("the Silver column", () => {
     expect(cell).toContain("text-ink-dim");
   });
 
+  // `ah-j92v`, its review: a `?` is outside the whole-or-`…` rule, but beside a shortfall it
+  // still sits in the box the shortfall measures, so the narrowing order still runs.
+  it("keeps a ? beside a shortfall in the box the shortfall measures", () => {
+    const cell = silverCell(
+      drawSilver(
+        forecast({
+          held: 7500,
+          expense: null,
+          atMonthEnd: null,
+          shortForOrders: 95,
+          doubt: "unit-line-cut-short"
+        })
+      )
+    );
+
+    expect(cell).toContain("silver-shortfall-1");
+    expect(cell).toMatch(/<span data-silver-figure="true" class="[^"]*min-w-\[1ch\][^"]*">\?<\/span>/);
+  });
+
   it("relabels the Silver figure as a ceiling beside an unread hex-mate (ah-0n2k.1)", () => {
     const cell = silverCell(
       drawSilver(forecast({ held: 522, atMonthEnd: 582, lateIncomeAtMost: true }))

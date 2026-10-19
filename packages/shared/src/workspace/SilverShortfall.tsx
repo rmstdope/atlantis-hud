@@ -8,10 +8,11 @@ import { figureIsCut, nextShortfallForm, shortfallText, type ShortfallForm } fro
  * A column too narrow for it shortens it to `▾<N>`, then to `▾…`, then to `▾` alone (`ah-sa9p`):
  * one step at a time while it does not fit (`nextShortfallForm`), starting again from the long
  * form whenever the cell's width, the amount or what sits beside it changes. It never shrinks
- * itself: the figure beside it, in the `data-silver-figure` box, is what truncates, so "does not
- * fit" is that figure being cut - and only once this has reached `▾` is the figure left cut. The
- * figure's box keeps one character's width, so at the column's floor it still shows its `…`; a row
- * that overflows even so drops its ⚠ (`unmarked`, which the cell's markup hides it on).
+ * itself: the figure beside it, in the `data-silver-figure` box, is what gives way, so "does not
+ * fit" is that figure being cut (`figureIsCut`) - and only once this has reached `▾` is the figure
+ * left cut, drawn then as a single `…` rather than any of its digits (`WholeFigure`, `ah-j92v`).
+ * The figure's box keeps one character's width, so at the column's floor it still shows that `…`;
+ * a row that overflows even so drops its ⚠ (`unmarked`, which the cell's markup hides it on).
  *
  * A screen reader always hears `<N> short`, whatever form is drawn.
  */
@@ -41,8 +42,8 @@ export function SilverShortfall({
       return;
     }
     const figure = row.querySelector<HTMLElement>("[data-silver-figure]");
-    // `data-silver-figure` is the box that truncates: around the plain figure, or inside the ⚠
-    // button around its digits.
+    // `data-silver-figure` is the box that gives way: `WholeFigure` around a number, plain or
+    // inside the ⚠ button, or the box around a dim `?`.
     const figureCut = figure !== null && figureIsCut(figure);
     const next = nextShortfallForm(form, figureCut, row.scrollWidth > row.clientWidth);
     if (next !== form) {

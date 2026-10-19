@@ -5965,7 +5965,10 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
  * `ah-sa9p`: narrows the Silver column of our own unit, with `orders`, from where it opens to its
  * 36 px floor (`COLUMN_MIN_PX`), one splitter step at a time. Each step reports how much of the
  * figure and of the shortfall is on screen (each part's box clipped to the cell's content box),
- * whether the figure is truncated, the shortfall's form, and how much of a ⚠ is drawn.
+ * whether the figure is truncated, the shortfall's form, and how much of a ⚠ is drawn - and
+ * (`ah-j92v`) whether the figure's `…` is drawn, how much of it, and whether its digits are painted.
+ * With `shortfall: false` it walks a row with no shortfall. It returns the steps seen, and the
+ * splitter and the settling read so a test can walk back again.
  */
 async function narrowSilverToItsFloor(page: Page, orders: string, { shortfall = true } = {}) {
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -6009,7 +6012,7 @@ async function narrowSilverToItsFloor(page: Page, orders: string, { shortfall = 
         // ...and that a drawn `…` is whole, not clipped to a dot by its box.
         ellipsisShown: shown(figure.querySelector("[data-figure-ellipsis]")),
         ellipsisWidth: figure.querySelector("[data-figure-ellipsis]")?.getBoundingClientRect().width ?? 0,
-        digitsPainted: digits !== null && getComputedStyle(digits).color !== "rgba(0, 0, 0, 0)"
+        digitsPainted: digits !== null && getComputedStyle(digits).opacity !== "0",
       };
     });
   const settled = async () => {
@@ -6124,6 +6127,10 @@ test("a Silver figure without a shortfall is shown whole or as … alone", async
     "@claim 50\n@study obse\nCLAIM 2000\n",
     { shortfall: false }
   );
+  // Where the column opens the figure fits, and it is drawn whole; this row carries no ⚠.
+  expect(seen[0]!.figureCut, JSON.stringify(seen[0])).toBe(false);
+  expect(seen[0]!.digitsPainted, JSON.stringify(seen[0])).toBe(true);
+  expect(seen[0]!.markShown, JSON.stringify(seen[0])).toBe(0);
   expect(seen.at(-1)!.ellipsis, JSON.stringify(seen.at(-1))).toBe(true);
   for (let step = 0; step < 40; step++) {
     await splitter.focus();
@@ -6136,6 +6143,20 @@ test("a Silver figure without a shortfall is shown whole or as … alone", async
     }
   }
   throw new Error("widening the Silver column never brought its figure back whole");
+});
+
+/**
+ * `ah-j92v`, its review: the same rule inside the ⚠ button of a warned row with no shortfall - the
+ * figure gives way to `…` inside the button and the ⚠ stays. Without the CLAIM, Seven of Eight
+ * cannot pay for its study, so it is warned; with no purchase, nothing is short.
+ */
+test("a warned Silver figure without a shortfall is shown whole or as … alone", async ({ page }) => {
+  const { seen } = await narrowSilverToItsFloor(page, "@study obse\n", { shortfall: false });
+  expect(seen[0]!.markShown, JSON.stringify(seen[0])).toBeGreaterThan(0);
+  expect(seen[0]!.figureCut, JSON.stringify(seen[0])).toBe(false);
+  for (const step of seen) {
+    expect(step.markShown, JSON.stringify(step)).toBeGreaterThan(0);
+  }
 });
 
 /**

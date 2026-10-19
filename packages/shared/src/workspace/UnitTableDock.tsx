@@ -2490,8 +2490,15 @@ function UnitRow({
       </span>
     </>
   ) : cellShown === null || cellShown.kind === "unknown" ? (
-    // The dim `?` is not a number, so it is outside the whole-or-`…` rule (`ah-j92v`).
-    silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))
+    // The dim `?` is not a number, so it is outside the whole-or-`…` rule (`ah-j92v`) - but beside a
+    // shortfall it still sits in the box the shortfall measures, one character wide at least.
+    shortfall !== null ? (
+      <span data-silver-figure className="inline-block min-w-[1ch] max-w-full truncate align-bottom">
+        {silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))}
+      </span>
+    ) : (
+      silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))
+    )
   ) : (
     // A number is shown whole or as `…` alone, never as its leading digits (`ah-j92v`).
     <WholeFigure>{silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))}</WholeFigure>
