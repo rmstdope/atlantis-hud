@@ -939,7 +939,8 @@ pub(crate) fn refused_promote(command: &Token, arguments: &[Token]) -> Option<Pr
 }
 
 /// An order line as the player wrote it: its keyword and the arguments the grammar reads, joined
-/// by single spaces, letter case kept (`ah-wjos`).
+/// by single spaces, letter case kept (`ah-wjos`). Trailing text the grammar ignores is dropped
+/// with the comment, so `PROMOTE 1162 junk` reads `PROMOTE 1162`: the order the engine keeps.
 fn written_order(command: &Token, arguments: &[Token], ruleset: Option<&Ruleset>) -> String {
     let read = super::grammar::consumed_arguments(command, arguments, ruleset).unwrap_or(arguments);
     std::iter::once(command.text.as_str())
