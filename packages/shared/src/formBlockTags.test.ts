@@ -72,6 +72,16 @@ describe("formBlockTags", () => {
     expect(tagsFor(GUARDS, "13303", [finding(3)])).toEqual([]);
   });
 
+  it("a finding about the formed unit as a whole is in the tag, and names no line", () => {
+    // The core hangs a finding about a whole block on its FORM line (`finding_at_block`), naming
+    // the formed unit; its own editor lists it with no line (`ah-6c76`), and so does the hover.
+    const tags = tagsFor(GUARDS, "13303", [
+      finding(3, { unitId: "new-1", regionId: REGION, message: "has no order that spends the month" })
+    ]);
+    expect(tags.map((tag) => tag.warningCount)).toEqual([1]);
+    expect(formTagHover(tags[0]).rows).toEqual(["has no order that spends the month"]);
+  });
+
   it("each FORM block gets its own tag", () => {
     //   1 unit 13303  2 form 1  3 WROK  4 end  5 form 2  6 STUFY  7 STUFY  8 end
     const text = "unit 13303\nform 1\nWROK\nend\nform 2\nSTUFY\nSTUFY\nend";
@@ -117,6 +127,7 @@ function tag(errorCount: number, warningCount: number, messages: string[] = []):
       unitId: "new-1",
       regionId: REGION,
       blockFirstLine: 3,
+      aboveBlock: false,
       problem: finding(index + 1, { message })
     }))
   };

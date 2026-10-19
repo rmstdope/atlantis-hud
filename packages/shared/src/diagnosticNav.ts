@@ -21,6 +21,13 @@ export type DiagnosticTarget = {
   problem: OrderDiagnostic;
   /** Where the block this stop was re-based against starts, so its document position is arithmetic rather than a second lookup. */
   blockFirstLine: number;
+  /**
+   * The finding sits wholly above the block's orders - on its `unit` or `FORM` line, where the core
+   * hangs a finding about the block as a whole (`finding_at_block`). `problem`'s line is clamped to
+   * the block's first order so the walk has somewhere to land, but it is about no order there, and
+   * whatever names its line to a reader says none - as the panel's own list does (`ah-6c76`).
+   */
+  aboveBlock: boolean;
 };
 
 /**
@@ -123,6 +130,7 @@ export function diagnosticTargets(
       unitId: block.unitId,
       regionId: formedAlias(block.unitId) === null ? null : scopeRegionId,
       blockFirstLine: block.firstLine,
+      aboveBlock: (diagnostic.lineEnd ?? line) < first,
       problem: {
         ...diagnostic,
         // Clamped into the block, the same way diagnosticsForUnit clamps: a named unit's

@@ -1,4 +1,4 @@
-import { StateEffect, StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
+import { StateEffect, StateField, type EditorState, type Extension, type Range, type Transaction } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -94,6 +94,17 @@ function hoverBox(tag: FormBlockTag): HTMLElement {
 
 /** The tags, their hover box and their click, which `onOpen` is handed. */
 export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
+  // The FORM line keeps to one visual line while it carries a tag: the editor wraps long lines,
+  // and wrapped, the tag would drop onto a line of its own under `FORM 1` - the one state the
+  // agreed experience rules out. That line scrolls sideways instead.
+  const taggedLine = Decoration.line({ class: "cm-form-tag-line" });
+
+  /** The widget and its line's class, at the end of the line holding `pos`. */
+  const placed = (state: EditorState, pos: number, widget: FormTagWidget): Range<Decoration>[] => {
+    const line = state.doc.lineAt(pos);
+    return [taggedLine.range(line.from), Decoration.widget({ widget, side: 1 }).range(line.to)];
+  };
+
   const decorate = (state: EditorState, tags: readonly FormBlockTag[]): DecorationSet => {
     const ranges: Range<Decoration>[] = [];
     tags.forEach((tag, index) => {
@@ -102,13 +113,26 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
       if (tag.line < 1 || tag.line > state.doc.lines) {
         return;
       }
-      ranges.push(
-        Decoration.widget({ widget: new FormTagWidget(tag, index, onOpen), side: 1 }).range(
-          state.doc.line(tag.line).to
-        )
-      );
+      ranges.push(...placed(state, state.doc.line(tag.line).from, new FormTagWidget(tag, index, onOpen)));
     });
-    return Decoration.set(ranges);
+    return Decoration.set(ranges, true);
+  };
+
+  /**
+   * The tags carried through an edit until the next check moves them: each to the end of whatever
+   * line its old place now falls on. Mapped plainly, a widget at the end of a line is pushed along
+   * by whatever is inserted there, so Enter at the end of the FORM line carried the tag down to the
+   * new blank line; mapped from before the insertion it stays on the FORM line.
+   */
+  const remap = (decorations: DecorationSet, transaction: Transaction): DecorationSet => {
+    const ranges: Range<Decoration>[] = [];
+    decorations.between(0, transaction.startState.doc.length, (from, _to, decoration) => {
+      const widget = decoration.spec.widget as FormTagWidget | undefined;
+      if (widget instanceof FormTagWidget) {
+        ranges.push(...placed(transaction.state, transaction.changes.mapPos(from, -1), widget));
+      }
+    });
+    return Decoration.set(ranges, true);
   };
 
   const shown = StateField.define<Shown>({
@@ -116,9 +140,9 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
     update(value, transaction) {
       let next = value;
       if (transaction.docChanged) {
-        // Mapped like the underlines are, until the next check moves them; the box closes, since
+        // Carried to the end of their lines until the next check moves them; the box closes, since
         // the line it was opened from may be gone.
-        next = { ...next, decorations: next.decorations.map(transaction.changes), hovered: null };
+        next = { ...next, decorations: remap(next.decorations, transaction), hovered: null };
       }
       for (const effect of transaction.effects) {
         if (effect.is(setFormTags)) {
@@ -139,7 +163,8 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
         }
         let pos: number | null = null;
         decorations.between(0, state.doc.length, (from, _to, decoration) => {
-          if ((decoration.spec.widget as FormTagWidget | undefined)?.index === hovered) {
+          const widget = decoration.spec.widget as FormTagWidget | undefined;
+          if (widget instanceof FormTagWidget && widget.index === hovered) {
             pos = from;
             return false;
           }
@@ -169,6 +194,7 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
         borderColor: "var(--color-danger)",
         color: "var(--color-danger)"
       },
+      ".cm-form-tag-line": { whiteSpace: "pre" },
       ".cm-form-tag-hover": {
         maxWidth: "46ch",
         padding: "7px 10px",

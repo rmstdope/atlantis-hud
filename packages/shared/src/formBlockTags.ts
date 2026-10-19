@@ -88,7 +88,12 @@ export function formTagHover(tag: FormBlockTag): { heading: string; rows: string
     heading: name,
     rows: tag.stops
       .slice(0, HOVER_ROWS)
-      .map((stop) => `line ${stop.problem.lineStart ?? ""} · ${stop.problem.message}`),
+      // A finding about the formed unit as a whole names no line, as its own editor's list says none.
+      .map((stop) =>
+        stop.aboveBlock || stop.problem.lineStart === null
+          ? stop.problem.message
+          : `line ${stop.problem.lineStart} · ${stop.problem.message}`
+      ),
     footer: rest > 0 ? `and ${rest} more · ${hint}` : hint
   };
 }
