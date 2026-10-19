@@ -310,7 +310,8 @@ fn a_pair_paid_for_by_a_late_exchange_is_warned_on_both_lines() {
             )
         })
         .collect();
-    let late = "EXCHANGE will be aborted: Ivanhoe (683) will hold only 0 of the 1 WOOD it offers — \
+    let late =
+        "EXCHANGE will be aborted: Ivanhoe (683) will hold only 0 of the 1 WOOD it offers — \
                 the WOOD from Cedric (900) arrives after this exchange is settled";
     assert_eq!(messages, vec![("683", late), ("1160", late)]);
 }
