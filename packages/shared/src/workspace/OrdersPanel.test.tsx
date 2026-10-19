@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OrdersPanel, PROBLEM_ROW_COUNT_ROOM, problemListFloorStyle } from "./OrdersPanel";
+import { OrdersPanel, PROBLEM_ROW_COUNT_ROOM, PROBLEM_ROW_FLOW, problemListFloorStyle } from "./OrdersPanel";
 import { NO_PRODUCTION, NO_STUDENTS, NO_FACTION_ORDERS } from "../orderEditor";
 import { formedSelectionFor } from "./ordersLock";
 import { orderProcessingFor } from "../orderProcessing";
@@ -223,6 +223,28 @@ describe("a unit's problem with no line", () => {
         expect(row).toContain(PROBLEM_ROW_COUNT_ROOM);
       }
     }
+  });
+
+  /**
+   * ah-mzuw: a row is one run of text that wraps like a sentence (docs/ui/ah-mzuw-narrow-a.html),
+   * not side-by-side columns whose fixed pieces gave the row a minimum width wider than a narrow
+   * rail leaves it - which pushed its text under the count. Nothing in it may refuse to shrink: a
+   * word longer than the row breaks, and the quoted token wraps inside its chip
+   * (docs/ui/ah-mzuw-long-word-a.html). The geometry is the smoke walk's.
+   */
+  it("a problem row flows as one run of text, with no fixed-width columns", () => {
+    const quoted = { ...problem, lineStart: 2, lineEnd: 2, columnStart: 7, columnEnd: 11 };
+    const markup = drawWith([quoted]);
+    const row = markup.match(/<li[^>]*data-testid="orders-diagnostic"[^>]*>/)?.[0] ?? "";
+    const chip = markup.match(/<code[^>]*data-testid="orders-diagnostic-token"[^>]*>/)?.[0] ?? "";
+
+    expect(row).toContain(PROBLEM_ROW_FLOW);
+    expect(row).toContain(PROBLEM_ROW_COUNT_ROOM);
+    expect(row).not.toMatch(/class="[^"]*\bflex\b/);
+    expect(chip).toContain(PROBLEM_ROW_FLOW);
+    expect(chip).not.toContain("shrink-0");
+    expect(chip).not.toContain("whitespace-nowrap");
+    expect(markup).toContain(">obse</code>");
   });
 
   /**
