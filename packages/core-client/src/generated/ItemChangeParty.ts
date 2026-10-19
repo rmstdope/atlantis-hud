@@ -12,4 +12,9 @@ unitId: string,
  * The other unit's name as the preview leaves it, when this hex's own rows show it. `None`
  * where only a number is known - a transport target the report does not show, for one.
  */
-name: string | null, };
+name: string | null, 
+/**
+ * For a unit this month's `FORM` creates, the unit whose orders form it, as a sentence names
+ * it - see [`StudyTeacher::formed_by`] (`ah-uxaw`). `None` for a unit the report shows.
+ */
+formedBy: string | null, };

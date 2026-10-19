@@ -5,6 +5,12 @@
  */
 export type StudyTeacher = { unitId: string, name: string, 
 /**
+ * For a teacher this month's `FORM` creates, the unit whose orders form it, as a sentence
+ * names it - `Ivanhoe (683)`, or `new 1` when that unit is formed too - so the study note
+ * reads `new 2, formed by Ivanhoe (683)` (`ah-uxaw`). `None` for a unit the report shows.
+ */
+formedBy: string | null, 
+/**
  * Student-months this teacher has: ten per **person**, so a two-leader unit has twenty.
  */
 slots: number, 

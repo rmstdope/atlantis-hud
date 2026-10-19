@@ -861,16 +861,13 @@ pub fn review_turn(
             })
         })
         .collect();
-    // How a warning sentence names each unit: `<name> (<id>)`, or `new unit <alias>` for one this
-    // month's FORM creates, as `teaching_ordered_label` names it (`ah-m1th`).
+    // How a warning sentence names each unit: `<name> (<id>)`, or `new 1, formed by Ivanhoe (683)`
+    // for one this month's FORM creates (`ah-m1th`, `ah-uxaw`).
     let unit_labels: BTreeMap<UnitKey, String> = hexes
         .iter()
         .flat_map(|hex| {
             hex.units.iter().map(|unit| {
-                let label = unit.formed.as_ref().map_or_else(
-                    || format!("{} ({})", unit.unit.name, unit.unit.unit_id),
-                    |formed| format!("new unit {}", formed.alias),
-                );
+                let label = hex.ordered_label(unit);
                 (unit_key(&hex.region.region_id, &unit.unit.unit_id), label)
             })
         })
@@ -4494,16 +4491,12 @@ impl<'a> Hex<'a> {
 
     /// [`sentence_label`](Self::sentence_label) for a row already in hand.
     fn ordered_label(&self, ordered: &Ordered<'_>) -> String {
-        match &ordered.formed {
-            Some(formed) => {
-                let former = self.find(&formed.formed_by).map_or_else(
-                    || format!("unit {}", formed.formed_by),
-                    |former| super::naming::former_name(&former.unit.unit_id, &former.unit.name),
-                );
-                super::naming::formed_unit_phrase(&formed.alias, Some(&former))
-            }
-            None => super::naming::report_unit_label(ordered.unit),
-        }
+        label_among(&self.units, ordered)
+    }
+
+    /// How a sentence names the unit an order's party names here - see [`party_label_among`].
+    fn party_label(&self, party: &Party) -> String {
+        party_label_among(&self.units, party)
     }
 
     /// Where a transfer from `giver_id` lands in this hex, and which of our own units receives it.
@@ -4825,7 +4818,7 @@ fn gives_itself_away(
                 what: Selector::WholeUnit,
                 ..
             } if reach(to) == GiveReach::Foreign => Some(UncertainGive {
-                target: party_label(to),
+                target: party_label_among(&[], to),
                 line: placed.line,
             }),
             _ => None,
@@ -5483,16 +5476,10 @@ fn apply_transfers(
             // walk of the document, so the figure it shows is the quantity that actually moved
             // once report order had chosen between competing transfers (`ah-3mwm`).
             if tag.eq_ignore_ascii_case(SILVER) {
-                let source_label = {
-                    let source = units[source].unit;
-                    format!("{} ({})", source.name, source.unit_id)
-                };
+                let source_label = label_among(units, &units[source]);
                 // Built in a scoped closure for the same reason `source_label` is: the immutable
                 // borrow of `units` must end before `receipts_by_position` is touched.
-                let taker_label = || {
-                    let taker = units[transfer.actor].unit;
-                    format!("{} ({})", taker.name, taker.unit_id)
-                };
+                let taker_label = || label_among(units, &units[transfer.actor]);
                 if transfer.is_give {
                     if let Some(receiver_position) = receiver.row {
                         if moved > 0 {
@@ -5581,7 +5568,7 @@ fn apply_transfers(
                     // something any check may reason from, and the tag is remembered so the Silver
                     // column and every later order that reads it say so too (`ah-66yi`).
                     GiveOutcome::Uncertain => {
-                        let target = party_label(&transfer.party);
+                        let target = party_label_among(units, &transfer.party);
                         let source_state = working
                             .get_mut(&source)
                             .expect("seeded above this same transfer");
@@ -5770,7 +5757,7 @@ fn apply_transfers(
                         }) =>
                     {
                         Some(UncertainGive {
-                            target: party_label(from),
+                            target: party_label_among(units, from),
                             line: placed.line,
                         })
                     }
@@ -9908,7 +9895,7 @@ fn apply(
                     .uncertain
                     .entry((who.clone(), tag.to_ascii_uppercase()))
                     .or_insert(UncertainGive {
-                        target: party_label(from),
+                        target: hex.party_label(from),
                         line: placed.line,
                     });
             }
@@ -9954,7 +9941,7 @@ fn apply(
             }
             // Only ever read for a tag the verdict calls uncertain, and only ever a unit number
             // there - but formatted once here rather than per tag of a class.
-            let target_label = party_label(to);
+            let target_label = hex.party_label(to);
             // Unit 0 discards rather than gives, and is not "another unit" - the one shape where
             // the game hands over even the items it otherwise refuses to move (epic decision 9).
             let discarding = matches!(to, Party::Discard);
@@ -11514,6 +11501,7 @@ fn item_party(unit: &ReportUnit) -> ItemChangeParty {
     ItemChangeParty {
         unit_id: unit.unit_id.clone(),
         name: Some(unit.name.clone()),
+        formed_by: None,
     }
 }
 
@@ -11560,7 +11548,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             -amount,
             SilverChangeCause::Exchanged,
             Some(placed),
-            Some(format!("{} ({})", receiver.name, receiver.unit_id)),
+            Some(hex.ordered_label(&hex.units[offer.partner])),
         );
         move_silver(
             ledger,
@@ -11569,7 +11557,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             amount,
             SilverChangeCause::Exchanged,
             Some(placed),
-            Some(format!("{} ({})", giver.name, giver.unit_id)),
+            Some(hex.ordered_label(&hex.units[offer.unit])),
         );
         let mut remaining = amount - own_sold;
         for &(index, lends) in &lenders {
@@ -11641,6 +11629,7 @@ fn hand_over(ledger: &mut Ledger<'_>, hex: &Hex<'_>, offer: &ExchangeOffer) {
             other: Some(ItemChangeParty {
                 unit_id: other.unit_id.clone(),
                 name: Some(other.name.clone()),
+                formed_by: None,
             }),
             created: None,
             borrower: None,
@@ -13672,6 +13661,7 @@ fn build(
             other: (owner.unit_id != *who).then(|| ItemChangeParty {
                 unit_id: who.clone(),
                 name: Some(actor.unit.name.clone()),
+                formed_by: None,
             }),
             created: None,
             borrower: None,
@@ -15211,12 +15201,11 @@ fn settle_foundings<'a>(
         if !founds && !admitted {
             continue;
         }
-        let actor = &hexes[index].units[unit].unit;
         // A founding on a site the known map cannot clear spends its founders (`ah-m24v`), but an
         // unseen settlement may still refuse it, so it only may refuse the later one (review
         // finding 2 on PR #1489).
         let earlier = EarlierFounding {
-            founder: format!("{} ({})", actor.name, actor.unit_id),
+            founder: hexes[index].ordered_label(&hexes[index].units[unit]),
             at: at(index),
             certain: founds && hexes[index].village_site == VillageSite::Clear,
         };
@@ -15958,6 +15947,52 @@ struct UpkeepTransfer {
     amount: i64,
 }
 
+/// How a sentence names `ordered`, one of `units` (a hex's rows): `<name> (<id>)`, or for a unit
+/// this month's `FORM` creates `new 1, formed by Ivanhoe (683)`, its former found among the same
+/// rows (`ah-uxaw`, [`naming`](super::naming)). Free of [`Hex`] for the walks that hold the rows
+/// before the hex is built.
+fn label_among(units: &[Ordered<'_>], ordered: &Ordered<'_>) -> String {
+    match (&ordered.formed, former_among(units, ordered)) {
+        (Some(formed), former) => {
+            super::naming::formed_unit_phrase(&formed.alias, former.as_deref())
+        }
+        (None, _) => super::naming::report_unit_label(ordered.unit),
+    }
+}
+
+/// How a sentence names the unit an order's party names, among `units` (a hex's rows): a `NEW n`
+/// one of them forms reads as [`label_among`] names it, another faction's `FACTION f NEW n` reads
+/// `faction f's new n` (`ah-uxaw`), and everything else - a number, unit 0, an alias nothing here
+/// forms - keeps [`party_label`]'s words.
+fn party_label_among(units: &[Ordered<'_>], party: &Party) -> String {
+    match party {
+        Party::New(alias) => {
+            let id = format!("{}{alias}", effects::FORMED_ID_PREFIX);
+            units
+                .iter()
+                .find(|unit| unit.unit.unit_id == id)
+                .map_or_else(|| party_label(party), |formed| label_among(units, formed))
+        }
+        Party::Foreign { faction, alias } => super::naming::foreign_new_unit(faction, alias),
+        Party::Unit(_) | Party::Discard => party_label(party),
+    }
+}
+
+/// The unit whose orders form `ordered`, as [`label_among`] names it inside the phrase; `None`
+/// for a unit the report shows.
+fn former_among(units: &[Ordered<'_>], ordered: &Ordered<'_>) -> Option<String> {
+    let formed = ordered.formed.as_ref()?;
+    Some(
+        units
+            .iter()
+            .find(|unit| unit.unit.unit_id == formed.formed_by)
+            .map_or_else(
+                || format!("unit {}", formed.formed_by),
+                |former| super::naming::former_name(&former.unit.unit_id, &former.unit.name),
+            ),
+    )
+}
+
 /// A unit of `hex` as [`SilverChange::other`] names it: `<name> (<id>)`, the form a gift's giver
 /// takes; `unit <id>` for one the hex does not list.
 fn unit_label(hex: &Hex<'_>, unit_id: &str) -> String {
@@ -16480,6 +16515,7 @@ fn eaten_by_group(
                 .iter()
                 .find(|ordered| ordered.unit.unit_id == *unit_id)
                 .map(|ordered| ordered.unit.name.clone()),
+            formed_by: None,
         };
         for (position, foods) in food_eaten_by_holder(&claims, &pass, &late) {
             let Some(member) = member_at(&position) else {
@@ -16653,7 +16689,7 @@ fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         let Some(first) = hex.find(&first_id) else {
             continue;
         };
-        let first_label = format!("{} ({})", first.unit.name, first.unit.unit_id);
+        let first_label = hex.ordered_label(first);
         let dissolved = &ordered.unit.unit_id;
         let held = ledger
             .state
@@ -16661,7 +16697,7 @@ fn revert_dissolved_forms(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         if held <= 0 {
             continue;
         }
-        let dissolved_label = format!("{} ({})", ordered.unit.name, dissolved);
+        let dissolved_label = hex.ordered_label(ordered);
         move_silver(
             ledger,
             StatePhase::Market,
@@ -16957,6 +16993,7 @@ fn charge_shared_material(
                 ItemChangeParty {
                     unit_id: supplier.unit_id.clone(),
                     name: Some(supplier.name.clone()),
+                    formed_by: None,
                 },
             )
         })
@@ -16975,6 +17012,7 @@ fn charge_shared_material(
                 ItemChangeParty {
                     unit_id: arrival.unit_id.clone(),
                     name: Some(arrival.name.clone()),
+                    formed_by: None,
                 },
             ));
             ledger.arrival_debits.push(ArrivalDebit {
@@ -16988,6 +17026,7 @@ fn charge_shared_material(
                 actor: ItemChangeParty {
                     unit_id: actor.unit_id.clone(),
                     name: Some(actor.name.clone()),
+                    formed_by: None,
                 },
             });
         }
@@ -17022,6 +17061,7 @@ fn charge_shared_material(
     let actor_party = ItemChangeParty {
         unit_id: actor.unit_id.clone(),
         name: Some(actor.name.clone()),
+        formed_by: None,
     };
     let mut spent = 0;
     for debit in &debits {
@@ -22758,7 +22798,8 @@ fn check_one_teacher(
             continue;
         }
 
-        let label = teaching_target_label(student);
+        // Every sentence below goes on after the student's name (`ah-uxaw`).
+        let label = super::naming::mid_sentence(&teaching_target_label(hex, student)).into_owned();
         let pupil = match student_presence(hex, &id, departed) {
             StudentPresence::Own(pupil) => pupil,
             StudentPresence::VisibleForeign => continue,
@@ -22953,7 +22994,7 @@ fn offer_free_slots(
             codes::TEACHER_HAS_FREE_SLOTS,
             format!(
                 "has {free} teaching slots still free and could also teach {}{and_others}",
-                teaching_ordered_label(first),
+                teaching_ordered_label(hex, first),
             ),
             teacher
                 .intents
@@ -22965,19 +23006,27 @@ fn offer_free_slots(
 
 /// Whether this unit's TEACH orders name at least one unit the hex can resolve.
 ///
-fn teaching_target_label(party: &Party) -> String {
+fn teaching_target_label(hex: &Hex<'_>, party: &Party) -> String {
     match party {
         Party::Unit(id) => format!("unit {id}"),
-        Party::New(alias) => format!("new unit {alias}"),
+        // A unit this month's FORM creates here reads as `rules/form`'s alias and its former
+        // (`ah-uxaw`); an alias nothing here forms keeps the words it had.
+        Party::New(alias) => match hex.find(&format!("new-{alias}")) {
+            Some(formed) => hex.ordered_label(formed),
+            None => format!("new unit {alias}"),
+        },
         Party::Foreign { .. } | Party::Discard => String::new(),
     }
 }
 
-fn teaching_ordered_label(ordered: &Ordered<'_>) -> String {
-    ordered.formed.as_ref().map_or_else(
-        || format!("unit {}", ordered.unit.unit_id),
-        |formed| format!("new unit {}", formed.alias),
-    )
+/// A unit a teacher could also teach: `unit <id>`, or a formed one as [`Hex::ordered_label`]
+/// names it (`ah-m1th`, `ah-uxaw`).
+fn teaching_ordered_label(hex: &Hex<'_>, ordered: &Ordered<'_>) -> String {
+    if ordered.formed.is_some() {
+        hex.ordered_label(ordered)
+    } else {
+        format!("unit {}", ordered.unit.unit_id)
+    }
 }
 
 /// `Party::Foreign` and `Party::Discard` never resolve: another faction's unit is not ours to read.
@@ -23078,7 +23127,7 @@ fn check_building(
         let (worker, helped_label) = match helping {
             None => (ordered, None),
             Some(party) => match party_in_hex(party, hex) {
-                Some((_, helped)) => (helped, Some(party_label(party))),
+                Some((_, helped)) => (helped, Some(hex.party_label(party))),
                 // A unit not in this hex - not on the report at all, another faction's, or an
                 // alias no `FORM` mints - cannot be judged.
                 None => continue,
@@ -23104,7 +23153,10 @@ fn check_building(
 
         let name = structure_label(structure);
         let message = match helped_label {
-            Some(label) => format!("{name}, which {label} is in, is already finished"),
+            Some(label) => format!(
+                "{name}, which {} is in, is already finished",
+                super::naming::mid_sentence(&label)
+            ),
             None => format!("{name} is already finished"),
         };
         findings.push(ordered.finding(hex, codes::ALREADY_BUILT, message, Some(placed)));
@@ -23208,7 +23260,10 @@ fn check_build_help(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Fi
         findings.push(ordered.finding(
             hex,
             codes::BUILD_HELP_NOT_BUILDING,
-            format!("{} is not building", party_label(party)),
+            format!(
+                "{} is not building",
+                super::naming::mid_sentence(&hex.party_label(party))
+            ),
             Some(placed),
         ));
     }
@@ -25279,7 +25334,11 @@ fn one_study_forecast(
             Some(false) => continue,
             // Whether it may teach cannot be settled from this report, so its month is not counted.
             None => {
-                doubts.push(about_teacher(StudyDoubtReason::TeacherUnsettled, candidate));
+                doubts.push(about_teacher(
+                    StudyDoubtReason::TeacherUnsettled,
+                    hex,
+                    candidate,
+                ));
                 continue;
             }
             Some(true) => {}
@@ -25297,7 +25356,11 @@ fn one_study_forecast(
             candidate.skill_level(&skill.tag),
             ordered.skill_level(&skill.tag),
         ) else {
-            doubts.push(about_teacher(StudyDoubtReason::TeacherUnsettled, candidate));
+            doubts.push(about_teacher(
+                StudyDoubtReason::TeacherUnsettled,
+                hex,
+                candidate,
+            ));
             continue;
         };
         if mine <= theirs {
@@ -25308,6 +25371,7 @@ fn one_study_forecast(
         if teaches_a_foreign_unit(candidate, hex, departed) {
             doubts.push(about_teacher(
                 StudyDoubtReason::TeacherStudentsUnknown,
+                hex,
                 candidate,
             ));
             continue;
@@ -25315,6 +25379,7 @@ fn one_study_forecast(
         teachers.push(StudyTeacher {
             unit_id: candidate.unit.unit_id.clone(),
             name: candidate.unit.name.clone(),
+            formed_by: former_among(&hex.units, candidate),
             // Ten student-months per **person**, so a two-leader unit has twenty.
             slots: candidate
                 .after_the_market()
@@ -25405,13 +25470,14 @@ fn doubt(reason: super::effects::StudyDoubtReason) -> super::effects::StudyDoubt
 /// A doubt about one teacher, named `<name> (<id>)` - the shape `dissolves_into` already uses.
 fn about_teacher(
     reason: super::effects::StudyDoubtReason,
+    hex: &Hex<'_>,
     teacher: &Ordered<'_>,
 ) -> super::effects::StudyDoubt {
     super::effects::StudyDoubt {
         reason,
         fee: 0,
         short_by: 0,
-        teacher: format!("{} ({})", teacher.unit.name, teacher.unit.unit_id),
+        teacher: hex.ordered_label(teacher),
     }
 }
 
@@ -26527,7 +26593,7 @@ fn shipping_bills(
 
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
-        let sender_label = format!("{} ({})", ordered.unit.name, sender);
+        let sender_label = hex.ordered_label(ordered);
         // What this unit's own earlier shipments already took, by tag: `rules/sequenceofevents`
         // moves each item "only once in each phase", which `apply_transport_phase`'s allowance
         // snapshot enforces on the preview's side.
@@ -27278,7 +27344,7 @@ fn check_transfer_to_itself(hex: &Hex<'_>, options: &CheckOptions, findings: &mu
                 codes::TRANSFER_TO_ITSELF,
                 format!(
                     "{} is this unit itself, so this {order} moves nothing",
-                    party_label(party)
+                    super::naming::mid_sentence(&hex.party_label(party))
                 ),
                 Some(placed),
             ));
@@ -27327,7 +27393,7 @@ fn check_discards_from_shared_stock(
             let mates: Vec<(String, i64)> = discard
                 .draws
                 .iter()
-                .map(|&(position, count)| (party_name(hex.units[position].unit), count))
+                .map(|&(position, count)| (party_name(hex, &hex.units[position]), count))
                 .collect();
             let first = discard.draws.first().map_or(0, |&(_, count)| count);
             findings.push(ordered.finding(
@@ -27346,11 +27412,11 @@ fn check_discards_from_shared_stock(
 }
 
 /// A unit as the hover names a party: `<Name> (<id>)`, or `unit <id>` when no name is known.
-fn party_name(unit: &ReportUnit) -> String {
-    if unit.name.trim().is_empty() {
-        format!("unit {}", unit.unit_id)
+fn party_name(hex: &Hex<'_>, ordered: &Ordered<'_>) -> String {
+    if ordered.formed.is_none() && ordered.unit.name.trim().is_empty() {
+        format!("unit {}", ordered.unit.unit_id)
     } else {
-        format!("{} ({})", unit.name, unit.unit_id)
+        hex.ordered_label(ordered)
     }
 }
 
@@ -27698,7 +27764,10 @@ fn check_refused_whole_unit_gift(
             let why = match hex.give_endpoint(to, &ordered.unit.unit_id).reach {
                 GiveReach::Discard => "a whole unit cannot be discarded".to_string(),
                 GiveReach::Ours => {
-                    format!("{} already belongs to this faction", party_label(to))
+                    format!(
+                        "{} already belongs to this faction",
+                        super::naming::mid_sentence(&hex.party_label(to))
+                    )
                 }
                 GiveReach::Foreign | GiveReach::Nowhere | GiveReach::Unshown => continue,
             };
@@ -43119,6 +43188,7 @@ BUILD
                     Some(ItemChangeParty {
                         unit_id: "900".to_string(),
                         name: Some("Unit 900".to_string()),
+                        formed_by: None,
                     }),
                     "the negative lands on the supplier, and `other` names the builder"
                 );
@@ -52811,7 +52881,7 @@ BUILD
             .collect();
         assert_eq!(sentences.len(), 1, "{findings:?}");
         assert!(
-            sentences[0].ends_with("Unit 7 (7) and new unit 1."),
+            sentences[0].ends_with("Unit 7 (7) and new 1, formed by Unit 7 (7)."),
             "{}",
             sentences[0]
         );
@@ -57223,7 +57293,10 @@ BUILD
         ));
 
         assert_eq!(finding.code, codes::BUILD_HELP_NOT_BUILDING);
-        assert_eq!(finding.message, "NEW 1 is not building");
+        assert_eq!(
+            finding.message,
+            "new 1, formed by Unit 4117 (4117), is not building"
+        );
     }
 
     /// `ah-zxvd`. A helper of a formed unit is judged against what that unit is founding, exactly
@@ -57271,7 +57344,7 @@ BUILD
         assert_eq!(helper.code, codes::ALREADY_BUILT);
         assert_eq!(
             helper.message,
-            "Soggy Saw Mill, which NEW 1 is in, is already finished"
+            "Soggy Saw Mill, which new 1, formed by Unit 4021 (4021), is in, is already finished"
         );
     }
 
@@ -58995,6 +59068,91 @@ BUILD
         );
     }
 
+    /// `ah-uxaw`: every sentence names a unit this month's `FORM` creates once - `new 1, formed by
+    /// Unit 900 (900)` - never as `Unit (new 1) (new-1)`, `new unit 1` or the order's own `NEW 1`.
+    /// Each document puts a formed unit into a different kind of sentence: a structure's owner, the
+    /// silver a unit given nobody gives back, a gift, a teacher's student, a nested FORM.
+    #[test]
+    fn no_sentence_names_a_formed_unit_twice() {
+        let castle = || ReportRegion {
+            structures: vec![finished_of_kind("1", "Castle")],
+            ..region(vec![
+                with_silver(in_structure(unit("900"), "1"), 500),
+                with_silver(with_leaders(unit("901"), 1), 500),
+                unit("902"),
+            ])
+        };
+        let by_900 = "new 1, formed by Unit 900 (900)";
+        let documents = [
+            (
+                "unit 900\nFORM 1\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n",
+                "EVICT will be refused: new 1, formed by Unit 900 (900), owns Castle [1]",
+            ),
+            (
+                "unit 900\nFORM 1\nEND\nLEAVE\nunit 901\nENTER 1\nPROMOTE 902\n",
+                "PROMOTE will be refused: new 1, formed by Unit 900 (900), owns Castle [1]",
+            ),
+            ("unit 900\nGIVE NEW 1 100 SILV\nFORM 1\nEND\n", by_900),
+            (
+                "unit 900\nGIVE NEW 1 1 HUMN\nGIVE NEW 1 100 SILV\nFORM 1\nGIVE 901 50 SILV\nEND\n",
+                by_900,
+            ),
+            (
+                "unit 901\nGIVE NEW 1 100 SILV\nunit 900\nFORM 1\nEND\n",
+                by_900,
+            ),
+            (
+                "unit 900\nFORM 1\nEND\nunit 901\nTEACH NEW 1\nTEACH NEW 2\n",
+                "new 1, formed by Unit 900 (900), is being taught but has no STUDY order",
+            ),
+            (
+                "unit 900\nGIVE NEW 1 1 HUMN\nFORM 1\nGIVE NEW 2 1 HUMN\nFORM 2\nEND\nEND\n\
+                 unit 901\nGIVE NEW 2 10 SILV\n",
+                "new 2, formed by new 1",
+            ),
+            (
+                "unit 901\nGIVE FACTION 15 NEW 2 10 SILV\n",
+                "faction 15's new 2",
+            ),
+        ];
+        for (orders, said) in documents {
+            let review = review_turn(
+                &report(vec![castle()]),
+                orders,
+                Some(&ruleset()),
+                CheckOptions::default(),
+            );
+            let everything = format!("{review:?}");
+            assert!(everything.contains(said), "{orders:?} never says {said:?}");
+            for doubled in [
+                ") (new-",
+                "new unit 1",
+                "Unit (new 1),",
+                "Unit (new 2),",
+                "Some(\"NEW ",
+                "'s NEW ",
+            ] {
+                if let Some(at) = everything.find(doubled) {
+                    let from = everything[..at].rfind('"').unwrap_or(0);
+                    let to = everything[at..]
+                        .find('"')
+                        .map_or(everything.len(), |end| at + end);
+                    panic!(
+                        "{orders:?} names a formed unit as {doubled:?}: {}",
+                        &everything[from..to]
+                    );
+                }
+            }
+            for finding in &review.findings {
+                assert!(
+                    !finding.message.contains("NEW 1") && !finding.message.contains("NEW 2"),
+                    "{orders:?}: {}",
+                    finding.message
+                );
+            }
+        }
+    }
+
     /// `ah-7ful`: the engine adds a formed unit to its former's object as the `FORM` is parsed
     /// (../Atlantis `parseorders.cpp`: `temp->MoveUnit(former->object)`), before
     /// `Game::RunEnterOrders`, and `Unit::MoveUnit` appends, so it stands ahead of every unit that
@@ -60085,7 +60243,7 @@ BUILD
         ));
         assert_eq!(
             finding.message,
-            "GIVE UNIT will be refused: NEW 1 already belongs to this faction"
+            "GIVE UNIT will be refused: new 1, formed by Unit 901 (901), already belongs to this faction"
         );
     }
 
@@ -60372,7 +60530,7 @@ BUILD
             .unwrap_or_else(|| panic!("{findings:?}"));
         assert_eq!(
             itself.message,
-            "NEW 1 is this unit itself, so this GIVE moves nothing"
+            "new 1, formed by Unit 8443 (8443), is this unit itself, so this GIVE moves nothing"
         );
         assert!(!codes(&findings).contains(&"give-target-not-here"));
     }
