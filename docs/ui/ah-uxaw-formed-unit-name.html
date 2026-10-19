@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Option A — new 1, formed by Ivanhoe (683)</title>
+<style>
+body{font:14px/1.45 -apple-system,system-ui,sans-serif;background:#1e2126;color:#d8dbe0;margin:24px;max-width:860px}
+h1{font-size:18px} h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#8b93a1;margin:28px 0 8px}
+.panel{background:#272b31;border:1px solid #3a3f47;border-radius:6px;padding:10px 12px}
+.row{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #333840}.row:last-child{border:0}
+.warn{color:#e8b54a}.id{color:#8b93a1;width:60px;flex:none}.ord{font-family:ui-monospace,monospace;color:#9fc3ff;width:110px;flex:none}
+.old{color:#e57373;text-decoration:line-through;opacity:.8}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #333840;padding:5px 8px;text-align:left}th{color:#8b93a1;font-weight:500}
+.note{color:#8b93a1;font-size:13px;margin-top:6px}.narrow{max-width:320px}
+.tag{display:inline-block;background:#3a3f47;border-radius:3px;padding:0 5px;font-size:12px}
+</style></head><body>
+<h1>Option A — new 1, formed by Ivanhoe (683)</h1>
+<p class="note">Ivanhoe (683), alone in Fort [1], writes <b>FORM 1 / END / LEAVE</b>. Robin Hood (1162) writes <b>ENTER 1 / EVICT 683</b>.</p>
+
+<h2>Today</h2>
+<div class="panel"><div class="row"><span class="warn">&#9888;</span><span class="id">1162</span><span class="ord">evict 683</span><span class="old">EVICT will be refused: Unit (new 1) (new-1) owns Fort [1] when evictions run, not this unit, so nothing changes</span></div></div>
+
+<h2>Orders problems list — the EVICT warning</h2>
+<div class="panel"><div class="row"><span class="warn">&#9888;</span><span class="id">1162</span><span class="ord">evict 683</span><span>EVICT will be refused: new 1, formed by Ivanhoe (683), owns Fort [1] when evictions run, not this unit, so nothing changes</span></div></div>
+
+<h2>Same list, narrow window</h2>
+<div class="panel narrow"><div class="row"><span class="warn">&#9888;</span><span>EVICT will be refused: new 1, formed by Ivanhoe (683), owns Fort [1] when evictions run, not this unit, so nothing changes</span></div></div>
+
+<h2>Silver popup on a hex cell — a gift that came back</h2>
+<div class="panel"><div class="row"><span class="id">Ivanhoe</span><span>+1000 silver back from new 1, formed by Ivanhoe (683), which formed with nobody</span></div></div>
+
+<h2>A unit formed inside another formed unit's orders</h2>
+<div class="panel"><div class="row"><span class="warn">&#9888;</span><span class="id">1162</span><span class="ord">evict 683</span><span>EVICT will be refused: new 2, formed by new 1, owns Fort [1] when evictions run, not this unit, so nothing changes</span></div></div>
+
+<h2>Another faction's new unit (we don't know who formed it)</h2>
+<div class="panel"><div class="row"><span class="warn">&#9888;</span><span class="id">1162</span><span class="ord">give faction 15 new 2 …</span><span>… faction 15's new 2 …</span></div></div>
+
+<h2>Unit table — unchanged in every option</h2>
+<table><tr><th>Id</th><th>Name</th><th>Faction</th></tr>
+<tr><td>683</td><td>Ivanhoe</td><td>Merry Men</td></tr>
+<tr><td>new-1</td><td>Unit (new 1)</td><td><span class="tag">new</span></td></tr></table>
+<p class="note">Speaks the way the orders do (NEW 1) and the way the orders pane already titles it (“new 1, in unit 1922's block”). The forming unit is named like any other unit: name and number.</p>
+</body></html>
