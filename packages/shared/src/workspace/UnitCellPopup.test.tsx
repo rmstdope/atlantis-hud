@@ -142,7 +142,14 @@ describe("PopupCaveat", () => {
 // `ah-w28r`: a row's dim side note sits on its own indented line beneath the row (B + S2 + L1).
 describe("PopupRow", () => {
   const row = (line: PopupLine) => renderToStaticMarkup(<PopupRow line={line} />);
-  const NOTE = /<p data-popup-side-note="true" class="([^"]*)">([^<]*)<\/p>/;
+  // The side note's class and text, whatever order React writes its attributes in.
+  const NOTE = {
+    exec(markup: string): [string, string, string] | null {
+      const tag = /<p([^>]*data-popup-side-note="true"[^>]*)>([^<]*)<\/p>/.exec(markup);
+      if (!tag) return null;
+      return [tag[0], /class="([^"]*)"/.exec(tag[1] ?? "")?.[1] ?? "", tag[2] ?? ""];
+    }
+  };
 
   it("draws a side note on its own indented, dim line beneath its row", () => {
     const markup = row({ label: "was lent for upkeep", value: "+50", tone: "up", why: "by Entertainers (1164)" });
