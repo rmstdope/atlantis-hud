@@ -6118,6 +6118,84 @@ test("at the default layout a shortfall is spelled out in words", async ({ page 
   await expect(shortfall.locator("[aria-hidden]")).toHaveText(/^\d{4} short$/);
 });
 
+/**
+ * `ah-i984`: the same unit with a three-digit month-end figure. ah-kyy6's width held a two-digit
+ * figure beside a four-digit shortfall; the default Silver share now holds a three-digit one too,
+ * so at 1400 px the cell opens as `144  8350 short` rather than `144 \u25be8350`.
+ */
+test("at the default layout a three-digit figure beside a four-digit shortfall reads in words", async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "CLAIM 2300\nBUY 50 GEM\n");
+
+  const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
+  const shortfall = page.getByTestId(`silver-shortfall-${OWN_UNIT}`);
+  await expect(shortfall).toBeVisible();
+  const form = () =>
+    cell.evaluate(async (node) => {
+      await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      return node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!.dataset.form;
+    });
+  await expect.poll(form).toBe("long");
+  // Read twice: a form settles in at most four steps, so "long" now is "long" for good.
+  await expect.poll(form).toBe("long");
+  const figure = cell.locator("[data-silver-figure]");
+  await expect(figure).toHaveText("144");
+  expect(await figure.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(shortfall.locator("[aria-hidden]")).toHaveText("8350 short");
+});
+
+/**
+ * `ah-i984`'s worst case, `999  9999 short`, measured in the real cell rather than reached through
+ * orders: a figure of 999 cannot sit beside a shortfall on this fixture. Each part is measured by a
+ * copy of the element that draws it, so the font, the tabular digits and the gap are the app's own,
+ * and the cell must hold them with 3 px to spare - less than the ~5 px the default share leaves, so
+ * a font that drifts fails here before it tips a player back to \u25be.
+ */
+test("at the default layout the Silver cell has room for 999 beside 9999 short", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "CLAIM 2300\nBUY 50 GEM\n");
+
+  const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
+  await expect(page.getByTestId(`silver-shortfall-${OWN_UNIT}`)).toBeVisible();
+  const room = await cell.evaluate((node) => {
+    const width = (source: HTMLElement, text: string) => {
+      const copy = source.cloneNode(false) as HTMLElement;
+      copy.textContent = text;
+      Object.assign(copy.style, {
+        position: "absolute",
+        visibility: "hidden",
+        whiteSpace: "nowrap",
+        overflow: "visible",
+        minWidth: "0",
+        maxWidth: "none"
+      });
+      node.appendChild(copy);
+      const measured = copy.getBoundingClientRect().width;
+      copy.remove();
+      return measured;
+    };
+    const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
+    const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
+    // The long form's own gap, whatever form is drawn now.
+    const gap = 6;
+    const style = getComputedStyle(node);
+    const content =
+      node.getBoundingClientRect().width -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    return { content, needed: width(figure, "999") + gap + width(short, "9999 short") };
+  });
+  expect(room.content).toBeGreaterThanOrEqual(room.needed + 3);
+});
+
 test("a row in All my units takes the map to the unit's hex", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");

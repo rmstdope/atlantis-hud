@@ -360,10 +360,11 @@ export type ColumnShares = Partial<Record<UnitColumn, number>>;
 
 /**
  * The shipped shape, as shares of a nominal 1504px table - own 24, unitId 64, name 208, faction
- * 192, men 64, movement 64, flags 80, skills 180, items 180, structure 158, longOrder 144, silver
- * 146. They began as a restatement of the Tailwind width classes they replaced; `silver`
+ * 192, men 64, movement 64, flags 80, skills 180, items 180, structure 148, longOrder 144, silver
+ * 156. They began as a restatement of the Tailwind width classes they replaced; `silver`
  * (ah-1wcw.1) widened the nominal table by its own 96, and later took 50 from `structure`
- * (ah-kyy6) so a shortfall reads in words at the default layout.
+ * (ah-kyy6) so a shortfall reads in words at the default layout, then 10 more (ah-i984) so it
+ * does beside a month-end figure of up to three digits.
  */
 const NOMINAL_TABLE_PX = 1504;
 
@@ -744,11 +745,13 @@ export const DEFAULT_COLUMN_SHARES: Record<UnitColumn, number> = {
   flags: 80 / NOMINAL_TABLE_PX,
   skills: 180 / NOMINAL_TABLE_PX,
   items: 180 / NOMINAL_TABLE_PX,
-  // 50 of Structure's nominal px went to Silver (ah-kyy6): Structure is the column most often
-  // `—`, and Silver needs the room to spell a shortfall out as `<N> short` at the default layout.
-  structure: 158 / NOMINAL_TABLE_PX,
+  // 60 of Structure's nominal px went to Silver (50 in ah-kyy6, 10 in ah-i984): Structure is the
+  // column most often `—`, and Silver needs the room to spell a shortfall out as `<N> short` at
+  // the default layout. At a 1400 px window `999  9999 short` measures 117.7 px in the cell and
+  // 156 renders at 123, leaving a few px for a font that differs between machines.
+  structure: 148 / NOMINAL_TABLE_PX,
   longOrder: 144 / NOMINAL_TABLE_PX,
-  silver: 146 / NOMINAL_TABLE_PX
+  silver: 156 / NOMINAL_TABLE_PX
 };
 
 /**
