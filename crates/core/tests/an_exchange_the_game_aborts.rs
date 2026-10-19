@@ -288,3 +288,29 @@ fn an_exchange_of_an_item_the_game_will_not_trade_is_warned() {
         "{findings:?}"
     );
 }
+
+/// `ah-a58i`. Ivanhoe trades Maurice wood it only gets from Cedric. Maurice comes before Cedric
+/// in the report, so the game reaches Maurice's pair before Cedric's has handed Ivanhoe the wood,
+/// and aborts it (`rules/exchange`: "If either unit involved does not have the items it is
+/// offering ... the exchange is aborted"; the walk is `runorders.cpp` `DoExchangeOrders`, ah-6cni).
+/// Both lines of the aborted pair say so and name the late exchange; Cedric's pair goes ahead.
+#[test]
+fn a_pair_paid_for_by_a_late_exchange_is_warned_on_both_lines() {
+    let findings = findings_with_cedric(
+        "EXCHANGE 900 1 HORS 1 WOOD\nEXCHANGE 1160 1 WOOD 1 SILV",
+        "EXCHANGE 683 1 SILV 1 WOOD",
+        "EXCHANGE 683 1 WOOD 1 HORS",
+    );
+    let messages: Vec<(&str, &str)> = findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.unit_id.as_deref().unwrap_or(""),
+                finding.message.as_str(),
+            )
+        })
+        .collect();
+    let late = "EXCHANGE will be aborted: Ivanhoe (683) will hold only 0 of the 1 WOOD it offers — \
+                the WOOD from Cedric (900) arrives after this exchange is settled";
+    assert_eq!(messages, vec![("683", late), ("1160", late)]);
+}
