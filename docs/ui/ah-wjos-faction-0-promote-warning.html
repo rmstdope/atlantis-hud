@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ah-wjos — say which PROMOTE the game keeps</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 16px 64px}
+header,main{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+header p,main>p{color:var(--ink-soft);max-width:100ch;margin-top:10px;font-size:14px}
+h3{margin:30px 0 6px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+.unit{background:var(--panel);border:1px solid var(--edge);border-radius:6px;margin-top:12px;font-family:system-ui,sans-serif}
+.unit .hd{padding:7px 12px;border-bottom:1px solid var(--edge);font-size:13px;color:var(--ink-soft)}
+.unit .hd b{color:var(--ink)}
+.line{font-family:'SF Mono',Menlo,monospace;font-size:12.5px;padding:6px 12px;color:var(--ink);overflow-wrap:anywhere}
+.line .n{color:var(--ink-dim);display:inline-block;width:2.2em}
+.line .ok{color:var(--ok);font-family:system-ui;font-size:11.5px;margin-left:10px}
+.warn{font-family:system-ui,sans-serif;font-size:12.5px;background:#2a1a1a;border-left:4px solid var(--danger);padding:7px 12px 7px 14px;color:#f0d8d8;margin:0 12px 8px 3.6em}
+.warn::before{content:"⚠ ";color:var(--danger)}
+.new{outline:1px dashed var(--brass);outline-offset:2px}
+.note{color:var(--ink-soft);font-size:13px;background:var(--raised);border-left:3px solid var(--edge);padding:9px 13px;margin:12px 0;max-width:100ch;font-family:system-ui}
+ul{font-size:13px;color:var(--ink-soft);margin:10px 0 0 18px;max-width:100ch;font-family:system-ui}
+li.con{color:#d9b0b0}
+</style></head><body>
+<header><h1>Option A — <span>say which PROMOTE the game keeps</span></h1><p>Ivanhoe (683) owns Fort [1] and writes PROMOTE 1162, then PROMOTE FACTION 0 NEW 1. There is no faction 0, so the game throws the second line away ("No target given") and keeps PROMOTE 1162. Today the editor shows no warning at all.</p></header><main><h3>The case</h3>
+<div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE 1162 <span class=ok>Lancer (1162) becomes owner</span></div><div class="line"><span class="n">2</span>PROMOTE FACTION 0 NEW 1</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and PROMOTE 1162 still stands</div></div>
+<h3>Other states</h3>
+<p>The refused line is written first — the game still keeps PROMOTE 1162:</p>
+<div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE FACTION 0 NEW 1</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and PROMOTE 1162 still stands</div><div class="line"><span class="n">2</span>PROMOTE 1162 <span class=ok>Lancer (1162) becomes owner</span></div></div>
+<p>No other PROMOTE — the refused line is the only one:</p>
+<div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE FACTION 0 NEW 1</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and nothing changes</div></div>
+<p>NEW 0 is refused the same way (the game wants a new-unit number above 0):</p>
+<div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE 1162 <span class=ok>Lancer (1162) becomes owner</span></div><div class="line"><span class="n">2</span>PROMOTE FACTION 7 NEW 0</div><div class="warn new">PROMOTE will be refused: there is no new unit 0, so this line is ignored and PROMOTE 1162 still stands</div></div>
+<p>Two refused lines — each carries its own warning:</p>
+<div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE 1162 <span class=ok>Lancer (1162) becomes owner</span></div><div class="line"><span class="n">2</span>PROMOTE FACTION 0 NEW 1</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and PROMOTE 1162 still stands</div><div class="line"><span class="n">3</span>PROMOTE FACTION 0 NEW 2</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and PROMOTE 1162 still stands</div></div>
+<p>The kept PROMOTE is itself refused (Ivanhoe does not own the fort) — line 1 keeps today's warning, line 2 gets the new one:</p>
+<div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · in Fort [1], owned by Gatekeeper (12)</div><div class="line"><span class="n">1</span>PROMOTE 1162</div><div class="warn">PROMOTE will be refused: Gatekeeper (12) owns Fort [1] when promotions run, not this unit, so nothing changes</div><div class="line"><span class="n">2</span>PROMOTE FACTION 0 NEW 1</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and PROMOTE 1162 still stands</div></div>
+<div class="note">Unchanged in every option: the forecast still makes Lancer (1162) the owner, as it does today. The warning sits under the line like every other warning, and is counted in the editor's warning total. A real faction (PROMOTE FACTION 7 NEW 1) is not warned, as today. Dashed outline = the new warning.</div>
+<h3>Trade-off</h3><ul><li>Answers the player's next question — "so who becomes owner?" — in the warning itself.</li><li>Same "…, so …" shape as the PROMOTE warnings already shipped.</li><li class="con">Longer; wraps to two lines in a narrow window.</li></ul></main></body></html>
