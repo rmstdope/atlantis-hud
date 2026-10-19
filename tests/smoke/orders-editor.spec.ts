@@ -857,8 +857,15 @@ test("a problem inside a FORM block tags the creator's FORM line and leads to th
   const tag = page.getByTestId("orders-input").getByTestId("form-tag");
   await expect(tag).toHaveText("new 1: 1 error");
   await expect(tag).toHaveAttribute("data-severity", "error");
-  // On the FORM line itself, and the tag's words are no part of the orders.
-  await expect(page.getByTestId("orders-input").locator(".cm-line", { has: page.getByTestId("form-tag") })).toContainText("FORM 1");
+  // On a row of its own right under the FORM line (`ah-z27v`), and the tag's words are no part of
+  // the orders.
+  await expect
+    .poll(() =>
+      page
+        .getByTestId("orders-input")
+        .evaluate((root) => root.querySelector("[data-testid=form-tag-row]")?.previousElementSibling?.textContent ?? null)
+    )
+    .toMatch(/^[ \u00a0]*FORM 1$/);
   await expectOrders(page, /^@study obse\n[ \u00a0]*FORM 1\n[ \u00a0]*WROK\n[ \u00a0]*END/);
   // The creator's own counts and list are unchanged by it: the error is new 1's. (The creator does
   // carry a warning of its own here, on the FORM line, which is no business of this test.)
@@ -883,6 +890,7 @@ test("a problem inside a FORM block tags the creator's FORM line and leads to th
   await fillOrders(page, "@work");
   await selectUnit(page, OWN_UNIT);
   await expect(page.getByTestId("orders-input").getByTestId("form-tag")).toHaveCount(0);
+  await expect(page.getByTestId("orders-input").getByTestId("form-tag-row")).toHaveCount(0);
 });
 
 /**
@@ -923,38 +931,100 @@ test("landing in a formed unit from its creator selects the problem's words when
 });
 
 /**
- * The tag stays at the end of its FORM line (`ah-j10j`): it never wraps onto a line of its own, and
- * Enter at the end of the FORM line opens the new line below it rather than carrying it down.
+ * The tag sits on a row of its own directly beneath its FORM line (`ah-z27v`,
+ * docs/ui/ah-z27v-form-tag-row.html), short line or long: it never scrolls sideways with the text,
+ * so a long note typed after `FORM 1` cannot push it out of view, and Enter at the end of the FORM
+ * line opens the new line below the FORM line rather than taking the row with it.
  */
-test("a FORM line's tag stays on its FORM line, through a long line and through Enter", async ({ page }) => {
+test("a FORM line's tag sits on a row of its own beneath the FORM line, through a long line and through Enter", async ({
+  page
+}) => {
   await openEditor(page);
-  const comment = "; " + "a long note about this new unit ".repeat(6);
-  await fillOrders(page, `FORM 1 ${comment}\nWROK\nEND\n`);
-
   const input = page.getByTestId("orders-input");
   const tag = input.getByTestId("form-tag");
-  await expect(tag).toHaveText("new 1: 1 error");
-  // One visual line however long: the FORM line scrolls sideways rather than wrapping its tag under.
-  const formLine = input.locator(".cm-line", { has: page.getByTestId("form-tag") });
-  const otherLine = input.locator(".cm-line", { hasText: "WROK" });
-  const formBox = await formLine.boundingBox();
-  const otherBox = await otherLine.boundingBox();
-  expect(formBox!.height).toBeLessThan(otherBox!.height * 1.5);
+  /** The text of the line just above the tag row: always the FORM line. */
+  const lineAboveRow = () =>
+    input.evaluate((root) => root.querySelector("[data-testid=form-tag-row]")?.previousElementSibling?.textContent ?? null);
 
-  // Enter on a short FORM line, where End is the end of the line rather than of what is in view.
+  // Short: on its own row all the same, even with room beside the text.
+  await fillOrders(page, "FORM 1\nWROK\nEND\n");
+  await expect(tag).toHaveText("new 1: 1 error");
+  await expect(input.getByTestId("form-tag-row")).toContainText("↳");
+  expect(await lineAboveRow()).toMatch(/^[ \u00a0]*FORM 1$/);
+
+  // Long, with the caret at its end: the editor scrolls to follow it, and the tag stays whole.
+  const comment = "; " + "a long note about this new unit ".repeat(6);
+  await fillOrders(page, `FORM 1 ${comment}\nWROK\nEND\n`);
+  await expect(tag).toHaveText("new 1: 1 error");
+  await input.locator(".cm-line").first().click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("End");
+  const scroller = input.locator(".cm-scroller");
+  await expect.poll(() => scroller.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const view = (await scroller.boundingBox())!;
+  const box = (await tag.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(view.x);
+  expect(box.x + box.width).toBeLessThanOrEqual(view.x + view.width);
+  // Still one visual line, as ah-j10j agreed.
+  const formBox = (await input.locator(".cm-line", { hasText: "FORM 1" }).boundingBox())!;
+  const otherBox = (await input.locator(".cm-line", { hasText: "WROK" }).boundingBox())!;
+  expect(formBox.height).toBeLessThan(otherBox.height * 1.5);
+
+  // Enter at the end of a short FORM line: read at once, before the next check could put it back.
   await fillOrders(page, "FORM 1\nWROK\nEND\n");
   await expect(tag).toHaveText("new 1: 1 error");
   await input.locator(".cm-line").first().click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
-  // Read at once, before the next check could put it back: the tag never left the FORM line.
-  const tagged = await input.evaluate((root) => {
-    const line = root.querySelector(".cm-form-tag")?.closest(".cm-line");
-    const copy = line?.cloneNode(true) as Element | undefined;
-    copy?.querySelectorAll(".cm-form-tag").forEach((element) => element.remove());
-    return copy?.textContent ?? null;
-  });
-  expect(tagged).toMatch(/^[ \u00a0]*FORM 1/);
+  expect(await lineAboveRow()).toMatch(/^[ \u00a0]*FORM 1$/);
+});
+
+/**
+ * The tag row is not a line of orders (`ah-z27v`): the caret steps from the FORM line straight to
+ * the next order, a copy across it carries only the orders, only the tag itself opens the formed
+ * unit, and the hover box opens beneath the tag.
+ */
+test("a FORM line's tag row is not a line of orders", async ({ page }) => {
+  await openEditor(page);
+  await fillOrders(page, "FORM 1\nWROK\nEND\n");
+  const input = page.getByTestId("orders-input");
+  const tag = input.getByTestId("form-tag");
+  await expect(tag).toHaveText("new 1: 1 error");
+
+  const caretLine = () =>
+    page.evaluate(() => {
+      const node = window.getSelection()?.anchorNode;
+      const element = node instanceof Element ? node : node?.parentElement;
+      return element?.closest(".cm-line")?.textContent ?? null;
+    });
+  await input.locator(".cm-line").first().click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(caretLine).toMatch(/WROK/);
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(caretLine).toMatch(/FORM 1/);
+
+  // A proxy for a copy (CodeMirror copies from the document, which never holds the tag): the
+  // selection a person sees across the row shows only the orders.
+  await page.keyboard.press("ControlOrMeta+a");
+  const copied = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+  expect(copied).toMatch(/FORM 1/);
+  expect(copied).not.toMatch(/new 1|↳/);
+
+  // The arrow is a mark, not a way in: the panel stays on the creator.
+  await input.locator(".cm-content").evaluate((element) => (element as HTMLElement).blur());
+  await input.locator(".cm-form-tag-arrow").click();
+  await expect(page.getByTestId("panel-orders")).not.toContainText("— new 1");
+  // ...and the click is the editor's, as between lines: it keeps focus and puts the caret on an
+  // order line rather than being swallowed by the row.
+  await expect(input.locator(".cm-editor")).toHaveClass(/cm-focused/);
+  await expect.poll(caretLine).toMatch(/FORM 1|WROK/);
+
+  await tag.hover();
+  const hover = page.getByTestId("form-tag-hover");
+  await expect(hover).toBeVisible();
+  const tagBox = (await tag.boundingBox())!;
+  const hoverBox = (await hover.boundingBox())!;
+  expect(hoverBox.y).toBeGreaterThanOrEqual(tagBox.y + tagBox.height - 1);
 });
 
 /**

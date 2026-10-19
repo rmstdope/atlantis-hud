@@ -311,14 +311,10 @@ export async function fillOrders(page: Page, text: string) {
  */
 export async function ordersText(page: Page): Promise<string> {
   return page.getByTestId("orders-input").evaluate((root) => {
-    const lines = root.querySelectorAll(".cm-line");
-    // A FORM line's tag (`ah-j10j`) is a widget inside its line and no part of the orders.
-    return Array.from(lines)
-      .map((line) => {
-        const copy = line.cloneNode(true) as Element;
-        copy.querySelectorAll(".cm-form-tag").forEach((tag) => tag.remove());
-        return copy.textContent ?? "";
-      })
+    // A FORM line's tag row (`ah-z27v`) is a block of its own between lines, not a `.cm-line`, so
+    // it is never read here.
+    return Array.from(root.querySelectorAll(".cm-line"))
+      .map((line) => line.textContent ?? "")
       .join("\n");
   });
 }
