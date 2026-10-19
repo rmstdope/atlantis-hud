@@ -73,8 +73,8 @@ use crate::orders::silver::{
 };
 use crate::orders::study::{self, StudyCeiling};
 use crate::orders::targets::{
-    give_endpoint, party_label, party_unit_id, recruit_refused, GiveEndpoint, GiveOutcome,
-    GiveReach, GiveRefusal, GiveVerdict,
+    give_endpoint, mage_recruit_refused, party_label, party_unit_id, recruit_refused, GiveEndpoint,
+    GiveOutcome, GiveReach, GiveRefusal, GiveVerdict,
 };
 use crate::orders::transfers::{
     in_report_order, report_order, report_ranks, PendingTransfer, Placement,
@@ -1802,6 +1802,8 @@ fn pool_shares_for(
             overruns.push(PoolOverrun {
                 pool: names,
                 wanted,
+                ordered: wanted,
+                refused: 0,
                 available: pool,
                 claimants: wanting.clone(),
             });
@@ -1922,6 +1924,17 @@ fn market_shares_sized(
     // What every buyer's bounded orders claim once each is cut to the line, but not yet to its
     // purse: the most the line could give it, were it able to pay (`ah-s4hy`).
     let mut line_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // What every buyer's orders will *attempt*, per unit: each cut to what the unit can pay for
+    // (`rules/buy`: it "will attempt to buy as many as it can"), but not to the line - the figure
+    // the oversubscription warning counts, so it agrees with the split (`ah-efb5`).
+    let mut counted_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // What the orders the game refuses for bringing normal men into a unit with leaders wrote, per
+    // tag and unit: named by the warning as written and refused, never counted (`ah-efb5`). Per
+    // unit, so a `BUY ALL` is written once however many lines say it, as `stated_buys` is.
+    let mut refused_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // The units among those whose refused lines include a `BUY ALL`: the line's amount is applied
+    // to them once every exact line is in, as `stated_buys` does, so line order cannot change it.
+    let mut refused_all: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in &ordered.intents {
@@ -1968,6 +1981,26 @@ fn market_shares_sized(
             if matches!(side, MarketSide::Buying)
                 && refused_recruits.contains(&(index, tag.to_ascii_uppercase()))
             {
+                // Normal men refused for mixing with leaders are named in the warning, with what
+                // they wrote (`ah-efb5`). Leaders refused for joining normal men, and a mage's
+                // recruits, are not: "refused for mixing with leaders" would be false for them,
+                // so they stay out of every figure as before (`ah-yn2x`).
+                if !tag.eq_ignore_ascii_case(magic::LEADER_TAG)
+                    && !mage_recruit_refused(&ordered.unit.skills, &tag, ruleset)
+                {
+                    let refused = refused_buys
+                        .entry(tag.clone())
+                        .or_insert_with(|| vec![0; hex.units.len()]);
+                    match &placed.intent {
+                        Intent::Buy {
+                            amount: Amount::Exact(count),
+                            ..
+                        } => refused[index] = refused[index].saturating_add((*count).max(0)),
+                        _ => {
+                            refused_all.entry(tag.clone()).or_default().insert(index);
+                        }
+                    }
+                }
                 continue;
             }
 
@@ -2027,6 +2060,12 @@ fn market_shares_sized(
                             .entry(tag.clone())
                             .or_insert_with(|| vec![0; hex.units.len()]);
                         stated[index] = stated[index].saturating_add((*count).max(0));
+                        let counted = counted_buys
+                            .entry(tag.clone())
+                            .or_insert_with(|| vec![0; hex.units.len()]);
+                        counted[index] = counted[index].saturating_add(
+                            (*count).max(0).min(afford(index, &tag).unwrap_or(i64::MAX)),
+                        );
                         // Settled even when the cut leaves nothing: a line of none for sale
                         // buys none, rather than falling back to the order (`ah-s4hy`).
                         wants
@@ -2093,6 +2132,7 @@ fn market_shares_sized(
             // number that overshoots is a real mistake, but an unbounded line states no number at
             // all (`ah-lauy`).
             let mut stated_buying = stated_buys.get(&tag).cloned();
+            let mut counted_buying = counted_buys.get(&tag).cloned();
             let mut on_the_line = line_buys
                 .get(&tag)
                 .cloned()
@@ -2109,6 +2149,11 @@ fn market_shares_sized(
                             claims[*index].saturating_add(attempt.saturating_mul(*lines));
                         let stated = stated_buying.get_or_insert_with(|| vec![0; hex.units.len()]);
                         stated[*index] = stated[*index].max(pool);
+                        // Counted as it is stated, once per unit, but cut to the purse
+                        // (`ah-efb5`).
+                        let counted =
+                            counted_buying.get_or_insert_with(|| vec![0; hex.units.len()]);
+                        counted[*index] = counted[*index].max(attempt);
                     }
                 }
             }
@@ -2122,7 +2167,35 @@ fn market_shares_sized(
                 MarketSide::Selling => stated_sales.get(&tag).unwrap_or(&claims),
                 MarketSide::Buying => stated_buying.as_ref().unwrap_or(&claims),
             };
-            let wanted: i64 = stated.iter().copied().fold(0, i64::saturating_add);
+            let written: i64 = stated.iter().copied().fold(0, i64::saturating_add);
+            // A purchase is counted as the game will attempt it - cut to the purse, refusals left
+            // out - and the warning names what was written beside it (`ah-efb5`). A sale is
+            // counted as it is stated.
+            let (wanted, refused) = match side {
+                MarketSide::Selling => (written, 0),
+                MarketSide::Buying => (
+                    counted_buying
+                        .as_ref()
+                        .unwrap_or(stated)
+                        .iter()
+                        .copied()
+                        .fold(0, i64::saturating_add),
+                    refused_buys.get(&tag).map_or(0, |refused| {
+                        let all = refused_all.get(&tag);
+                        refused
+                            .iter()
+                            .enumerate()
+                            .map(|(index, exact)| {
+                                if all.is_some_and(|all| all.contains(&index)) {
+                                    (*exact).max(pool)
+                                } else {
+                                    *exact
+                                }
+                            })
+                            .fold(0, i64::saturating_add)
+                    }),
+                ),
+            };
             if wanted > pool {
                 overruns.push(PoolOverrun {
                     pool: ContendedPool::Market {
@@ -2130,6 +2203,8 @@ fn market_shares_sized(
                         side,
                     },
                     wanted,
+                    ordered: written.saturating_add(refused),
+                    refused,
                     available: pool,
                     claimants: stated
                         .iter()
@@ -3130,11 +3205,38 @@ fn forecast_hex(
                 .map(|index| (index, refused.tag.to_ascii_uppercase()))
         })
         .collect();
-    let mut market_shares =
-        market_shares_sized(hex, ruleset, overruns, &|_, _| None, None, &refused);
+    let mut market_overruns = Vec::new();
+    let mut market_shares = market_shares_sized(
+        hex,
+        ruleset,
+        &mut market_overruns,
+        &|_, _| None,
+        None,
+        &refused,
+    );
+    // A line the ledger's market pass sized against the purse is warned about as that pass found
+    // it, so the warning counts what each buyer can pay for, as the split below does (`ah-efb5`).
+    // In place, so the findings keep their order by line (review finding 4).
+    let mut replaced = BTreeSet::new();
+    for overrun in market_overruns {
+        match &overrun.pool {
+            ContendedPool::Market {
+                tag,
+                side: MarketSide::Buying,
+            } if ledger.buy_overruns.contains_key(tag) => {
+                overruns.extend(ledger.buy_overruns[tag].iter().cloned());
+                replaced.insert(tag.clone());
+            }
+            _ => overruns.push(overrun),
+        }
+    }
+    for (tag, found) in &ledger.buy_overruns {
+        if !replaced.contains(tag) {
+            overruns.extend(found.iter().cloned());
+        }
+    }
     // Each line's buyers as the ITEMS ledger's market pass divided them, once it knew what each
-    // could pay (`ah-s4hy`): the warnings above state the orders as written, the division is the
-    // ledger's.
+    // could pay (`ah-s4hy`): the division is the ledger's, as its warning above is (`ah-efb5`).
     for (tag, sized) in &ledger.sized_buys {
         market_shares.insert((tag.clone(), MarketSide::Buying), sized.clone());
     }
@@ -7009,6 +7111,11 @@ struct Ledger<'a> {
     /// line found, by upper-case tag and index-aligned with `hex.units` (`ah-s4hy`). The SILVER
     /// column reads these in place of its own up-front settlement, which cannot know the purse.
     pub(crate) sized_buys: BTreeMap<String, Vec<MarketShare>>,
+    /// Each market line's buying-side overrun as the same sizing found it, by upper-case tag: empty
+    /// for a line it sized and found not oversubscribed. The warning reads these in place of the
+    /// SILVER column's up-front settlement, so it counts what the purse lets each buyer attempt -
+    /// as the split does (`ah-efb5`).
+    pub(crate) buy_overruns: BTreeMap<String, Vec<PoolOverrun>>,
 
     /// What each unit's `GIVE ... ALL SILV` lines actually handed over, in document order - given
     /// to the SILVER column through [`PhaseFacts::gifts`] so it books the ledger's answer instead
@@ -7721,6 +7828,7 @@ fn ledger_for_reaching<'a>(
         buy_all: BTreeMap::new(),
         settled_buy_all: BTreeMap::new(),
         sized_buys: BTreeMap::new(),
+        buy_overruns: BTreeMap::new(),
         settled_gifts: BTreeMap::new(),
         shared_casts: BTreeMap::new(),
         unfunded: BTreeMap::new(),
@@ -7980,16 +8088,17 @@ fn ledger_for_reaching<'a>(
                     .map(|(index, _)| (index, tag.clone()))
                     .collect();
                 let key = (tag.clone(), MarketSide::Buying);
-                if let Some(sized) = market_shares_sized(
+                let mut overrun = Vec::new();
+                let mut settled = market_shares_sized(
                     hex,
                     ruleset,
-                    &mut Vec::new(),
+                    &mut overrun,
                     &|index, _| afford.get(index).copied().flatten(),
                     Some((&tag, MarketSide::Buying)),
                     &refused,
-                )
-                .remove(&key)
-                {
+                );
+                ledger.buy_overruns.insert(tag.clone(), overrun);
+                if let Some(sized) = settled.remove(&key) {
                     ledger.sized_buys.insert(tag.clone(), sized.clone());
                     market_shares.insert(key, sized);
                 }
@@ -30086,6 +30195,34 @@ fn check_work_income(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<F
     }
 }
 
+/// Why a buying-side overrun counts fewer than its units wrote, as a parenthetical clause with its
+/// leading space - or nothing, when nothing was cut or refused and the sentence is exactly what it
+/// was before `ah-efb5`. Refusals come first, and each reason carries its own bare count.
+fn bought_clause(overrun: &PoolOverrun, alone: bool) -> String {
+    let PoolOverrun {
+        wanted,
+        ordered,
+        refused,
+        ..
+    } = *overrun;
+    let cut = ordered - refused - wanted;
+    let pays = if alone {
+        "cut to what it can pay for"
+    } else {
+        "cut to what they can pay for"
+    };
+    match (refused > 0, cut > 0) {
+        (false, false) => String::new(),
+        (false, true) => format!(" ({ordered} ordered, {pays})"),
+        (true, false) => {
+            format!(" ({ordered} ordered, {refused} of them refused for mixing with leaders)")
+        }
+        (true, true) => {
+            format!(" ({ordered} ordered: {refused} refused for mixing with leaders, {cut} {pays})")
+        }
+    }
+}
+
 /// Own units in one hex promised more of a region's pool than it holds.
 ///
 /// Per hex, because the pools are: a tax base belongs to the region, unlike the faction purse that
@@ -30112,6 +30249,7 @@ fn check_region_pools(
             wanted,
             available,
             claimants,
+            ..
         } = overrun;
 
         // `ah-t2pn.1`'s rule 1 leaves a lone claimant on a silver pool uncontended, so it can
@@ -30149,7 +30287,9 @@ fn check_region_pools(
                         "your units here sell {goods} between them and this market wants {available}"
                     ),
                     (MarketSide::Buying, false) => format!(
-                        "your units here buy {goods} between them and this market has {available}"
+                        "your units here buy {goods} between them and this market has \
+                         {available}{}",
+                        bought_clause(overrun, false)
                     ),
                     // `rules/sell`: `SELL ALL` "will attempt to sell all of that item, regardless
                     // of how many it has", and the market takes what it wants. A lone seller
@@ -30166,9 +30306,10 @@ fn check_region_pools(
                     (MarketSide::Selling, true) => {
                         format!("this unit sells {goods} and this market wants {available}")
                     }
-                    (MarketSide::Buying, true) => {
-                        format!("this unit buys {goods} and this market has {available}")
-                    }
+                    (MarketSide::Buying, true) => format!(
+                        "this unit buys {goods} and this market has {available}{}",
+                        bought_clause(overrun, true)
+                    ),
                 }
             }
             // A lone claimant on a silver pool, which the assertion above calls a bug: emitting
@@ -31841,6 +31982,8 @@ mod tests {
                 vec![PoolOverrun {
                     pool: ContendedPool::Tax,
                     wanted: 3000,
+                    ordered: 3000,
+                    refused: 0,
                     available: 2500,
                     claimants: vec![0, 1],
                 }]

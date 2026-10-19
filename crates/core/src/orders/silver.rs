@@ -1250,8 +1250,17 @@ pub enum ContendedPool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolOverrun {
     pub pool: ContendedPool,
-    /// What the hex's own units asked for between them, before any split.
+    /// What the hex's own units asked for between them, before any split. On the buying side of a
+    /// market line, what the game will *attempt*: each order cut to what its unit can pay for,
+    /// with recruits refused for mixing leaders and men left out (`rules/buy`, `ah-efb5`).
     pub wanted: i64,
+    /// What the hex's own units wrote between them. Equal to `wanted` except on the buying side
+    /// of a market line, where the purse cuts orders and the game refuses some outright; the
+    /// warning names the difference (`ah-efb5`).
+    pub ordered: i64,
+    /// How much of `ordered` the game refuses outright because it would mix leaders and normal men
+    /// in one unit (`rules/playing_units`). Zero everywhere else.
+    pub refused: i64,
     /// What the pool holds.
     pub available: i64,
     /// Indices into `hex.units` of the units that asked, in `hex.units` order.

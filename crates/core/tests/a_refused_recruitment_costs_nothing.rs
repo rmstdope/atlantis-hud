@@ -522,12 +522,20 @@ fn a_recruit_an_unaffordable_first_line_left_free_takes_its_share_of_the_line() 
         "no leader arrives to mix with: {:?}",
         review.findings
     );
-    assert!(
-        review
-            .findings
-            .iter()
-            .any(|finding| finding.code.as_str() == "region-pool-oversubscribed"),
-        "five and six orcs are ordered where six are for sale: {:?}",
+    // `ah-efb5`: the warning counts the 1 + 6 the game attempts, as the split does, and says why
+    // that is not the 5 + 6 written.
+    let oversubscribed: Vec<&str> = review
+        .findings
+        .iter()
+        .filter(|finding| finding.code.as_str() == "region-pool-oversubscribed")
+        .map(|finding| finding.message.as_str())
+        .collect();
+    let stated = "your units here buy 7 orcs between them and this market has 6 \
+                  (11 ordered, cut to what they can pay for)";
+    assert_eq!(
+        oversubscribed,
+        vec![stated, stated],
+        "one warning on each buyer: {:?}",
         review.findings
     );
 }
