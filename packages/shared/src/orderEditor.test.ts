@@ -743,6 +743,11 @@ describe("a problem's columns placed in the line an editor shows (ah-2zxh)", () 
     expect([placed.columnStart, placed.columnEnd]).toEqual([2, 6]);
   });
 
+  it("still moves them when the tidy has also shouted the keywords or the document carried a CR", () => {
+    const placed = columnsInShownLine({ ...counted, columnStart: 2, columnEnd: 5 }, "  buy 5 orc\r", "BUY 5 ORC");
+    expect([placed.columnStart, placed.columnEnd]).toEqual([0, 3]);
+  });
+
   it("leaves them alone when the line's words differ - it is not the line they were counted in", () => {
     expect(columnsInShownLine(counted, " WROK", "STUDY")).toBe(counted);
   });
