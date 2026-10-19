@@ -692,8 +692,13 @@ fn formed_units(
                 .copied()
                 .filter(|parent| parent.own)
                 .or_else(|| minted.get(&unit_key(&block.region_id, &block.formed_by)))?;
-            let unit =
-                effects::formed_unit(parent, &block.alias, &parent.flags, block.inherited_share);
+            // The former's flags as they stand at the FORM line (`ah-78rd`): a minted parent's
+            // already hold what it inherited, so only its own block's orders are applied.
+            let mut flags_at_form = parent.flags.clone();
+            for change in &block.inherited_flag_changes {
+                crate::report::flags::apply(&mut flags_at_form, *change);
+            }
+            let unit = effects::formed_unit(parent, &block.alias, &flags_at_form);
             minted.insert(unit_key(&unit.region_id, &unit.unit_id), unit.clone());
             let unknown_studies = take_unknown_studies(&mut block.intents, ruleset, report_skills);
             Some(Formed {
@@ -47726,6 +47731,42 @@ BUILD
                 claims_pool: false,
             }],
             "the formed unit inherited sharing, so the hex answers for it and it claims nothing"
+        );
+    }
+
+    /// `ah-78rd`: every flag order written above a `FORM` is in force when the engine copies the
+    /// former's flags (`../Atlantis/parseorders.cpp` `Game::ProcessBehindOrder`,
+    /// `Game::ProcessFormOrder`, `temp->CopyFlags(former)`), and none written below it is - on the
+    /// checks' own reading of the formed unit, which the battle forecasts start from. A nested
+    /// `FORM` starts from its formed former's inherited set plus that block's own orders.
+    #[test]
+    fn a_formed_unit_inherits_the_flag_orders_written_above_its_form() {
+        let orders = "unit 5\nBEHIND 1\nFORM 1\nAVOID 1\nFORM 2\nEND\nEND\nHOLD 1\n";
+        let parsed = report(vec![region(vec![sharing(unit("5"))])]);
+        let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
+        // Which of the flags this test writes the formed unit carries.
+        let written = |id: &str| {
+            formed
+                .iter()
+                .find(|formed| formed.unit.unit_id == id)
+                .unwrap_or_else(|| panic!("{id} is formed"))
+                .unit
+                .flags
+                .iter()
+                .filter(|flag| ["behind", "avoiding", "holding"].contains(&flag.as_str()))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            written("new-1"),
+            vec!["behind"],
+            "the BEHIND above the FORM is inherited, the HOLD below its block is not"
+        );
+        assert_eq!(
+            written("new-2"),
+            vec!["behind", "avoiding"],
+            "the nested FORM inherits new 1's flags with its AVOID above it"
         );
     }
 
