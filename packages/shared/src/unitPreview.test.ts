@@ -1547,6 +1547,35 @@ describe("formatItems and itemsTooltip", () => {
     );
   });
 
+  // `ah-0pa7`: the ITEMS hover repeats the BUY ALL sentences, so a later line on a shared market
+  // line is silent here too.
+  it("says nothing for a second BUY ALL on a shared line", () => {
+    const row = previewedUnit({
+      items: [{ amount: 12, name: "silk", tag: "SILK" }],
+      previewChanges: [{ field: "items", original: "0 SILK" }]
+    });
+    const line = {
+      boughtNamed: "12 silk",
+      marketNamed: "16 silk",
+      bought: 12,
+      affordable: 20,
+      available: 12,
+      marketHas: 16,
+      alreadyBought: 0,
+      silverAvailable: 1700,
+      price: 85,
+      cappedBy: "shared" as const
+    };
+    const silver = aUnitSilver({
+      buyAll: [line, { ...line, bought: 0, boughtNamed: "no silk", affordable: 8, alreadyBought: 12 }]
+    });
+
+    expect(itemsTooltip(row, silver)).toContain(
+      "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it."
+    );
+    expect(itemsTooltip(row, silver)).not.toContain("have claimed all");
+  });
+
   // `ah-ofpb.2`. Every string below is quoted verbatim in the plan and is the navigator's own
   // wording - nothing here is left for the test to word differently.
 

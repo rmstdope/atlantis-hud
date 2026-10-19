@@ -480,6 +480,109 @@ describe("buyAllSentences (ah-jown)", () => {
     ]);
   });
 
+  // `ah-0pa7`: on a line faction-mates share, a later line enlarged the unit's share (`ah-ecfl`),
+  // so the one share sentence speaks for the unit and the later line adds none of its own.
+  describe("a later line on a shared market line (ah-0pa7)", () => {
+    const silk = (
+      overrides: Partial<UnitSilver["buyAll"][number]>
+    ): UnitSilver["buyAll"][number] => ({
+      boughtNamed: "12 silk",
+      marketNamed: "16 silk",
+      bought: 12,
+      affordable: 20,
+      available: 12,
+      marketHas: 16,
+      alreadyBought: 0,
+      silverAvailable: 1700,
+      price: 85,
+      cappedBy: "shared",
+      ...overrides
+    });
+
+    it("keeps the share sentence and says nothing for the second BUY ALL", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              silk({}),
+              silk({ bought: 0, boughtNamed: "no silk", affordable: 8, alreadyBought: 12 })
+            ]
+          })
+        )
+      ).toEqual([
+        "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("says nothing for a BUY ALL after an exact BUY", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [silk({ bought: 0, boughtNamed: "no silk", alreadyBought: 12 })]
+          })
+        )
+      ).toEqual([]);
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [silk({ bought: 3, boughtNamed: "3 silk", alreadyBought: 9 })]
+          })
+        )
+      ).toEqual([]);
+    });
+
+    it("leaves the faction-mate's single line as it was", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({ buyAll: [silk({ bought: 4, boughtNamed: "4 silk", available: 4 })] })
+        )
+      ).toEqual([
+        "This unit gets 4 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("leaves the lone buyer's second line warned on", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              silk({
+                bought: 16,
+                boughtNamed: "16 silk",
+                affordable: 24,
+                available: 16,
+                cappedBy: "market"
+              }),
+              silk({
+                bought: 0,
+                boughtNamed: "no silk",
+                affordable: 8,
+                available: 16,
+                alreadyBought: 16,
+                cappedBy: "already-bought"
+              })
+            ]
+          })
+        )
+      ).toEqual([
+        "This market has 16 silk, not the 24 this unit's silver would buy.",
+        "This unit buys no silk: an earlier order of its own has already bought all 16 this market has."
+      ]);
+    });
+
+    it("leaves a single BUY ALL its faction-mates took the whole line from as it was", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [silk({ bought: 0, boughtNamed: "no silk", available: 0 })]
+          })
+        )
+      ).toEqual([
+        "This unit buys no silk: your other units in this region have claimed all 16 this market has."
+      ]);
+    });
+  });
+
   it("says nothing for a unit that wrote no BUY ALL", () => {
     expect(buyAllSentences(aUnitSilver())).toEqual([]);
     expect(buyAllSentences(null)).toEqual([]);

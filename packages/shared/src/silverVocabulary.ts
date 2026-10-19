@@ -277,11 +277,17 @@ export function productionMenSentence(silver: UnitSilver | null | undefined): st
  * One sentence per `BUY ALL` this unit wrote, in document order - what it buys and what stopped
  * it buying more. Empty when the unit wrote none, or when its sums are doubted.
  *
+ * Except a later line on a market line faction-mates share (`ah-0pa7`): there every line is an
+ * attempt that enlarged the unit's share (`ah-ecfl`), so the earlier line's share sentence speaks
+ * for the unit and the later one adds none, matching the order editor's silence on it. "Shared" is
+ * the core's own test in `price_buy_all` - a share smaller than the line - and `alreadyBought`
+ * counts an earlier exact `BUY` as well as an earlier `BUY ALL`.
+ *
  * Exported because the ITEMS hover says it too (`ah-jown`), the arrangement
  * [`productionStatusSentence`] already has: two copies of one sentence are two things to keep in step.
  */
 export function buyAllSentences(silver: UnitSilver | null | undefined): string[] {
-  return (silver?.buyAll ?? []).map((b) => {
+  return (silver?.buyAll ?? []).flatMap((b) => {
     if (b.cappedBy === "already-bought") {
       const limit = b.available === b.marketHas ? "this market has" : "it can have here";
       if (b.bought === 0) {
@@ -289,6 +295,12 @@ export function buyAllSentences(silver: UnitSilver | null | undefined): string[]
         return `This unit buys ${b.boughtNamed}: an earlier order of its own has already bought ${what} ${limit}.`;
       }
       return `This unit buys ${b.boughtNamed}: its earlier orders have taken the other ${b.alreadyBought} of the ${b.available} ${limit}.`;
+    }
+    // `ah-0pa7`, after the `already-bought` branch so its "it can have here" wording keeps the
+    // core's guard on the share's arithmetic (`price_buy_all` no longer sets that cause on a
+    // shared line, so every real later line on one reaches this test).
+    if (b.alreadyBought > 0 && b.available < b.marketHas) {
+      return [];
     }
     if (b.bought === 0 && b.cappedBy === "silver") {
       return `This unit buys ${b.boughtNamed}: it can have ${b.silverAvailable} silver and one costs ${b.price}.`;
