@@ -33,7 +33,12 @@ import { HOVER_DELAY_MS } from "../../packages/shared/src/unitTooltip";
 import { COLUMN_PITCH } from "../../packages/shared/src/workspace/mapViewport";
 // The seam itself, not a copy: the header budget below is only worth anything if it fails for the
 // same arithmetic the orders drag actually uses (ah-csni).
-import { railHasRoomToDrag, railRemFor } from "../../packages/shared/src/workspace/panelLayout";
+import {
+  ORDERS_MIN_REM,
+  RAIL_MIN_REM,
+  railHasRoomToDrag,
+  railRemFor
+} from "../../packages/shared/src/workspace/panelLayout";
 
 /**
  * Walks the workspace on a real turn report, in whichever shell the project targets.
@@ -1797,6 +1802,72 @@ test("a rail drags at its edge pill and survives a reload", async ({ page }) => 
 
   await grip.dblclick();
   await expect.poll(async () => overlayWidth(page, "left")).toBeCloseTo(before, 0);
+});
+
+/**
+ * The orders status line at its tightest (ah-kbpc): the right rail at its narrowest, the orders
+ * panel at its smallest, and every part of the status line showing at once. Its spans used to wrap
+ * their own words, taking the line from one row to two, and the extra 17px was more than the
+ * smallest panel could hold, so the panel body scrolled.
+ */
+test("the orders status line stays one line in the narrowest rail at the smallest orders height", async ({
+  page
+}) => {
+  await loadReport(page);
+  await silenceIdleUnits(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await waitForSettledHeader(page);
+
+  const rail = page.getByTestId("rail-splitter-right");
+  await rail.focus();
+  for (let i = 0; i < 40; i += 1) {
+    await rail.press("ArrowRight");
+  }
+  await expect(rail).toHaveAttribute("aria-valuenow", String(RAIL_MIN_REM));
+  const split = page.getByTestId("panel-splitter");
+  await split.focus();
+  for (let i = 0; i < 20; i += 1) {
+    await split.press("ArrowDown");
+  }
+  await expect(split).toHaveAttribute("aria-valuenow", String(ORDERS_MIN_REM));
+
+  await fillOrders(page, "GIVE 0 10 swordz\nWROK");
+  const status = page.getByTestId("orders-status");
+  await expect(status).toContainText("1 error");
+  await expect(status).toContainText("1 warning");
+  // Autosave waits five idle seconds, which is plenty to measure the longest notice in.
+  await expect(status).toContainText("unsaved changes");
+  await waitForStableHeight(page, "orders");
+
+  // One line: no taller than its own line box plus its top padding and border.
+  const lineHeight = await status.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return (
+      el.getBoundingClientRect().height -
+      parseFloat(style.paddingTop) -
+      parseFloat(style.borderTopWidth)
+    );
+  });
+  const fontSize = await status.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(lineHeight, "the status line's content height").toBeLessThan(fontSize * 2);
+
+  // The panel body may still be short of room, but only by the problem list's own first row: the
+  // list keeps that row whole however far it wraps, and at this width it wraps to several lines
+  // (ah-8zbc caps it). Whatever the body cannot hold beyond that row's extra lines is the status
+  // line's doing, and there must be none.
+  const room = (await page.getByTestId("orders-diagnostics-room").boundingBox())!.height;
+  const oneRow = await page
+    .getByTestId("orders-diagnostics")
+    .evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+  const body = page.getByTestId("panel-orders").locator(":scope > div").last();
+  const overflow = await body.evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(overflow, "the orders panel body's overflow beyond the wrapped problem row").toBeLessThanOrEqual(
+    Math.max(0, room - oneRow) + 0.5
+  );
+
+  await rail.dblclick();
+  await resetSplit(page);
 });
 
 /** The units pane's outer height, as the player sees it. */

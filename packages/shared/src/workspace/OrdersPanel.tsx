@@ -195,7 +195,10 @@ export function OrdersPanel({
           />
           <p
             data-testid="orders-status"
-            className="m-0 flex flex-none items-center gap-3 border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
+            // One line however narrow the rail (ah-kbpc): a wrapped word made the line a row taller,
+            // more than the smallest orders panel can hold, so its body scrolled. The counts keep
+            // their width and the save notice, last and longest, gives way with an ellipsis.
+            className="m-0 flex min-w-0 flex-none items-center gap-3 overflow-hidden whitespace-nowrap border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
           >
             <span className={here.errorCount > 0 ? "text-danger" : "text-ok"}>
               {here.errorCount} error{here.errorCount === 1 ? "" : "s"}
@@ -207,7 +210,9 @@ export function OrdersPanel({
               <span className="text-ink-dim">{elsewhere} elsewhere</span>
             ) : null}
             <span className="flex-1" />
-            <SaveNotice save={save} />
+            <span className="min-w-0 truncate">
+              <SaveNotice save={save} />
+            </span>
           </p>
           {problems.length > 0 ? (
             // Keyed on the unit, so another unit's list starts at the top rather than wherever
