@@ -7527,17 +7527,26 @@ mod tests {
         let selfish = sharer.replace("behind, sharing, on guard", "behind, on guard");
 
         assert_eq!(
-            formed_flags(&sharer, "unit 900\nSHARE 0\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n"),
+            formed_flags(
+                &sharer,
+                "unit 900\nSHARE 0\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n"
+            ),
             vec!["behind"],
             "a SHARE 0 above the FORM leaves the formed unit selfish"
         );
         assert_eq!(
-            formed_flags(&selfish, "unit 900\nSHARE 1\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n"),
+            formed_flags(
+                &selfish,
+                "unit 900\nSHARE 1\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n"
+            ),
             vec!["behind", "sharing"],
             "a SHARE 1 above the FORM makes the formed unit share"
         );
         assert_eq!(
-            formed_flags(&sharer, "unit 900\nFORM 1\nEND\nSHARE 0\nGIVE NEW 1 1 LEAD\n"),
+            formed_flags(
+                &sharer,
+                "unit 900\nFORM 1\nEND\nSHARE 0\nGIVE NEW 1 1 LEAD\n"
+            ),
             vec!["behind", "sharing"],
             "a SHARE 0 below the FORM does not reach it"
         );
