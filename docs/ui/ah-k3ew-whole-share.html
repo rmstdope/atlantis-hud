@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option A TITLEmdash; The whole share, nothing more</title><style>
+  :root {
+    --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --danger:#d97070;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, footer { max-width:1500px; margin:0 auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; }
+  h1 span { color:var(--brass); }
+  header p { color:var(--ink-soft); max-width:96ch; margin-top:10px; font-size:14px; }
+  header p + p { margin-top:8px; }
+  code, .mono { font-family:'SF Mono',Menlo,Consolas,monospace; }
+  header code, p code, li code, td code { color:var(--brass-bright); font-size:12.5px; }
+  h3.sec { margin:36px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+  h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:96ch; }
+  .card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .card h2 { font-size:16px; margin-bottom:5px; }
+  .card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+  .concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:11px; max-width:96ch; }
+  .stage { background:var(--ground); border:1px solid var(--edge-soft); border-radius:8px; padding:10px; overflow-x:auto; position:relative; }
+  .notes { list-style:none; font-size:12.5px; color:var(--ink-soft); display:grid; gap:4px; margin-top:11px; }
+  .notes li::before { content:"+ "; color:var(--ok); font-weight:bold; }
+  .notes li.con::before { content:"\2212 "; color:var(--danger); }
+  .notes li.n::before { content:"\00b7 "; color:var(--ink-dim); }
+  table.units { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0;
+                font:12.5px/1.4 'Helvetica Neue',Arial,sans-serif; font-variant-numeric:tabular-nums; }
+  table.units th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+                   color:var(--ink-soft); font-weight:400; padding:2px 8px; border-bottom:1px solid var(--edge); }
+  table.units td { padding:3px 8px; border-bottom:1px solid var(--edge-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .own { color:var(--ok); } .uid { color:var(--select); }
+  .pred { font-style:italic; color:var(--brass); }
+  .colhi { outline:1px solid var(--brass); outline-offset:-1px; }
+  .ord { color:var(--ink-dim); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11px; }
+  .unk { color:var(--ink-dim); }
+  .tip { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+         padding:9px 11px; font:11.5px/1.5 'Helvetica Neue',Arial,sans-serif; color:var(--ink);
+         display:inline-block; margin-top:8px; max-width:70ch; }
+  .tip b { color:var(--brass-bright); font-weight:600; display:block; margin-bottom:5px; }
+  .tip .soft { color:var(--ink-soft); }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:18px; align-items:start; }
+  .split3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }
+  .market { background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:8px 11px;
+            font:11.5px/1.5 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); display:inline-block; margin-bottom:12px; }
+  footer { margin-top:40px; color:var(--ink-dim); font-size:12.5px; max-width:96ch; }
+</style></head><body><header><h1>Option A &mdash; The whole share, nothing more</h1></header><main>
+<h3 class="sec">The case that was wrong</h3>
+<p>Tundra (35,9). The market sells <code>16 silk at $85</code>. Scout writes <code>BUY 5 SILK</code> then <code>BUY ALL SILK</code>; City Guard writes <code>BUY ALL SILK</code>. The Scout gets 8 silk in all &mdash; 5 on its first line and 3 on its second &mdash; and pays 680.</p>
+<div class="split">
+<div class="card"><h2><em>Before</em>What the Scout&rsquo;s hover says today</h2><div class="stage">
+<table class="units"><tr><th>Unit</th><th>Silver</th><th>Items</th></tr>
+<tr><td class="own">Scout <span class="uid">(8455)</span></td><td class="pred colhi">&minus;680</td><td>8 SILK</td></tr></table>
+<div class="tip"><b>hover</b><span class="soft">bought 5 silk at 85 each and 3 silk at 85 each</span><br><span class="soft" style="color:var(--danger)">This unit gets 3 of the 16 silk this market has, because your units in this region are competing for it.</span></div>
+</div><ul class="notes"><li class="con">Says 3 while the line above it and the ITEMS column say 8.</li></ul></div>
+<div class="card"><h2><em>After</em>Option A &mdash; The whole share, nothing more</h2><div class="stage">
+<table class="units"><tr><th>Unit</th><th>Silver</th><th>Items</th></tr>
+<tr><td class="own">Scout <span class="uid">(8455)</span></td><td class="pred colhi">&minus;680</td><td>8 SILK</td></tr></table>
+<div class="tip"><b>hover</b><span class="soft">bought 5 silk at 85 each and 3 silk at 85 each</span><br><span class="soft">This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it.</span></div>
+</div><ul class="notes"><li>Same sentence as today, with the right number in it.</li><li>The line above already shows how the 8 splits across the two orders.</li><li class="con">Does not say the 8 covers both lines; a player has to read the line above for that.</li></ul></div>
+</div>
+<h3 class="sec">The states around it</h3>
+<div class="split3">
+<div class="card"><h2><em>Smaller first line</em>BUY 3 SILK + BUY ALL SILK</h2><div class="stage"><div class="tip"><b>hover</b><span class="soft">This unit gets 7 of the 16 silk this market has, because your units in this region are competing for it.</span></div></div><ul class="notes"><li class="n">Was &ldquo;gets 4 of the 16&rdquo;; the unit gets 7.</li></ul></div>
+<div class="card"><h2><em>Only BUY ALL</em>City Guard (7676)</h2><div class="stage"><div class="tip"><b>hover</b><span class="soft">This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it.</span></div></div><ul class="notes"><li class="n">Unchanged: it has one line, so its line and its share were always the same.</li></ul></div>
+<div class="card"><h2><em>Alone</em>Scout with no faction-mate buying</h2><div class="stage"><div class="tip"><b>hover</b><span class="soft">(whatever it says today about silver or the market running out)</span></div></div><ul class="notes"><li class="n">Unchanged: nobody is competing, so there is no share sentence to fix.</li></ul></div>
+</div>
+<p style="color:var(--ink-soft);font-size:13px;max-width:96ch">The ITEMS column&rsquo;s hover repeats the same sentence and changes with it. The unit still gets one share sentence per goods, however many lines it wrote.</p></main></body></html>

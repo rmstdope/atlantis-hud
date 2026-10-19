@@ -5,7 +5,9 @@ import {
   createDraftWriter,
   documentFor,
   draftKeyFor,
+  readableTime,
   saveDraft,
+  saveNotice,
   type SaveState
 } from "./orderDraft";
 import { REPORT_NAMES_NO_FACTION, judgeReportUsable } from "./reportLoadDecision";
@@ -376,5 +378,26 @@ describe("keeping track of what is owed to storage", () => {
 
     expect(core.saveOrderDraft).not.toHaveBeenCalled();
     expect(writer.dirtySince()).toBeNull();
+  });
+});
+
+/** ah-sgvo: the save notice's words as one string, so a cut notice can show them all on hover. */
+describe("saveNotice", () => {
+  it("says every save state in the words it always has", () => {
+    expect(saveNotice({ kind: "clean" })).toEqual({ text: "not saved yet", tone: null });
+    expect(saveNotice({ kind: "dirty" })).toEqual({ text: "unsaved changes", tone: "warn" });
+    expect(saveNotice({ kind: "saving" })).toEqual({ text: "saving…", tone: null });
+    expect(saveNotice({ kind: "failed", reason: "disk full" })).toEqual({
+      text: "could not save: disk full",
+      tone: "danger"
+    });
+  });
+
+  it("reads a save's time the way the panel always has", () => {
+    const at = "2026-10-19T21:52:25.000Z";
+    expect(saveNotice({ kind: "saved", at })).toEqual({
+      text: `saved ${readableTime(at)}`,
+      tone: null
+    });
   });
 });

@@ -1526,6 +1526,7 @@ describe("formatItems and itemsTooltip", () => {
       productionCappedBy: "materials",
       buyAll: [
         {
+          tag: "GRAI",
           boughtNamed: "19 grain",
           marketNamed: "30 grain",
           bought: 19,
@@ -1545,6 +1546,69 @@ describe("formatItems and itemsTooltip", () => {
         "This unit has silver for 19 grain, not the 30 this market offers.\n" +
         "This unit has materials for 5 swords, not the 8 its skill and tools could make."
     );
+  });
+
+  // `ah-0pa7`: the ITEMS hover repeats the BUY ALL sentences, so a later line on a shared market
+  // line is silent here too.
+  it("says nothing for a second BUY ALL on a shared line", () => {
+    const row = previewedUnit({
+      items: [{ amount: 12, name: "silk", tag: "SILK" }],
+      previewChanges: [{ field: "items", original: "0 SILK" }]
+    });
+    const line = {
+      tag: "SILK",
+      boughtNamed: "12 silk",
+      marketNamed: "16 silk",
+      bought: 12,
+      affordable: 20,
+      available: 12,
+      marketHas: 16,
+      alreadyBought: 0,
+      silverAvailable: 1700,
+      price: 85,
+      cappedBy: "shared" as const
+    };
+    const silver = aUnitSilver({
+      buyAll: [line, { ...line, bought: 0, boughtNamed: "no silk", affordable: 8, alreadyBought: 12 }]
+    });
+
+    const share =
+      "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it.";
+    const tooltip = itemsTooltip(row, silver) ?? "";
+    expect(tooltip.split("\n").filter((sentence) => sentence === share)).toHaveLength(1);
+    expect(tooltip).not.toContain("have claimed all");
+  });
+
+  // `ah-k3ew`: the ITEMS hover repeats the share sentence, so it names the whole share too - an
+  // exact BUY 5 SILK and a BUY ALL SILK that adds 3 read as 8, once.
+  it("names the whole share of an exact BUY and a BUY ALL", () => {
+    const row = previewedUnit({
+      items: [{ amount: 8, name: "silk", tag: "SILK" }],
+      previewChanges: [{ field: "items", original: "0 SILK" }]
+    });
+    const silver = aUnitSilver({
+      buyAll: [
+        {
+          tag: "SILK",
+          boughtNamed: "3 silk",
+          marketNamed: "16 silk",
+          bought: 3,
+          affordable: 10,
+          available: 8,
+          marketHas: 16,
+          alreadyBought: 5,
+          silverAvailable: 869,
+          price: 85,
+          cappedBy: "shared"
+        }
+      ]
+    });
+
+    const share =
+      "This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it.";
+    const tooltip = itemsTooltip(row, silver) ?? "";
+    expect(tooltip.split("\n").filter((sentence) => sentence === share)).toHaveLength(1);
+    expect(tooltip).not.toContain("gets 3 of");
   });
 
   // `ah-ofpb.2`. Every string below is quoted verbatim in the plan and is the navigator's own

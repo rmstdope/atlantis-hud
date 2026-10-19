@@ -173,6 +173,28 @@ export function readableTime(isoInstant: string): string {
 }
 
 /**
+ * The save notice under the orders editor, as one string and the colour it is drawn in.
+ *
+ * One string rather than markup, so a notice the status line cuts short can still show all of it on
+ * hover (ah-sgvo). A failure is coloured and left standing rather than fading back to "unsaved
+ * changes": the player needs to know their evening is not on disk, and needs to know why.
+ */
+export function saveNotice(save: SaveState): { text: string; tone: "warn" | "danger" | null } {
+  switch (save.kind) {
+    case "clean":
+      return { text: "not saved yet", tone: null };
+    case "dirty":
+      return { text: "unsaved changes", tone: "warn" };
+    case "saving":
+      return { text: "saving…", tone: null };
+    case "saved":
+      return { text: `saved ${readableTime(save.at)}`, tone: null };
+    case "failed":
+      return { text: `could not save: ${save.reason}`, tone: "danger" };
+  }
+}
+
+/**
  * How a freshly loaded document stands with storage.
  *
  * A restored draft is on disk already and says so, with the time it was written. A template has

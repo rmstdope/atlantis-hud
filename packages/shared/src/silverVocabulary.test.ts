@@ -328,6 +328,7 @@ describe("buyAllSentences (ah-jown)", () => {
     aUnitSilver({
       buyAll: [
         {
+          tag: "GRAI",
           boughtNamed: "19 grain",
           marketNamed: "30 grain",
           bought: 19,
@@ -402,6 +403,7 @@ describe("buyAllSentences (ah-jown)", () => {
           marketPurseHeldOnly: true,
           buyAll: [
             {
+              tag: "HORS",
               boughtNamed: "12 horses",
               marketNamed: "100 horses",
               bought: 12,
@@ -478,6 +480,206 @@ describe("buyAllSentences (ah-jown)", () => {
     expect(buyAllSentences(buyAll({ cappedBy: "silver" }))).toEqual([
       "This unit has silver for 19 grain, not the 30 this market offers."
     ]);
+  });
+
+  // `ah-0pa7`: on a line faction-mates share, a later line enlarged the unit's share (`ah-ecfl`),
+  // so the one share sentence speaks for the unit and the later line adds none of its own.
+  describe("a later line on a shared market line (ah-0pa7)", () => {
+    const silk = (
+      overrides: Partial<UnitSilver["buyAll"][number]>
+    ): UnitSilver["buyAll"][number] => ({
+      tag: "SILK",
+      boughtNamed: "12 silk",
+      marketNamed: "16 silk",
+      bought: 12,
+      affordable: 20,
+      available: 12,
+      marketHas: 16,
+      alreadyBought: 0,
+      silverAvailable: 1700,
+      price: 85,
+      cappedBy: "shared",
+      ...overrides
+    });
+
+    it("keeps the share sentence and says nothing for the second BUY ALL", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              silk({}),
+              silk({ bought: 0, boughtNamed: "no silk", affordable: 8, alreadyBought: 12 })
+            ]
+          })
+        )
+      ).toEqual([
+        "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    // Amended by `ah-k3ew`: the BUY ALL is the unit's only row for the silk, so it carries the one
+    // share sentence, and names the whole share rather than nothing.
+    it("names the whole share for a BUY ALL after an exact BUY", () => {
+      const whole =
+        "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it.";
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [silk({ bought: 0, boughtNamed: "no silk", alreadyBought: 12 })]
+          })
+        )
+      ).toEqual([whole]);
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [silk({ bought: 3, boughtNamed: "3 silk", alreadyBought: 9 })]
+          })
+        )
+      ).toEqual([whole]);
+    });
+
+    it("leaves the faction-mate's single line as it was", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({ buyAll: [silk({ bought: 4, boughtNamed: "4 silk", available: 4 })] })
+        )
+      ).toEqual([
+        "This unit gets 4 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("leaves the lone buyer's second line warned on", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              silk({
+                bought: 16,
+                boughtNamed: "16 silk",
+                affordable: 24,
+                available: 16,
+                cappedBy: "market"
+              }),
+              silk({
+                bought: 0,
+                boughtNamed: "no silk",
+                affordable: 8,
+                available: 16,
+                alreadyBought: 16,
+                cappedBy: "already-bought"
+              })
+            ]
+          })
+        )
+      ).toEqual([
+        "This market has 16 silk, not the 24 this unit's silver would buy.",
+        "This unit buys no silk: an earlier order of its own has already bought all 16 this market has."
+      ]);
+    });
+
+    it("leaves a single BUY ALL its faction-mates took the whole line from as it was", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [silk({ bought: 0, boughtNamed: "no silk", available: 0 })]
+          })
+        )
+      ).toEqual([
+        "This unit buys no silk: your other units in this region have claimed all 16 this market has."
+      ]);
+    });
+  });
+
+  // `ah-k3ew`: the share sentence names everything the unit buys of the goods at this market,
+  // summed over all its BUY lines, and is said once per goods.
+  describe("the whole share (ah-k3ew)", () => {
+    // Fixture neworigins-3.0.0-g3-f42-t42, tundra (35,9): 16 silk at $85, the Scout holding 869.
+    const scout = (
+      overrides: Partial<UnitSilver["buyAll"][number]>
+    ): UnitSilver["buyAll"][number] => ({
+      tag: "SILK",
+      boughtNamed: "3 silk",
+      marketNamed: "16 silk",
+      bought: 3,
+      affordable: 10,
+      available: 8,
+      marketHas: 16,
+      alreadyBought: 5,
+      silverAvailable: 869,
+      price: 85,
+      cappedBy: "shared",
+      ...overrides
+    });
+
+    it("counts an exact BUY 5 SILK into the BUY ALL's share", () => {
+      expect(buyAllSentences(aUnitSilver({ buyAll: [scout({})] }))).toEqual([
+        "This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("counts an exact BUY 3 SILK into the BUY ALL's share", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [scout({ bought: 4, boughtNamed: "4 silk", available: 7, alreadyBought: 3 })]
+          })
+        )
+      ).toEqual([
+        "This unit gets 7 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("says the whole share once, on the first BUY ALL, however many lines follow", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              scout({ bought: 10, boughtNamed: "10 silk", available: 12, alreadyBought: 2 }),
+              scout({ bought: 0, boughtNamed: "no silk", available: 12, alreadyBought: 12 })
+            ]
+          })
+        )
+      ).toEqual([
+        "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("gives each goods its own share sentence", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              scout({}),
+              scout({
+                tag: "GRAI",
+                boughtNamed: "4 grain",
+                marketNamed: "10 grain",
+                bought: 4,
+                available: 6,
+                marketHas: 10,
+                alreadyBought: 2,
+                price: 18
+              })
+            ]
+          })
+        )
+      ).toEqual([
+        "This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it.",
+        "This unit gets 6 of the 10 grain this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("stays silent after an exact BUY where silver, not the share, stopped the BUY ALL", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              scout({ bought: 1, boughtNamed: "1 silk", affordable: 1, cappedBy: "silver" })
+            ]
+          })
+        )
+      ).toEqual([]);
+    });
   });
 
   it("says nothing for a unit that wrote no BUY ALL", () => {
@@ -948,5 +1150,56 @@ describe("upkeep a faction-mate paid", () => {
       silver: aUnitSilver({ upkeep: 0, sharedSilverCovered: 20 })
     };
     expect(silverNoteLines(onlyMates).join(" ")).not.toContain("upkeep was paid by");
+  });
+});
+
+// ah-s6gk: the starvation hint is for a unit that cannot pay its own upkeep
+// (rules/economy_maintenance: a character that "ends the month without this maintenance cost" may
+// starve, and an ally's surplus pays maintenance "as a last resort"). A warning about something
+// else - a STUDY refused for want of its fee (ah-rjz2) - is no reason to mention starvation.
+describe("the starvation hint (ah-s6gk)", () => {
+  const hint = SILVER_NOTES.find((note) => note.id === "allied-upkeep-might-cover")!;
+  const shows = (silver: Partial<UnitSilver>, more: Partial<SilverFacts> = {}) =>
+    hint.when({
+      unit: unit(),
+      silver: aUnitSilver(silver),
+      warned: false,
+      countUpkeep: true,
+      ...more
+    });
+
+  it("is_not_shown_to_a_warned_unit_that_pays_its_upkeep", () => {
+    // Drone (13432): 24 held, its STUDY STEA refused, 10 upkeep - 14 left.
+    expect(shows({ held: 24, atMonthEnd: 24, upkeep: 10 }, { warned: true })).toBe(false);
+  });
+
+  it("is_not_shown_to_a_warned_unit_that_ends_at_exactly_zero", () => {
+    expect(shows({ atMonthEnd: 10, upkeep: 10 }, { warned: true })).toBe(false);
+  });
+
+  it("is_shown_to_a_warned_unit_short_after_its_upkeep", () => {
+    expect(shows({ atMonthEnd: 4, upkeep: 10 }, { warned: true })).toBe(true);
+  });
+
+  it("is_shown_to_a_unit_in_a_short_pooled_hex_that_cannot_pay_its_own_way", () => {
+    expect(shows({ atMonthEnd: 0, upkeep: 10 }, { hexShort: true })).toBe(true);
+  });
+
+  it("is_not_shown_in_a_short_pooled_hex_to_a_unit_that_pays_its_own_way", () => {
+    expect(shows({ atMonthEnd: 30, upkeep: 10 }, { hexShort: true })).toBe(false);
+  });
+
+  it("is_not_shown_to_a_short_unit_no_check_names", () => {
+    expect(shows({ atMonthEnd: 0, upkeep: 10 })).toBe(false);
+  });
+
+  it("is_not_shown_without_upkeep_counted_or_owed", () => {
+    expect(shows({ atMonthEnd: 0, upkeep: 10 }, { warned: true, countUpkeep: false })).toBe(false);
+    expect(shows({ atMonthEnd: -5, upkeep: 0 }, { warned: true })).toBe(false);
+    expect(shows({ atMonthEnd: -5, upkeep: null }, { warned: true })).toBe(false);
+  });
+
+  it("is_not_shown_where_the_month_end_is_not_a_number", () => {
+    expect(shows({ atMonthEnd: null, upkeep: 10 }, { warned: true })).toBe(false);
   });
 });

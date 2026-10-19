@@ -10,6 +10,11 @@ import type { BuyAllCap } from "./BuyAllCap";
  */
 export type BuyAllShown = { 
 /**
+ * The canonical tag of the goods, `"SILK"`, so the hover can say one share sentence per goods
+ * however many lines the unit wrote for them (`ah-k3ew`).
+ */
+tag: string, 
+/**
  * `"19 grain"`, `"1 sword"`, `"8 nomads"`, `"no grain"` - counted and pluralised **by the
  * core**, because the unit does not hold these goods yet and TS cannot pluralise what it was
  * never given. The same reason `castMadeNamed` is pre-counted (`ah-ofpb.4`).

@@ -939,6 +939,122 @@ test("at its smallest height the orders panel keeps three editor lines and one p
   expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
 });
 
+/**
+ * ah-sgvo: the status line never wraps, so ah-nup4's promise holds whatever it says. With "N
+ * elsewhere" showing it used to wrap to three lines in the right rail and push the one guaranteed
+ * problem row out of the panel (docs/ui/ah-sgvo-status-one-line.html).
+ */
+async function withProblemsElsewhere(page: Page) {
+  // The bead's own window: its 348 px right rail is where the line used to wrap.
+  await page.setViewportSize({ width: 1400, height: 813 });
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, OTHER_OWN_UNIT);
+  await fillOrders(page, "WROK");
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, FIVE_PROBLEMS);
+  await saveNow(page);
+  await expect(page.getByTestId("orders-status-elsewhere")).toHaveText("1 elsewhere");
+  await expect(page.getByTestId("orders-status-save")).toHaveText(/saved \d/u);
+}
+
+/** Each piece of the status line: its full width, the width it is given, and its tooltip. */
+async function statusPieces(page: Page) {
+  return page.getByTestId("orders-status").evaluate((status) => {
+    const piece = (name: string) => {
+      const element = status.querySelector<HTMLElement>(`[data-testid="orders-status-${name}"]`)!;
+      return {
+        full: element.scrollWidth,
+        shown: element.clientWidth,
+        title: element.getAttribute("title")
+      };
+    };
+    const errors = status.querySelector<HTMLElement>('[data-testid="orders-status-errors"]')!;
+    return {
+      errors: piece("errors"),
+      warnings: piece("warnings"),
+      elsewhere: piece("elsewhere"),
+      save: piece("save"),
+      /** More than one line's worth means the line wrapped. */
+      wrapped: status.getBoundingClientRect().height >= 2 * errors.getBoundingClientRect().height
+    };
+  });
+}
+
+/** Constrains the status line to `width` pixels, as a narrow rail or a large text size would. */
+async function squeezeStatus(page: Page, width: number) {
+  await page.getByTestId("orders-status").evaluate((status, px) => {
+    status.style.width = `${px}px`;
+  }, width);
+}
+
+test("with problems elsewhere the smallest orders panel keeps one status line, three editor lines and one problem row", async ({
+  page
+}) => {
+  await withProblemsElsewhere(page);
+
+  await expect.poll(async () => (await ordersRoom(page)).editorLines).toBeGreaterThanOrEqual(2.98);
+  const room = await ordersRoom(page);
+  expect(room.listHeight).toBeGreaterThanOrEqual(room.rowHeight - 0.5);
+  expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
+  const pieces = await statusPieces(page);
+  expect(pieces.wrapped).toBe(false);
+  // The case is reached: at the rail's own width the line does not fit, and the save notice is
+  // what gave way - cut, with its full text on hover.
+  const saveText = (await page.getByTestId("orders-status-save").textContent())!;
+  await expect.poll(async () => (await statusPieces(page)).save.title).toBe(saveText);
+  expect(pieces.elsewhere.title).toBeNull();
+});
+
+test("a narrow status line cuts the save notice to … before the elsewhere count, and never the counts", async ({
+  page
+}) => {
+  await withProblemsElsewhere(page);
+  const natural = await statusPieces(page);
+  const saveText = (await page.getByTestId("orders-status-save").textContent())!;
+  // errors | warnings | elsewhere | spacer | save, `gap-3` between each.
+  const gaps = 4 * 12;
+  const counts = natural.errors.full + natural.warnings.full + gaps;
+
+  // Wide enough for everything: shown whole, no tooltip anywhere.
+  await squeezeStatus(page, counts + natural.elsewhere.full + natural.save.full + 20);
+  await expect.poll(async () => (await statusPieces(page)).save.title).toBeNull();
+  let pieces = await statusPieces(page);
+  expect(pieces.elsewhere.title).toBeNull();
+
+  // Room for the counts and a sliver of the save notice: only the save notice gives way.
+  await squeezeStatus(page, counts + natural.elsewhere.full + 30);
+  await expect.poll(async () => (await statusPieces(page)).save.title).toBe(saveText);
+  pieces = await statusPieces(page);
+  expect(pieces.save.shown).toBeLessThan(pieces.save.full);
+  expect(pieces.elsewhere.shown).toBeGreaterThanOrEqual(pieces.elsewhere.full);
+  expect(pieces.elsewhere.title).toBeNull();
+  expect(pieces.wrapped).toBe(false);
+
+  // Narrower still: the save notice is down to "…", and the elsewhere count is cut too.
+  await squeezeStatus(page, counts + 12 + 20);
+  await expect.poll(async () => (await statusPieces(page)).elsewhere.title).toBe("1 elsewhere");
+  pieces = await statusPieces(page);
+  expect(pieces.elsewhere.shown).toBeLessThan(pieces.elsewhere.full);
+  expect(pieces.save.title).toBe(saveText);
+  expect(pieces.save.shown).toBeLessThanOrEqual(13);
+  expect(pieces.wrapped).toBe(false);
+
+  // The error and warning counts are never shortened.
+  expect(pieces.errors.shown).toBeGreaterThanOrEqual(pieces.errors.full);
+  expect(pieces.warnings.shown).toBeGreaterThanOrEqual(pieces.warnings.full);
+  expect(pieces.errors.title).toBeNull();
+  expect(pieces.warnings.title).toBeNull();
+
+  // Room again: the line re-fits at once, and what now fits is shown whole, without a tooltip.
+  await squeezeStatus(page, counts + natural.elsewhere.full + natural.save.full + 20);
+  await expect.poll(async () => (await statusPieces(page)).save.title).toBeNull();
+  await expect.poll(async () => (await statusPieces(page)).elsewhere.title).toBeNull();
+});
+
 test("the line just typed stays visible when its warning list appears", async ({ page }) => {
   await onlyChecks(page, []);
   await openEditor(page);
@@ -1080,9 +1196,11 @@ test("at the smallest panel a row of three lines or more shows two and scrolls, 
   expect(shown, "two lines of it are shown").toBeGreaterThanOrEqual(2 * lineHeight - 0.5);
   expect(shown, "and the rest is below, for the list to scroll to").toBeLessThan(firstRow);
   expect((await boxOf(page, "orders")).height).toBeCloseTo(151, 0);
-  // The editor keeps its three lines. The status line is not asserted on: at this width its own
-  // words wrap, at any panel height, and that is ah-kbpc's.
-  expect((await ordersRoom(page)).editorLines).toBeGreaterThanOrEqual(2.98);
+  // The editor keeps its three lines, and the status line stays one line (ah-sgvo), so the body
+  // holds all of it.
+  const room = await ordersRoom(page);
+  expect(room.editorLines).toBeGreaterThanOrEqual(2.98);
+  expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
 });
 
 test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({

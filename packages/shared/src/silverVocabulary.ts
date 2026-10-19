@@ -277,11 +277,27 @@ export function productionMenSentence(silver: UnitSilver | null | undefined): st
  * One sentence per `BUY ALL` this unit wrote, in document order - what it buys and what stopped
  * it buying more. Empty when the unit wrote none, or when its sums are doubted.
  *
+ * Except a later line on a market line faction-mates share (`ah-0pa7`): the unit's first `BUY ALL`
+ * of those goods speaks for the unit, and a later one adds none whatever its cause, matching the
+ * order editor's silence on it (`ah-ecfl`). "Shared" is the core's own test in `price_buy_all` - a
+ * share smaller than the line.
+ *
+ * The share sentence names the unit's whole share (`ah-k3ew`): everything it buys of those goods,
+ * every exact `BUY` included. The core settles every exact `BUY` of a tag before that tag's
+ * `BUY ALL` lines, so each row's `alreadyBought + bought` is a running total and its largest is
+ * the whole. An earlier exact `BUY` that silver then stopped the `BUY ALL` short of says nothing:
+ * the share is not what bit.
+ *
  * Exported because the ITEMS hover says it too (`ah-jown`), the arrangement
  * [`productionStatusSentence`] already has: two copies of one sentence are two things to keep in step.
  */
 export function buyAllSentences(silver: UnitSilver | null | undefined): string[] {
-  return (silver?.buyAll ?? []).map((b) => {
+  const lines = silver?.buyAll ?? [];
+  const wholeShare = new Map<string, number>();
+  for (const b of lines) {
+    wholeShare.set(b.tag, Math.max(wholeShare.get(b.tag) ?? 0, b.alreadyBought + b.bought));
+  }
+  return lines.flatMap((b, index) => {
     if (b.cappedBy === "already-bought") {
       const limit = b.available === b.marketHas ? "this market has" : "it can have here";
       if (b.bought === 0) {
@@ -290,14 +306,24 @@ export function buyAllSentences(silver: UnitSilver | null | undefined): string[]
       }
       return `This unit buys ${b.boughtNamed}: its earlier orders have taken the other ${b.alreadyBought} of the ${b.available} ${limit}.`;
     }
+    // `ah-0pa7`, after the `already-bought` branch so its "it can have here" wording keeps the
+    // core's guard on the share's arithmetic (`price_buy_all` no longer sets that cause on a
+    // shared line, so every real later line on one reaches this test).
+    if (b.available < b.marketHas) {
+      const whole = wholeShare.get(b.tag) ?? 0;
+      const first = lines.findIndex((other) => other.tag === b.tag) === index;
+      if (!first || (b.alreadyBought > 0 && b.cappedBy !== "shared")) {
+        return [];
+      }
+      if (b.cappedBy === "shared" && whole > 0) {
+        return `This unit gets ${whole} of the ${b.marketNamed} this market has, because your units in this region are competing for it.`;
+      }
+    }
     if (b.bought === 0 && b.cappedBy === "silver") {
       return `This unit buys ${b.boughtNamed}: it can have ${b.silverAvailable} silver and one costs ${b.price}.`;
     }
     if (b.bought === 0 && b.cappedBy === "shared") {
       return `This unit buys ${b.boughtNamed}: your other units in this region have claimed all ${b.marketHas} this market has.`;
-    }
-    if (b.cappedBy === "shared") {
-      return `This unit gets ${b.bought} of the ${b.marketNamed} this market has, because your units in this region are competing for it.`;
     }
     // The purse could not be settled, so the count came from silver nobody disputes and is a
     // floor. Only where the silver cap bit: `market` and `already-bought` counts do not move with
@@ -843,6 +869,7 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       silver: aUnitSilver({
         buyAll: [
           {
+            tag: "GRAI",
             boughtNamed: "19 grain",
             marketNamed: "30 grain",
             bought: 19,
@@ -937,16 +964,17 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       silver.upkeep !== null &&
       silver.upkeep > 0 &&
       // A unit the checks name, or - where the hex pools its silver and the finding names no unit -
-      // one that cannot pay its own way within that short hex (`ah-5znb`).
-      (warned ||
-        ((hexShort ?? false) &&
-          silver.atMonthEnd !== null &&
-          silver.atMonthEnd - silver.upkeep < 0)),
+      // one in that short hex (`ah-5znb`); either way only one that cannot pay its own upkeep
+      // (rules/economy_maintenance). A check warning about something else, such as a STUDY refused
+      // for want of its fee, is no starvation (`ah-s6gk`).
+      (warned || (hexShort ?? false)) &&
+      silver.atMonthEnd !== null &&
+      silver.atMonthEnd - silver.upkeep < 0,
     say: () =>
       "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ upkeep: 10 }),
+      silver: aUnitSilver({ atMonthEnd: 0, upkeep: 10 }),
       warned: true,
       countUpkeep: true
     })
