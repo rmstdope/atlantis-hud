@@ -27416,7 +27416,7 @@ fn check_discards_from_shared_stock(
             let mates: Vec<(String, i64)> = discard
                 .draws
                 .iter()
-                .map(|&(position, count)| (party_name(hex, &hex.units[position]), count))
+                .map(|&(position, count)| (party_name(hex.units[position].unit), count))
                 .collect();
             let first = discard.draws.first().map_or(0, |&(_, count)| count);
             findings.push(ordered.finding(
@@ -27434,12 +27434,14 @@ fn check_discards_from_shared_stock(
     }
 }
 
-/// A unit as the hover names a party: `<Name> (<id>)`, or `unit <id>` when no name is known.
-fn party_name(hex: &Hex<'_>, ordered: &Ordered<'_>) -> String {
-    if ordered.formed.is_none() && ordered.unit.name.trim().is_empty() {
-        format!("unit {}", ordered.unit.unit_id)
+/// A unit as the hover names a party: `<Name> (<id>)`, or `unit <id>` when no name is known. The
+/// sentence puts a possessive on it, so a formed unit reads `new 1` alone - "from new 1's shared
+/// stock" - never with its "formed by" (`ah-uxaw`, the navigator's answer to review finding 5).
+fn party_name(unit: &ReportUnit) -> String {
+    if !unit.unit_id.starts_with(effects::FORMED_ID_PREFIX) && unit.name.trim().is_empty() {
+        format!("unit {}", unit.unit_id)
     } else {
-        hex.ordered_label(ordered)
+        super::naming::report_unit_label(unit)
     }
 }
 
@@ -59200,6 +59202,23 @@ BUILD
                 );
             }
         }
+    }
+
+    /// `ah-uxaw` review finding 5, the navigator's answer: a possessive drops the "formed by" -
+    /// "from new 1's shared stock" - and a reported mate keeps its name and number.
+    #[test]
+    fn a_shared_stock_mate_is_named_for_a_possessive() {
+        let formed = ReportUnit {
+            unit_id: "new-1".to_string(),
+            name: "Unit (new 1)".to_string(),
+            ..unit("900")
+        };
+        assert_eq!(party_name(&formed), "new 1");
+        assert_eq!(party_name(&unit("900")), "Unit 900 (900)");
+        assert_eq!(
+            shared_discard_sentence("30 swords", &[(party_name(&formed), 30)], 0, 30),
+            "This discard takes 30 swords from new 1's shared stock: this unit holds none."
+        );
     }
 
     /// `ah-uxaw` review: the upkeep list closes a formed phrase before its "and" too.
