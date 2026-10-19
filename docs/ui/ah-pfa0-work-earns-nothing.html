@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Work that earns nothing — chosen design</title><style>
+:root { color-scheme: dark; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #101417; color: #ddd6c8; }
+main { max-width: 940px; margin: 30px auto; padding: 0 16px; }
+h1 { margin-bottom: 4px; color: #d5b56a; font-size: 22px; }
+.intro { margin-top: 0; color: #aaa397; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card { border: 1px solid #554b39; border-radius: 6px; background: #171c20; overflow: hidden; }
+.head { padding: 7px 10px; border-bottom: 1px solid #554b39; color: #d5b56a; background: #211e18; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.body { padding: 10px; }
+.region { color: #9f998d; font-size: 12px; margin-bottom: 6px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #eee4d1; }
+.finding { display: flex; gap: 7px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #332f28; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.warn { color: #e2b94c; } .who { color: #d5b56a; }
+.quiet { color: #9f998d; font-size: 13px; }
+.setting { display: flex; align-items: start; gap: 10px; margin: 6px 0; }
+.toggle { position: relative; width: 36px; height: 20px; border-radius: 20px; background: #b38b31; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 3px; right: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff7e7; }
+.title { font-weight: 650; } .desc { color: #aaa397; font-size: 13px; line-height: 1.4; }
+.new { outline: 2px dashed #e2b94c; outline-offset: 3px; border-radius: 4px; }
+.narrow { width: 310px; max-width: 100%; margin-top: 12px; }
+.narrow .finding { padding: 10px; margin: 0; border: 0; }
+.wide { grid-column: 1 / -1; }
+@media (max-width: 650px) { main { margin: 16px auto; padding: 0 10px; } .grid { grid-template-columns: 1fr; } h1 { font-size: 18px; } }
+</style></head><body><main><h1>Work that earns nothing — chosen design</h1><p class="intro">Chosen design. One sentence on the WORK line wherever work earns nothing; its own switch in Settings › Resources, on by default.</p><div class="grid"><section class="card "><div class="head">At sea — the reported case</div><div class="body"><div class="region">ocean (38,44) in Atlantis Ocean — Wages: $0.</div><code>unit 12 &nbsp;;sailor on a moored ship<br>WORK</code><div class="finding"><span class="warn">⚠</span><span class="who">12</span><span>earns nothing: this region pays no wages</span></div></div></section><section class="card "><div class="head">On land with no wages</div><div class="body"><div class="region">tundra (12,8) in Frostmark — Wages: $0. (no peasants left)</div><code>unit 31<br>WORK</code><div class="finding"><span class="warn">⚠</span><span class="who">31</span><span>earns nothing: this region pays no wages</span></div></div></section><section class="card "><div class="head">A wage rate, but no work left</div><div class="body"><div class="region">mountain (9,3) in Grimtor — Wages: $11.0 (Max: $0).</div><code>unit 55<br>WORK</code><div class="finding"><span class="warn">⚠</span><span class="who">55</span><span>earns nothing: this region pays no wages</span></div></div></section><section class="card "><div class="head">Wages paid — no warning</div><div class="body"><div class="region">plain (14,22) in Hollin — Wages: $13.5 (Max: $633).</div><code>unit 40<br>WORK</code><p class="quiet">No warning. Nothing changes here.</p></div></section><section class="card narrow"><div class="head">Problems pane, 310 px</div><div class="body"><div class="finding"><span class="warn">⚠</span><span class="who">12</span><span>earns nothing: this region pays no wages</span></div></div></section></div><div style="margin-top:12px"><section class="card"><div class="head">Settings › Resources</div><div class="body"><div class="setting"><span class="toggle"></span><div><div class="title">Promised more than the region has</div><div class="desc">Your units in one hex ordered to tax, work, entertain or trade for more than the region or its market can supply between them.</div></div></div><div class="setting new"><span class="toggle"></span><div><div class="title">Work that earns nothing</div><div class="desc">A WORK order in a region that pays no wages, such as the open sea.</div></div></div></div></section></div></main></body></html>
