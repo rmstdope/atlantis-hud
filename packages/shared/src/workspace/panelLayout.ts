@@ -23,7 +23,8 @@ const FLEXIBLE = "min-h-0 flex-1";
  * The shared Unit/Movement slot, open: the flexible one, but with a floor under it.
  *
  * `FLEXIBLE`'s `min-h-0` is precisely what let this slot be crushed to two pixels once the Movement
- * panel stood beside the unit's own lines and asked for 245px of a 249px column - the orders editor
+ * panel stood beside the unit's own lines and asked for 245px of what was then a 249px column (285px
+ * since the header stopped wrapping at 1280x720) - the orders editor
  * below it was then laid out underneath the units pane and could not be clicked at all (ah-zh5i.2).
  *
  * Written out literally rather than interpolated from `SLOT_MIN_REM`: Tailwind scans source for
@@ -39,20 +40,27 @@ const FLOORED = "min-h-[5.75rem] flex-1";
  * stops a tall window from turning the editor into most of the column while the unit panel, which
  * has a fixed amount to say, stretches to fill the rest.
  */
-const PINNED_EDITOR = "h-[19rem] max-h-[55%] min-h-[9rem] flex-none";
+const PINNED_EDITOR = "h-[19rem] max-h-[55%] min-h-[9.4375rem] flex-none";
 
 /** The editor's height once the player has dragged it: the floor holds, the pin does not. */
-const CUSTOM_EDITOR = "min-h-[9rem] flex-none";
+const CUSTOM_EDITOR = "min-h-[9.4375rem] flex-none";
 
 /** The editor's default pin, and the bounds the drag and the stored value respect. */
 export const ORDERS_DEFAULT_REM = 19;
-export const ORDERS_MIN_REM = 9; // today's min-h-[9rem], kept
+/**
+ * 9.4375rem = 151px: three editor lines, the status line and a problem row of up to two lines
+ * (ah-8zbc, docs/ui/ah-8zbc-smallest-taller.html). It was 9rem until the rows began leaving room
+ * for the "N more ↓" count, which wraps the typical row onto two lines. The same whether or not the
+ * unit has problems, so nothing jumps as they come and go. `PINNED_EDITOR` and `CUSTOM_EDITOR`
+ * spell it out literally, and `panelLayout.test.ts` holds the three together.
+ */
+export const ORDERS_MIN_REM = 9.4375;
 /**
  * The shared Unit/Movement slot may not be squeezed below this, by a drag or by its own content.
  *
  * 5.75rem = 92px, the same derivation `UNITS_MIN_REM` uses: title bar 28 + body padding 16 + 48px
- * of content. It came down from 6rem for a pixel: 6 + 9 + 0.625 = 15.625rem = 250px, one pixel more
- * than the 249px the right-hand column actually gets at the pinned 1280x720 window - see
+ * of content. It came down from 6rem when the right-hand column got only 249px at the pinned
+ * 1280x720 window; it gets 285px now that the header no longer wraps there - see
  * `rightColumnRemFor`, which is what makes that a checkable number rather than an observed one.
  */
 export const SLOT_MIN_REM = 5.75;

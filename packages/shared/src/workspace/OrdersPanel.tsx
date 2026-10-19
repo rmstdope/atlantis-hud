@@ -307,6 +307,28 @@ function WalkProblems({
 }
 
 /**
+ * The room every problem row leaves on its right for the "N more ↓" count (ah-8zbc,
+ * docs/ui/ah-8zbc-count-room.html), so the count only ever sits over empty space and never over the
+ * quoted token. 6em - 72px at the default 12px pane text - fits a two-digit count with its offset and
+ * padding, and scales with the pane's text size. Kept whether or not the count shows, so the rows do
+ * not re-wrap as it comes and goes.
+ */
+export const PROBLEM_ROW_COUNT_ROOM = "pr-[6em]";
+
+/**
+ * The problem list's floor once its first row is measured: that row as drawn, wrapped or not, but
+ * never more than two lines of it (ah-8zbc, docs/ui/ah-8zbc-long-row.html). The orders panel's
+ * smallest height holds three editor lines, the status line and a two-line row; a row of three
+ * lines or more shows two there and the rest is read by scrolling the list. 2.75 is two lines at
+ * the list's `leading-snug` (1.375). Undefined until measured, when the one-line class floor holds.
+ */
+export function problemListFloorStyle(firstRowPx: number | null): { minHeight: string } | undefined {
+  return firstRowPx === null
+    ? undefined
+    : { minHeight: `min(${firstRowPx}px, calc(2.75 * var(--text-pane-sm)))` };
+}
+
+/**
  * What is wrong with this unit's orders, line by line.
  *
  * Counts alone told the player a number and left them to find it. The line is the one the editor
@@ -334,8 +356,9 @@ function ProblemList({
 }) {
   const list = useRef<HTMLUListElement | null>(null);
   const [hidden, setHidden] = useState(0);
-  // The one guaranteed row is the first row as it is drawn, wrapped or not; measured, since a
-  // narrow rail wraps a long message onto several lines. The class below is the floor until then.
+  // The one guaranteed row is the first row as it is drawn, wrapped or not, up to two lines;
+  // measured, since a narrow rail wraps a long message onto several. The class below is the floor
+  // until then (`problemListFloorStyle`).
   const [floor, setFloor] = useState<number | null>(null);
 
   useEffect(() => {
@@ -386,7 +409,7 @@ function ProblemList({
     <div
       data-testid="orders-diagnostics-room"
       className="relative flex max-h-20 min-h-[calc(1.375*var(--text-pane-sm))] shrink flex-col"
-      style={floor === null ? undefined : { minHeight: `${floor}px` }}
+      style={problemListFloorStyle(floor)}
     >
       <ul
         ref={list}
@@ -402,7 +425,7 @@ function ProblemList({
               key={`${problem.code}-${problem.lineStart}-${index}`}
               data-testid="orders-diagnostic"
               data-severity={problem.severity}
-              className="flex gap-2"
+              className={`flex gap-2 ${PROBLEM_ROW_COUNT_ROOM}`}
             >
               <SeverityMark severity={problem.severity} />
               {/* A finding on the unit as a whole has no line to count to, and says none (`ah-6c76`). */}

@@ -6281,8 +6281,8 @@ export function AppShell({
               */}
               <div className="-m-2 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2">
                 {/*
-                  One slot for the unit and the movement planner, as two tabs. The column has 249px
-                  at 1280x720 and two panels is what fits in it; stacking the planner as a third put
+                  One slot for the unit and the movement planner, as two tabs. The column had 249px
+                  at 1280x720 then (285px now) and two panels is what fits in it; stacking the planner as a third put
                   the orders editor underneath the units pane (ah-zh5i.2). The planner is still
                   behind its feature flag, off by default, and with it off this is the unit panel
                   exactly as it always was.

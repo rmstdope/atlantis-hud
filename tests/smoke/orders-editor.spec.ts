@@ -894,8 +894,8 @@ async function shrinkOrders(page: Page) {
   await page.mouse.down();
   await page.mouse.move(start.x, start.y + 1000, { steps: 5 });
   await page.mouse.up();
-  // 9rem, `ORDERS_MIN_REM`.
-  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(144, 0);
+  // 9.4375rem, `ORDERS_MIN_REM` (ah-8zbc).
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(151, 0);
 }
 
 /** What the editor and the list each show, in pixels, and whether the panel body overflows. */
@@ -1088,6 +1088,119 @@ test("a problem list with more rows than fit says how many are below, until scro
     list.scrollTop = list.scrollHeight;
   });
   await expect(more).toHaveCount(0);
+});
+
+/**
+ * ah-8zbc: the count sits over room every row leaves for it, never over text
+ * (docs/ui/ah-8zbc-count-room.html). Everything the visible row draws - its line, a quoted token
+ * where the check has one, and the message - is measured glyph box by glyph box, since a wrapped
+ * message is several boxes.
+ */
+const FIVE_WROK = "WROK\nWROK\nWROK\nWROK\nWROK";
+
+/** The right edge of the first row's text, as drawn, and the left edge of the count. */
+async function textBesideCount(page: Page) {
+  return page.getByTestId("orders-diagnostics-room").evaluate((room) => {
+    const row = room.querySelector<HTMLElement>('[data-testid="orders-diagnostic"]')!;
+    const count = room.querySelector<HTMLElement>('[data-testid="orders-diagnostics-more"]')!;
+    const range = document.createRange();
+    range.selectNodeContents(row);
+    const boxes = Array.from(range.getClientRects()).filter((box) => box.width > 0);
+    return {
+      text: row.textContent,
+      textRight: Math.max(...boxes.map((box) => box.right)),
+      countLeft: count.getBoundingClientRect().left
+    };
+  });
+}
+
+test("the hidden-row count never covers the visible row's text", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
+  const first = page.getByTestId("orders-diagnostic").first();
+  await expect(first).toContainText("line 1");
+  await expect(first).toContainText("unknown order command: WROK");
+
+  const drawn = await textBesideCount(page);
+  expect(drawn.textRight, `"${drawn.text}" runs under the count`).toBeLessThanOrEqual(drawn.countLeft);
+});
+
+test("the problem rows do not re-wrap when the hidden-row count disappears", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  const more = page.getByTestId("orders-diagnostics-more");
+  await expect(more).toHaveText("4 more ↓");
+  const rowHeights = () =>
+    page
+      .getByTestId("orders-diagnostic")
+      .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+  const before = await rowHeights();
+
+  await page.getByTestId("orders-diagnostics").evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+  });
+  await expect(more).toHaveCount(0);
+  expect(await rowHeights()).toEqual(before);
+});
+
+/**
+ * Drag the right rail down to its 12rem floor: narrow enough that the acceptance row wraps well past
+ * two lines whatever font the platform draws it in (CI's Linux fonts wrap it less than macOS's).
+ */
+async function narrowRightRail(page: Page) {
+  const overlay = page.locator('[data-map-overlay="right"]');
+  const grip = (await page.getByTestId("rail-splitter-right").boundingBox())!;
+  const start = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  // The right rail shrinks when the pointer moves away from the map, i.e. to the right.
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 1000, start.y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await overlay.boundingBox())!.width).toBeLessThan(200);
+}
+
+/**
+ * ah-8zbc: the smallest panel holds a row of up to two lines; a longer one shows two and scrolls
+ * inside the list, and the panel keeps its height (docs/ui/ah-8zbc-long-row.html). Boxes only, never
+ * the clipped row's text - WebKit's driver reads clipped text as empty.
+ */
+test("at the smallest panel a row of three lines or more shows two and scrolls, and the panel does not grow", async ({
+  page
+}) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await narrowRightRail(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  // Four or five: a partly shown row counts as hidden (ah-nup4, `rowsBelow`).
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  const list = page.getByTestId("orders-diagnostics");
+  const shape = () =>
+    list.evaluate((element) => ({
+      shown: element.clientHeight,
+      lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+      firstRow: element.querySelector("li")!.getBoundingClientRect().height
+    }));
+  await expect.poll(async () => (await shape()).firstRow).toBeGreaterThan(40);
+
+  const { shown, lineHeight, firstRow } = await shape();
+  expect(firstRow / lineHeight, "the first row wraps onto three lines or more").toBeGreaterThan(2.5);
+  expect(shown, "two lines of it are shown").toBeGreaterThanOrEqual(2 * lineHeight - 0.5);
+  expect(shown, "and the rest is below, for the list to scroll to").toBeLessThan(firstRow);
+  expect((await boxOf(page, "orders")).height).toBeCloseTo(151, 0);
+  // The editor keeps its three lines, and the status line stays one line (ah-sgvo), so the body
+  // holds all of it.
+  const room = await ordersRoom(page);
+  expect(room.editorLines).toBeGreaterThanOrEqual(2.98);
+  expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
 });
 
 test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({
