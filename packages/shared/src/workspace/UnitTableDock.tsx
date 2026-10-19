@@ -164,6 +164,7 @@ import { ColumnReorderHandle } from "./ColumnReorderHandle";
 import { ColumnSplitter } from "./ColumnSplitter";
 import { Absent, SeverityMark, UNIT_LINK_CLASS } from "./primitives";
 import { SilverShortfall } from "./SilverShortfall";
+import { WholeFigure } from "./WholeFigure";
 import { UnitCellPopup } from "./UnitCellPopup";
 import { UnitTooltip } from "./UnitTooltip";
 import { ItemsHiddenLine, Marked, MarkedItemPart } from "./UnitFilterMarks";
@@ -2489,7 +2490,8 @@ function UnitRow({
       </span>
     </>
   ) : (
-    silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))
+    // A number is shown whole or as `…` alone, never as its leading digits (`ah-j92v`).
+    <WholeFigure>{silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))}</WholeFigure>
   );
   // The figure as the cell draws it: the ⚠ button that selects the unit, or the plain figure.
   const silverFigureCell = warned ? (
@@ -2501,19 +2503,13 @@ function UnitRow({
         // formed in that hex, and the finding this button explains is anchored where the
         // report lists the unit (`ah-xu6v`).
         onClick={() => onSelectUnit?.(unit.unitId, home)}
-        className={`inline-flex items-center gap-0.5${shortfall !== null ? " min-w-0" : ""} ${UNIT_LINK_CLASS}`}
+        // The figure gives way inside the button, so the ⚠ stays and nothing outside the button
+        // clips its focus ring (`ah-ottr`, `ah-j92v`).
+        className={`inline-flex min-w-0 max-w-full items-center gap-0.5 ${UNIT_LINK_CLASS}`}
       >
         <span className="sr-only">unit {unit.unitId} </span>
         <SeverityMark severity="warning" />
-        {shortfall !== null ? (
-          // Only the digits truncate: the ⚠ stays, and nothing outside the button clips its focus
-          // ring (`ah-ottr`).
-          <span data-silver-figure className="min-w-[1ch] truncate">
-            {figure}
-          </span>
-        ) : (
-          figure
-        )}
+        {figure}
       </button>
     ) : (
       <span
@@ -2928,17 +2924,12 @@ function UnitRow({
           silverFigureCell
         ) : (
           // One row, so a narrow column cuts the figure only after the shortfall has shrunk to
-          // `▾` (`ah-ottr`, `ah-sa9p`): the shortfall never shrinks, the figure truncates - down to
-          // one character, its `…`, never to nothing. A row that overflows even then drops the ⚠
-          // glyph in front of the figure; the button and its colour stay (`ah-sa9p`, its review).
+          // `▾` (`ah-ottr`, `ah-sa9p`): the shortfall never shrinks, the figure gives way - to a
+          // single `…`, never to some of its digits nor to nothing (`ah-j92v`). A row that
+          // overflows even then drops the ⚠ glyph in front of the figure; the button and its
+          // colour stay (`ah-sa9p`, its review).
           <span className="inline-flex max-w-full items-baseline [&:has([data-form=unmarked])_button>[aria-hidden]]:hidden">
-            {warned ? (
-              silverFigureCell
-            ) : (
-              <span data-silver-figure className="min-w-[1ch] truncate">
-                {silverFigureCell}
-              </span>
-            )}
+            {warned ? silverFigureCell : <span className="flex min-w-0 *:min-w-0">{silverFigureCell}</span>}
             {shortfallMark}
           </span>
         )}
