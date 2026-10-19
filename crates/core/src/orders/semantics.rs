@@ -11068,7 +11068,7 @@ fn exchange_walk(pairs: &[(usize, usize)]) -> Vec<(usize, bool)> {
 
 /// Whether a pair of exchange lines goes ahead, given what each side holds of what it offers once
 /// every GIVE and TAKE has run - `Err` where that holding is itself in doubt.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExchangeVerdict {
     Moves,
     /// `rules/exchange`: "If either unit involved does not have the items it is offering ... the
@@ -11128,6 +11128,11 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     // The partner's holding as the walk read it at each pair's first line.
     let mut partner_checks: Vec<Option<Result<i64, UncertainGive>>> =
         pairs.iter().map(|_| None).collect();
+    // Each pair's verdict once the walk completes it, and the aborted ones in walk order with
+    // what each side held: whether a pair completed later handed a short side its goods too late
+    // is only known once the walk is over (`ah-a58i`).
+    let mut verdicts: Vec<Option<ExchangeVerdict>> = pairs.iter().map(|_| None).collect();
+    let mut aborted: Vec<(usize, [Option<i64>; 2])> = Vec::new();
     for (pair, completes) in exchange_walk(&pairs) {
         let (first, second) = pairs[pair];
         let (one, other) = (&offers[first], &offers[second]);
@@ -11185,17 +11190,17 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         let held = holds(one);
         let doubt = held.as_ref().err().or(other_held.as_ref().err()).cloned();
         let known = [
-            (one, held.as_ref().ok().copied()),
-            (other, other_held.as_ref().ok().copied()),
+            held.as_ref().ok().copied(),
+            other_held.as_ref().ok().copied(),
         ];
-        match exchange_verdict((one, held), (other, other_held)) {
+        let verdict = exchange_verdict((one, held), (other, other_held));
+        verdicts[pair] = Some(verdict);
+        match verdict {
             ExchangeVerdict::Moves => {
                 hand_over(ledger, hex, one);
                 hand_over(ledger, hex, other);
             }
-            ExchangeVerdict::Aborted => {
-                record_short_exchange(ledger, hex, ruleset, offers, (first, second), known);
-            }
+            ExchangeVerdict::Aborted => aborted.push((pair, known)),
             ExchangeVerdict::Uncertain => {
                 let doubt = doubt.expect("an uncertain verdict has a doubted side");
                 // Both ends of both legs: what each side gives may leave, and what each receives
@@ -11214,6 +11219,22 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
             }
         }
     }
+    let settled = SettledExchanges {
+        offers,
+        pairs: &pairs,
+        verdicts: &verdicts,
+    };
+    for (pair, known) in aborted {
+        record_short_exchange(ledger, hex, ruleset, &settled, pair, known);
+    }
+}
+
+/// A hex's exchange walk once it is over: every offer, the complementary pairs among them, and
+/// each pair's verdict.
+struct SettledExchanges<'a> {
+    offers: &'a [ExchangeOffer],
+    pairs: &'a [(usize, usize)],
+    verdicts: &'a [Option<ExchangeVerdict>],
 }
 
 /// Records every offer [`complementary_pairs`] left without a partner line, and every line
@@ -11294,24 +11315,39 @@ fn record_unanswered_exchanges(
 }
 
 /// Records a complementary pair aborted because a side is short of what it offers - but only
-/// where some short side's item no other `EXCHANGE` line in the hex trades, with any partner.
+/// where every other `EXCHANGE` line in the hex trading some short side's item, with any partner,
+/// belongs to a pair that hands that side the item too late (`ah-a58i`).
+///
 /// [`settle_exchanges`] follows the engine's report-order walk ([`exchange_walk`], `ah-6cni`), but
 /// an exchange with another faction is not followed at all, and a line whose goods nothing can
 /// name is not paired; so where another exchange could hand the short side (or a sharer lending to
 /// it) that item, or take it, whether this pair aborts is not certain and is not told (reviews of
 /// PR #1699); nor is a unit that moves before EXCHANGE reached where the walk puts it (`ah-fyyk`).
 /// Saying nothing there is a missed warning, never a false one.
+///
+/// The one other line that does not silence it is a pair the walk completes after it checked the
+/// short side, that goes ahead, and that gives the short unit itself the item: the walk reads the
+/// short side's holding before that pair moves anything, so the abort is certain and the warning
+/// names the late unit or units - the player can see the goods coming and would otherwise read the
+/// warning as a mistake.
 fn record_short_exchange(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
     ruleset: &Ruleset,
-    offers: &[ExchangeOffer],
-    pair: (usize, usize),
-    known: [(&ExchangeOffer, Option<i64>); 2],
+    settled: &SettledExchanges<'_>,
+    pair: usize,
+    known: [Option<i64>; 2],
 ) {
-    let these = [&offers[pair.0], &offers[pair.1]].map(|offer| (offer.unit, offer.line));
-    // Whether any other exchange line here trades `tag`; one whose goods nothing can name might.
-    let traded_elsewhere = |tag: &str| {
+    let SettledExchanges {
+        offers,
+        pairs,
+        verdicts,
+    } = *settled;
+    let (first, second) = pairs[pair];
+    let line_of = |index: usize| (offers[index].unit, offers[index].line);
+    // Whether any exchange line here other than `allowed` trades `tag`; one whose goods nothing
+    // can name might.
+    let traded_elsewhere = |tag: &str, allowed: &[(usize, usize)]| {
         hex.units.iter().enumerate().any(|(unit, ordered)| {
             ordered.intents.iter().any(|placed| {
                 let Intent::Exchange {
@@ -11322,7 +11358,7 @@ fn record_short_exchange(
                 else {
                     return false;
                 };
-                !these.contains(&(unit, placed.line))
+                !allowed.contains(&(unit, placed.line))
                     && [give_item, expect_item].into_iter().any(|item| {
                         resolve_item(item, hex, ordered, Some(ruleset))
                             .is_none_or(|named| named.eq_ignore_ascii_case(tag))
@@ -11330,34 +11366,77 @@ fn record_short_exchange(
             })
         })
     };
-    let short: Vec<(&ExchangeOffer, i64)> = known
-        .into_iter()
-        .filter_map(|(offer, held)| {
-            held.filter(|held| *held < offer.give_amount)
-                .map(|held| (offer, held))
-        })
-        .filter(|(offer, _)| !traded_elsewhere(&offer.give_tag))
-        .collect();
-    if short.is_empty() {
+    // Each side with the position the walk checked its holding at: the first line's partner at
+    // the first line, the first line's own unit at the second (`exchange_walk`).
+    let sides = [(first, second, known[0]), (second, first, known[1])];
+    let mut parts = Vec::new();
+    for (offer, checked_at, held) in sides {
+        let offer = &offers[offer];
+        let Some(held) = held.filter(|held| *held < offer.give_amount) else {
+            continue;
+        };
+        // The pairs completed after the check that go ahead and hand this unit the item.
+        let late: Vec<usize> = (0..pairs.len())
+            .filter(|&other| {
+                let (one, two) = pairs[other];
+                other != pair
+                    && two > checked_at
+                    && verdicts[other] == Some(ExchangeVerdict::Moves)
+                    && [one, two].into_iter().any(|index| {
+                        offers[index].partner == offer.unit
+                            && offers[index].give_tag == offer.give_tag
+                    })
+            })
+            .collect();
+        let mut allowed = vec![line_of(first), line_of(second)];
+        allowed.extend(
+            late.iter()
+                .flat_map(|&other| [line_of(pairs[other].0), line_of(pairs[other].1)]),
+        );
+        if traded_elsewhere(&offer.give_tag, &allowed) {
+            continue;
+        }
+        let mut part = format!(
+            "{} will hold only {} of the {} {} it offers",
+            unit_label(hex, &hex.units[offer.unit].unit.unit_id),
+            held.max(0),
+            offer.give_amount,
+            offer.give_tag
+        );
+        let deliveries: Vec<&ExchangeOffer> = late
+            .iter()
+            .flat_map(|&other| [pairs[other].0, pairs[other].1])
+            .map(|index| &offers[index])
+            .filter(|delivery| delivery.partner == offer.unit)
+            .collect();
+        let arriving: i64 = deliveries.iter().map(|delivery| delivery.give_amount).sum();
+        let mut givers: Vec<usize> = deliveries.iter().map(|delivery| delivery.unit).collect();
+        givers.sort_unstable();
+        givers.dedup();
+        // Named only where the late goods would have covered the offer in time: otherwise the
+        // pair is aborted for a plain shortfall, and the clause would read as a fix that is not
+        // one (review on PR #1799).
+        if !givers.is_empty() && held.max(0).saturating_add(arriving) >= offer.give_amount {
+            let names: Vec<String> = givers
+                .iter()
+                .map(|&giver| unit_label(hex, &hex.units[giver].unit.unit_id))
+                .collect();
+            part.push_str(&format!(
+                " — the {} from {} arrives after this exchange is settled",
+                offer.give_tag,
+                names.join(" and ")
+            ));
+        }
+        parts.push(part);
+    }
+    if parts.is_empty() {
         return;
     }
-    let why = short
-        .iter()
-        .map(|(offer, held)| {
-            format!(
-                "{} will hold only {} of the {} {} it offers",
-                unit_label(hex, &hex.units[offer.unit].unit.unit_id),
-                held.max(&0),
-                offer.give_amount,
-                offer.give_tag
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
-    for offer in [&offers[pair.0], &offers[pair.1]] {
+    let why = parts.join("; ");
+    for index in [first, second] {
         ledger.aborted_exchanges.push((
-            hex.units[offer.unit].unit.unit_id.clone(),
-            offer.line,
+            hex.units[offers[index].unit].unit.unit_id.clone(),
+            offers[index].line,
             why.clone(),
         ));
     }
