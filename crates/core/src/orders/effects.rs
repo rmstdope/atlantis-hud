@@ -7500,7 +7500,7 @@ mod tests {
         let response = preview_over(
             &report_with_a_flagged_former(),
             "unit 900\nBEHIND 0\nAVOID 1\nREVEAL FACTION\nFORM 1\nEND\n\
-             FORM 3\nBEHIND 1\nREVEAL\nFORM 2\nEND\nEND\n\
+             NOAID 1\nFORM 3\nBEHIND 1\nREVEAL\nFORM 2\nEND\nEND\n\
              HOLD 1\nGIVE NEW 1 1 LEAD\nGIVE NEW 2 1 LEAD\nGIVE NEW 3 1 LEAD\n",
         );
 
@@ -7522,15 +7522,45 @@ mod tests {
         );
         assert_eq!(
             flags("new-2"),
-            vec!["sharing", "avoiding", "behind"],
+            vec!["sharing", "avoiding", "receiving no aid", "behind"],
             "formed unit 3's own BEHIND 1 and REVEAL above the nested FORM are inherited"
+        );
+        assert_eq!(
+            flags("new-3"),
+            vec!["sharing", "avoiding", "receiving no aid", "behind"],
+            "the NOAID written between FORM 1's block and FORM 3 reaches new 3 alone, and new 3 \
+             ends the month with its own BEHIND 1 and REVEAL"
         );
     }
 
-    /// `ah-e529`: SHARE, the first flag order found to follow the engine. The engine sets it while it parses
-    /// the orders (`../Atlantis/parseorders.cpp` `Game::ProcessShareOrder`, "Instant order") and a
-    /// `FORM` copies its former's flags at that moment (`temp->CopyFlags(former)`), so the formed
-    /// unit's sharing is its former's as it stands at the `FORM` line (`rules/form`).
+    /// The plan's decided edges of `ah-78rd`: a GUARD 1 above the FORM cancels an AVOID before the
+    /// copy (`rules/guard`: the two flags are mutually exclusive; `../Atlantis/parseorders.cpp`
+    /// `Game::ProcessGuardOrder` sets `GUARD_SET`, which `Unit::CopyFlags` does not pass on), and a
+    /// CONSUME above the FORM is inherited like any other flag order (`Game::ProcessConsumeOrder`
+    /// sets the flag while parsing).
+    #[test]
+    fn a_guard_above_a_form_cancels_the_avoid_and_a_consume_is_inherited() {
+        let response = preview_over(
+            &report_with_a_flagged_former(),
+            "unit 900\nAVOID 1\nGUARD 1\nCONSUME UNIT\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n",
+        );
+
+        let formed = response.regions[0]
+            .units
+            .iter()
+            .find(|unit| unit.unit.unit_id == "new-1")
+            .expect("new-1 is previewed");
+        assert_eq!(
+            formed.unit.flags,
+            vec!["behind", "sharing", "consuming unit's food"],
+            "neither avoiding nor on guard, and consuming its own food"
+        );
+    }
+
+    /// `ah-e529`: SHARE, the first flag order found to follow the engine. The engine sets it while
+    /// it parses the orders (`../Atlantis/parseorders.cpp` `Game::ProcessShareOrder`, "Instant
+    /// order") and a `FORM` copies its former's flags at that moment (`temp->CopyFlags(former)`),
+    /// so the formed unit's sharing is its former's as it stands at the `FORM` line (`rules/form`).
     #[test]
     fn a_share_written_above_a_form_is_what_the_formed_unit_inherits() {
         let formed_flags = |report: &str, orders: &str| {
