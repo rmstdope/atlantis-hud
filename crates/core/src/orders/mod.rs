@@ -28,6 +28,8 @@ pub mod items;
 pub mod lexer;
 /// Core-internal: who may become a mage, and who already is one.
 mod magic;
+/// Core-internal: how a sentence names a unit, a formed one included (`ah-uxaw`).
+mod naming;
 pub mod new_students;
 pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.

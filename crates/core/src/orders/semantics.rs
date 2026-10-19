@@ -4475,6 +4475,37 @@ impl<'a> Hex<'a> {
             .find(|ordered| ordered.unit.unit_id == unit_id)
     }
 
+    /// How a sentence names one of this hex's units (`ah-uxaw`): `<name> (<id>)` for a unit the
+    /// report shows, `new 1, formed by Ivanhoe (683)` for one this month's `FORM` creates (see
+    /// [`naming`](super::naming)), and `unit <id>` for a number the hex does not list.
+    fn sentence_label(&self, unit_id: &str) -> String {
+        if let Some(ordered) = self.find(unit_id) {
+            return self.ordered_label(ordered);
+        }
+        self.region
+            .units
+            .iter()
+            .find(|unit| unit.unit_id == unit_id)
+            .map_or_else(
+                || format!("unit {unit_id}"),
+                super::naming::report_unit_label,
+            )
+    }
+
+    /// [`sentence_label`](Self::sentence_label) for a row already in hand.
+    fn ordered_label(&self, ordered: &Ordered<'_>) -> String {
+        match &ordered.formed {
+            Some(formed) => {
+                let former = self.find(&formed.formed_by).map_or_else(
+                    || format!("unit {}", formed.formed_by),
+                    |former| super::naming::former_name(&former.unit.unit_id, &former.unit.name),
+                );
+                super::naming::formed_unit_phrase(&formed.alias, Some(&former))
+            }
+            None => super::naming::report_unit_label(ordered.unit),
+        }
+    }
+
     /// Where a transfer from `giver_id` lands in this hex, and which of our own units receives it.
     ///
     /// The three lookups `give_endpoint` needs over a hex, written once rather than at each caller:
@@ -14787,13 +14818,13 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                     }
                     format!(
                         "{} is not in {} when promotions run, so it promotes nobody",
-                        promoted_label(hex, &promote.target),
+                        super::naming::mid_sentence(&promoted_label(hex, &promote.target)),
                         named_structure(hex, structure_id)
                     )
                 } else {
                     format!(
                         "{} owns {} when promotions run, not this unit, so nothing changes",
-                        shown_unit_label(hex, &owner_id),
+                        super::naming::mid_sentence(&shown_unit_label(hex, &owner_id)),
                         named_structure(hex, structure_id)
                     )
                 }
@@ -14837,7 +14868,7 @@ fn check_evict_refused(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                 format!(
                     "EVICT will be refused: {} owns {} when evictions run, not this unit, so \
                      nothing changes",
-                    shown_unit_label(hex, &owner_id),
+                    super::naming::mid_sentence(&shown_unit_label(hex, &owner_id)),
                     named_structure(hex, structure_id)
                 )
             }
@@ -14867,16 +14898,16 @@ fn promoted_label(hex: &Hex<'_>, target: &str) -> String {
     }
 }
 
-/// `Name (id)` for a unit this region shows, ours or not, or `unit <id>` for one it does not.
+/// `Name (id)` for a unit this region shows, ours or not, a formed unit as
+/// [`Hex::sentence_label`] names it, or `unit <id>` for one it does not.
 fn shown_unit_label(hex: &Hex<'_>, unit_id: &str) -> String {
     hex.region
         .units
         .iter()
-        .chain(hex.units.iter().map(|ordered| ordered.unit))
         .find(|unit| unit.unit_id == unit_id)
         .map_or_else(
-            || format!("unit {unit_id}"),
-            |unit| format!("{} ({})", unit.name, unit.unit_id),
+            || hex.sentence_label(unit_id),
+            super::naming::report_unit_label,
         )
 }
 
@@ -15930,13 +15961,10 @@ struct UpkeepTransfer {
 /// A unit of `hex` as [`SilverChange::other`] names it: `<name> (<id>)`, the form a gift's giver
 /// takes; `unit <id>` for one the hex does not list.
 fn unit_label(hex: &Hex<'_>, unit_id: &str) -> String {
-    hex.units
-        .iter()
-        .find(|ordered| ordered.unit.unit_id == unit_id)
-        .map_or_else(
-            || format!("unit {unit_id}"),
-            |ordered| format!("{} ({})", ordered.unit.name, ordered.unit.unit_id),
-        )
+    match hex.find(unit_id) {
+        Some(ordered) => hex.ordered_label(ordered),
+        None => format!("unit {unit_id}"),
+    }
 }
 
 /// Pairs what the lenders paid with what the fed units were relieved, both in document order: the
@@ -59000,21 +59028,19 @@ BUILD
             ),
             vec![(
                 Some("901".to_string()),
-                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
-                 this unit, so nothing changes"
+                "EVICT will be refused: new 1, formed by Unit 900 (900), owns Castle [1] when \
+                 evictions run, not this unit, so nothing changes"
                     .to_string()
             )]
         );
         // `ah-7ful` review: an ENTER the engine refuses ("ENTER: Can't enter that.") moves the
         // formed unit nowhere, so it keeps the place it took when its FORM was parsed.
         assert_eq!(
-            evict_refusals(
-                "unit 900\nFORM 1\nENTER 7\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"
-            ),
+            evict_refusals("unit 900\nFORM 1\nENTER 7\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"),
             vec![(
                 Some("901".to_string()),
-                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
-                 this unit, so nothing changes"
+                "EVICT will be refused: new 1, formed by Unit 900 (900), owns Castle [1] when \
+                 evictions run, not this unit, so nothing changes"
                     .to_string()
             )]
         );
@@ -59032,8 +59058,8 @@ BUILD
             evict_refusals("unit 900\nFORM 1\nEND\nLEAVE\nunit 901\nENTER 1\nEVICT 900\n"),
             vec![(
                 Some("901".to_string()),
-                "EVICT will be refused: Unit (new 1) (new-1) owns Castle [1] when evictions run, not \
-                 this unit, so nothing changes"
+                "EVICT will be refused: new 1, formed by Unit 900 (900), owns Castle [1] when \
+                 evictions run, not this unit, so nothing changes"
                     .to_string()
             )]
         );
