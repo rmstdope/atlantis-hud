@@ -342,6 +342,14 @@ function WalkProblems({
 export const PROBLEM_ROW_COUNT_ROOM = "pr-[6em]";
 
 /**
+ * How a problem row and its quoted token wrap (ah-mzuw, docs/ui/ah-mzuw-narrow-a.html): the row is
+ * one run of inline text, so nothing in it holds a minimum width, and a word longer than the row -
+ * the token's or the message's - breaks mid-word as a last resort rather than running into the
+ * count's room. Side-by-side columns gave the row a minimum width wider than a narrow rail leaves it.
+ */
+export const PROBLEM_ROW_FLOW = "wrap-anywhere";
+
+/**
  * The problem list's floor once its first row is measured: that row as drawn, wrapped or not, but
  * never more than two lines of it (ah-8zbc, docs/ui/ah-8zbc-long-row.html). The orders panel's
  * smallest height holds three editor lines, the status line and a two-line row; a row of three
@@ -451,20 +459,34 @@ function ProblemList({
               key={`${problem.code}-${problem.lineStart}-${index}`}
               data-testid="orders-diagnostic"
               data-severity={problem.severity}
-              className={`flex gap-2 ${PROBLEM_ROW_COUNT_ROOM}`}
+              // One run of text, wrapping like a sentence (`PROBLEM_ROW_FLOW`): the spaces between
+              // the pieces are where it breaks, and the margins keep them about as far apart as the
+              // columns they replaced.
+              className={`${PROBLEM_ROW_FLOW} ${PROBLEM_ROW_COUNT_ROOM}`}
             >
-              <SeverityMark severity={problem.severity} />
+              <span className="mr-1">
+                <SeverityMark severity={problem.severity} />
+              </span>{" "}
               {/* A finding on the unit as a whole has no line to count to, and says none (`ah-6c76`). */}
               {problem.lineStart === null ? null : (
-                <span className="shrink-0 tabular-nums text-ink-dim">line {problem.lineStart}</span>
+                <>
+                  {/* A non-breaking space: "line" and its number part only when nothing else fits. */}
+                  <span className="mr-1 tabular-nums text-ink-dim">{`line\u00a0${problem.lineStart}`}</span>{" "}
+                </>
               )}
               {found === null ? null : (
-                <code
-                  data-testid="orders-diagnostic-token"
-                  className="shrink-0 rounded bg-edge/40 px-1 font-mono text-ink-soft"
-                >
-                  {found}
-                </code>
+                <>
+                  <code
+                    data-testid="orders-diagnostic-token"
+                    // Wraps inside itself when longer than the row, its background following each
+                    // line, and is never cut short (docs/ui/ah-mzuw-long-word-a.html). Not
+                    // `box-decoration-clone`: Chromium repeats the padding on every line but breaks a
+                    // word as if it were not there, so each line's padding ran into the count's room.
+                    className={`mr-1 rounded bg-edge/40 px-1 font-mono text-ink-soft ${PROBLEM_ROW_FLOW}`}
+                  >
+                    {found}
+                  </code>{" "}
+                </>
               )}
               <span className="text-ink">{problem.message}</span>
             </li>

@@ -1184,10 +1184,13 @@ async function textBesideCount(page: Page) {
     const range = document.createRange();
     range.selectNodeContents(row);
     const boxes = Array.from(range.getClientRects()).filter((box) => box.width > 0);
+    const rowBox = row.getBoundingClientRect();
     return {
       text: row.textContent,
       textRight: Math.max(...boxes.map((box) => box.right)),
-      countLeft: count.getBoundingClientRect().left
+      countLeft: count.getBoundingClientRect().left,
+      // Where the room every row keeps for the count begins, whether or not the count shows.
+      roomLeft: rowBox.right - parseFloat(getComputedStyle(row).paddingRight)
     };
   });
 }
@@ -1243,6 +1246,62 @@ async function narrowRightRail(page: Page) {
   await page.mouse.up();
   await expect.poll(async () => (await overlay.boundingBox())!.width).toBeLessThan(200);
 }
+
+/**
+ * ah-mzuw: at the rail's narrowest the row's fixed columns used to be wider than the room left
+ * beside the count, and the count was drawn over the text. The row now flows as one run of text
+ * (docs/ui/ah-mzuw-narrow-a.html), so it wraps before the room at every width.
+ */
+test("at the narrowest right rail the hidden-row count never covers the visible row's text", async ({
+  page
+}) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await narrowRightRail(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+
+  const drawn = await textBesideCount(page);
+  expect(drawn.text).toContain("unknown order command: WROK");
+  expect(drawn.textRight, `"${drawn.text}" runs under the count`).toBeLessThanOrEqual(drawn.countLeft);
+  expect(drawn.textRight, `"${drawn.text}" runs into the count's room`).toBeLessThanOrEqual(drawn.roomLeft + 0.5);
+});
+
+/**
+ * ah-mzuw: a quoted order word longer than the row wraps inside its chip, whole, and the message's
+ * own copy of it breaks mid-word - neither runs into the count's room
+ * (docs/ui/ah-mzuw-long-word-a.html). Boxes and `textContent` only: WebKit's driver reads clipped
+ * text as empty.
+ */
+test("a quoted order word longer than the row wraps inside its chip, never under the count", async ({
+  page
+}) => {
+  const word = "XYZZYPLUGHXYZZYPLUGHXYZZYPLUGHXYZZYPLUGH";
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await narrowRightRail(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, Array.from({ length: 5 }, () => `${word} 1`).join("\n"));
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+
+  const chip = await page
+    .getByTestId("orders-diagnostic")
+    .first()
+    .getByTestId("orders-diagnostic-token")
+    .evaluate((code) => ({
+      text: code.textContent,
+      lines: code.getClientRects().length
+    }));
+  expect(chip.text, "the quoted word is never cut short").toBe(word);
+  expect(chip.lines, "the chip wraps inside itself").toBeGreaterThan(1);
+
+  const drawn = await textBesideCount(page);
+  expect(drawn.textRight, `"${drawn.text}" runs under the count`).toBeLessThanOrEqual(drawn.countLeft);
+  expect(drawn.textRight, `"${drawn.text}" runs into the count's room`).toBeLessThanOrEqual(drawn.roomLeft + 0.5);
+});
 
 /**
  * ah-8zbc: the smallest panel holds a row of up to two lines; a longer one shows two and scrolls
