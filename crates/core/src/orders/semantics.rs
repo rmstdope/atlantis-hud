@@ -317,6 +317,12 @@ pub mod codes {
     /// none (`ah-0ace`; `rules/evict`: "Evict the specified unit from the object of which you are
     /// currently the owner"). Always on, as [`PROMOTE_NOT_OWNER`] is.
     pub const EVICT_REFUSED: Code = Code("evict-refused");
+    /// A `WORK` in a region whose description pays no wages (`ah-pfa0`): `rules/work` is "manual
+    /// work for wages", and `rules/economy_income` says "The current wages are shown in the region
+    /// description for each region" - so `Wages: $0.`, a `Max:` of $0, or no wage line at all
+    /// means the month earns nothing. Every ocean is one (`rules/world_regions`: "Oceans, not
+    /// surprisingly, have no population").
+    pub const WORK_EARNS_NOTHING: Code = Code("work-earns-nothing");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -325,7 +331,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 59] = [
+    pub const ALL: [Code; 60] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -385,6 +391,7 @@ pub mod codes {
         STUDY_GAINS_NOTHING,
         LEADERS_AND_MEN_MIXED,
         DISCARD_FROM_SHARED_STOCK,
+        WORK_EARNS_NOTHING,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -1027,6 +1034,7 @@ pub fn review_turn(
         // actually happen (`ah-0wpn`).
         let departed = departures_after_load_checks(hex, ledger, ruleset);
         check_region_pools(hex, &overruns, ruleset, &plurals, &options, &mut findings);
+        check_work_income(hex, &options, &mut findings);
         let ends_elsewhere = membership.of(index).ends_elsewhere();
         check_resources(
             hex,
@@ -29913,6 +29921,46 @@ pub(crate) fn withdrawal_cost(item: &str, ruleset: Option<&Ruleset>) -> Option<i
     ruleset?.find_item(item)?.withdraw_cost
 }
 
+/// Whether work in this region earns nothing, read off its description: `Wages: $0.`, a wage line
+/// whose `Max:` is $0, or no wage line at all (`ah-pfa0`; `rules/economy_income`: "The current
+/// wages are shown in the region description for each region").
+///
+/// The one reading of it: [`check_work_income`] warns by it and [`check_region_pools`] stands its
+/// wage sentence down by it, so the two can never disagree about which units were told. A wage
+/// text that is present but cannot be read is neither: nothing says what it pays.
+fn pays_no_wages(region: &ReportRegion) -> bool {
+    region.wages.is_none()
+        || parse_wage_centis(region.wages.as_deref()) == Some(0)
+        || region.max_wages == Some(0)
+}
+
+/// Whether this unit's block carries a `WORK` order, and where the first one is.
+fn first_work<'o>(ordered: &'o Ordered<'_>) -> Option<&'o PlacedIntent> {
+    ordered
+        .intents
+        .iter()
+        .find(|placed| matches!(placed.intent, Intent::Work))
+}
+
+/// A `WORK` where work earns nothing: one line per unit, on its first `WORK`, in the region the
+/// report lists it in (`ah-pfa0`). A unit with no orders that falls back to working is not told -
+/// the agreed experience leaves it out.
+fn check_work_income(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if !options.emits(codes::WORK_EARNS_NOTHING) || !pays_no_wages(hex.region) {
+        return;
+    }
+    for ordered in &hex.units {
+        if let Some(placed) = first_work(ordered) {
+            findings.push(ordered.finding(
+                hex,
+                codes::WORK_EARNS_NOTHING,
+                "earns nothing: this region pays no wages".to_string(),
+                Some(placed),
+            ));
+        }
+    }
+}
+
 /// Own units in one hex promised more of a region's pool than it holds.
 ///
 /// Per hex, because the pools are: a tax base belongs to the region, unlike the faction purse that
@@ -30007,6 +30055,16 @@ fn check_region_pools(
             let Some(ordered) = hex.units.get(*index) else {
                 continue;
             };
+            // A `WORK` where the region pays no wages already says so in its own sentence, or was
+            // silenced by its own switch: a second wage line beside it would say the same thing
+            // twice, and switching that one off must leave the order bare (`ah-pfa0`). A unit
+            // working by default is not told by it, so it keeps this sentence.
+            if matches!(pool, ContendedPool::Wages)
+                && pays_no_wages(hex.region)
+                && first_work(ordered).is_some()
+            {
+                continue;
+            }
             // The unit's own line for this pool, so the finding can be clicked to the order it is
             // about - the first placement of the relevant intent, as `check_claims` anchors per
             // placement.
@@ -44502,6 +44560,24 @@ BUILD
         }
     }
 
+    /// `findings` without `work-earns-nothing`: for an upkeep test whose `WORK` earns nothing in
+    /// `region` on purpose, so that its wages pay none of the bill (`ah-pfa0`).
+    fn ignoring_work_income(findings: Vec<Finding>) -> Vec<Finding> {
+        findings
+            .into_iter()
+            .filter(|finding| finding.code != codes::WORK_EARNS_NOTHING)
+            .collect()
+    }
+
+    /// `region`, with a description that pays wages - for a test where a `WORK` is a bystander,
+    /// since `region` prints no wage line and work there earns nothing (`ah-pfa0`).
+    fn paid_region(units: Vec<ReportUnit>) -> ReportRegion {
+        ReportRegion {
+            wages: Some("$12.0".to_string()),
+            ..region(units)
+        }
+    }
+
     /// A longship (329) lying in the mountain hex `region` builds, whose only listed exit, north,
     /// is another mountain: a SAIL N from here has land at both ends, which no fleet may sail
     /// (`rules/movement_sailing`: "A fleet can move from an ocean region to another ocean region,
@@ -50302,7 +50378,7 @@ BUILD
             10,
         )])];
 
-        let finding = only(check(regions, "unit 5\nWORK\n"));
+        let finding = only(ignoring_work_income(check(regions, "unit 5\nWORK\n")));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
@@ -50409,7 +50485,7 @@ BUILD
             3,
         )])];
 
-        let finding = only(check(regions, "unit 5\nWORK\n"));
+        let finding = only(ignoring_work_income(check(regions, "unit 5\nWORK\n")));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         // The message says upkeep, not orders: WORK spends nothing, and a player told otherwise
         // would go looking for a mistake that is not there.
@@ -52380,7 +52456,11 @@ BUILD
             10,
         )])];
 
-        let finding = only(check_with_purse(None, regions, "unit 5\nWORK\n"));
+        let finding = only(ignoring_work_income(check_with_purse(
+            None,
+            regions,
+            "unit 5\nWORK\n",
+        )));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
@@ -52398,7 +52478,11 @@ BUILD
             10,
         )])];
 
-        let finding = only(check_with_purse(Some(0), regions, "unit 5\nWORK\n"));
+        let finding = only(ignoring_work_income(check_with_purse(
+            Some(0),
+            regions,
+            "unit 5\nWORK\n",
+        )));
         assert_eq!(finding.code.as_str(), "not-enough-silver");
         assert_eq!(
             finding.message,
@@ -55442,7 +55526,7 @@ BUILD
         guarding.on_guard = true;
 
         assert_eq!(
-            check(vec![region(vec![guarding])], "unit 5\nWORK\n"),
+            check(vec![paid_region(vec![guarding])], "unit 5\nWORK\n"),
             vec![]
         );
     }
@@ -55571,14 +55655,14 @@ BUILD
     #[test]
     fn a_hex_that_was_never_guarded_is_silent_by_default() {
         assert_eq!(
-            check(vec![region(vec![unit("5")])], "unit 5\nWORK\n"),
+            check(vec![paid_region(vec![unit("5")])], "unit 5\nWORK\n"),
             vec![]
         );
     }
 
     #[test]
     fn the_broad_guard_check_reports_an_unguarded_hex_when_it_is_asked_to() {
-        let regions = vec![region(vec![unit("5")])];
+        let regions = vec![paid_region(vec![unit("5")])];
         let options = CheckOptions {
             disabled: BTreeSet::new(),
             ..CheckOptions::default()
@@ -55674,7 +55758,7 @@ BUILD
     #[test]
     fn a_student_named_but_not_studying_is_warned_about() {
         let finding = only(check(
-            vec![region(teaching_hex())],
+            vec![paid_region(teaching_hex())],
             "unit 500\nTEACH 700\nunit 700\nWORK\n",
         ));
 
@@ -56511,7 +56595,7 @@ BUILD
 
         assert_eq!(
             check(
-                vec![region(units)],
+                vec![paid_region(units)],
                 "unit 500\nTEACH 700\nunit 600\nWORK\nunit 700\nSTUDY combat\n"
             ),
             vec![]
@@ -57080,6 +57164,8 @@ BUILD
         let finding = only(check(
             vec![ReportRegion {
                 structures: vec![unfinished_building("1")],
+                // WORK here is a bystander, so the region pays wages (`ah-pfa0`).
+                wages: Some("$12.0".to_string()),
                 ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
             }],
             "unit 4021\nWORK\nunit 4117\nBUILD HELP 4021\n",
@@ -57498,6 +57584,8 @@ BUILD
         let regions = || {
             vec![ReportRegion {
                 structures: vec![unfinished_building("1")],
+                // WORK here is a bystander, so the region pays wages (`ah-pfa0`).
+                wages: Some("$12.0".to_string()),
                 ..region(vec![in_structure(unit("4021"), "1"), unit("4117")])
             }]
         };
@@ -60606,7 +60694,7 @@ BUILD
     fn a_unit_that_works_is_silent() {
         assert_eq!(
             codes(&check_idle(
-                vec![region(vec![unit("4021")])],
+                vec![paid_region(vec![unit("4021")])],
                 "unit 4021\nWORK\n"
             )),
             Vec::<&str>::new()
@@ -60722,7 +60810,7 @@ BUILD
         theirs.own = false;
         assert_eq!(
             codes(&check_idle(
-                vec![region(vec![theirs, unit("4021")])],
+                vec![paid_region(vec![theirs, unit("4021")])],
                 "unit 4021\nWORK\n",
             )),
             Vec::<&str>::new()
@@ -60799,7 +60887,7 @@ BUILD
     fn a_men_less_unit_that_works_is_silent() {
         assert_eq!(
             codes(&check_idle(
-                vec![region(vec![with_men(unit("4021"), 0)])],
+                vec![paid_region(vec![with_men(unit("4021"), 0)])],
                 "unit 4021\nWORK\n"
             )),
             Vec::<&str>::new()
@@ -72047,6 +72135,14 @@ BUILD
                 unclaimed: None,
             },
             Case {
+                code: codes::WORK_EARNS_NOTHING,
+                // `region` prints no wage line, so work there earns nothing (`ah-pfa0`).
+                regions: vec![region(vec![unit("5")])],
+                orders: "unit 5\nWORK\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
                 code: codes::TRANSFER_TO_ITSELF,
                 regions: vec![region(vec![with_item(unit("5"), 30, "grain", "GRAI")])],
                 orders: "unit 5\nTAKE FROM 5 30 GRAI\n",
@@ -72935,6 +73031,8 @@ BUILD
     fn a_zero_skill_captain_warns_when_only_passenger_has_sailing_skill() {
         let region = ReportRegion {
             structures: vec![longship("329")],
+            // WORK here is a bystander, so the region pays wages (`ah-pfa0`).
+            wages: Some("$12.0".to_string()),
             ..region(vec![
                 aboard("11125", "329", 50, 0),
                 aboard("12590", "329", 50, 4),
@@ -74378,7 +74476,7 @@ BUILD
     fn a_unit_that_does_not_move_is_not_judged() {
         assert_eq!(
             codes(&check(
-                vec![region(vec![carrying("12054", 1800, 150)])],
+                vec![paid_region(vec![carrying("12054", 1800, 150)])],
                 "unit 12054\nWORK\n",
             )),
             Vec::<&str>::new()
@@ -87912,6 +88010,175 @@ BUILD
                 }
             }
             assert_eq!(lent, stock.drained().0);
+        }
+    }
+
+    /// `ah-pfa0`: a WORK order where work earns nothing. `rules/work`: the unit "spends the month
+    /// performing manual work for wages"; `rules/economy_income`: "The current wages are shown in
+    /// the region description for each region"; `rules/world_regions`: "Oceans, not surprisingly,
+    /// have no population".
+    mod work_that_earns_nothing {
+        use super::*;
+
+        const SENTENCE: &str = "earns nothing: this region pays no wages";
+
+        fn paying(wages: Option<&str>, max: Option<i64>, units: Vec<ReportUnit>) -> ReportRegion {
+            ReportRegion {
+                wages: wages.map(str::to_string),
+                max_wages: max,
+                ..region(units)
+            }
+        }
+
+        fn ocean(units: Vec<ReportUnit>) -> ReportRegion {
+            ReportRegion {
+                terrain: "ocean".to_string(),
+                province: "Atlantis Ocean".to_string(),
+                population: None,
+                race: None,
+                ..paying(Some("$0"), None, units)
+            }
+        }
+
+        fn findings_with(hex: ReportRegion, orders: &str, options: CheckOptions) -> Vec<Finding> {
+            review_turn(&report(vec![hex]), orders, Some(&ruleset()), options).findings
+        }
+
+        fn findings(hex: ReportRegion, orders: &str) -> Vec<Finding> {
+            findings_with(hex, orders, CheckOptions::default())
+        }
+
+        fn earning_nothing(findings: &[Finding]) -> Vec<&Finding> {
+            findings
+                .iter()
+                .filter(|finding| finding.code == codes::WORK_EARNS_NOTHING)
+                .collect()
+        }
+
+        fn switched_off(code: Code) -> CheckOptions {
+            let mut options = CheckOptions::default();
+            options.disabled.insert(code.as_str().to_string());
+            options
+        }
+
+        #[test]
+        fn work_at_sea_earns_nothing() {
+            let sailor = ReportUnit {
+                structure_id: Some("329".to_string()),
+                ..with_men(unit("12"), 1)
+            };
+            let found = findings(ocean(vec![sailor]), "unit 12\nWORK\n");
+
+            let warned = earning_nothing(&found);
+            assert_eq!(warned.len(), 1, "{found:?}");
+            assert_eq!(warned[0].message, SENTENCE);
+            assert_eq!(warned[0].unit_id.as_deref(), Some("12"));
+            assert_eq!(warned[0].line, Some(2), "anchored on the WORK line");
+        }
+
+        #[test]
+        fn work_on_land_with_no_wages_earns_nothing() {
+            let found = findings(
+                paying(Some("$0"), None, vec![with_men(unit("31"), 5)]),
+                "unit 31\nWORK\n",
+            );
+            assert_eq!(
+                earning_nothing(&found)
+                    .iter()
+                    .map(|finding| finding.message.as_str())
+                    .collect::<Vec<_>>(),
+                [SENTENCE],
+                "{found:?}"
+            );
+        }
+
+        #[test]
+        fn work_where_max_is_zero_earns_nothing() {
+            let found = findings(
+                paying(Some("$11.0"), Some(0), vec![with_men(unit("55"), 5)]),
+                "unit 55\nWORK\n",
+            );
+            assert_eq!(earning_nothing(&found).len(), 1, "{found:?}");
+        }
+
+        #[test]
+        fn work_with_no_wage_line_earns_nothing() {
+            let found = findings(
+                paying(None, None, vec![with_men(unit("55"), 5)]),
+                "unit 55\nWORK\n",
+            );
+            assert_eq!(earning_nothing(&found).len(), 1, "{found:?}");
+        }
+
+        #[test]
+        fn work_where_wages_are_paid_says_nothing() {
+            let found = findings(
+                paying(Some("$13.5"), Some(633), vec![with_men(unit("40"), 5)]),
+                "unit 40\nWORK\n",
+            );
+            assert!(earning_nothing(&found).is_empty(), "{found:?}");
+        }
+
+        #[test]
+        fn each_worker_in_a_no_wage_region_gets_its_own_line() {
+            let found = findings(
+                ocean(vec![with_men(unit("12"), 1), with_men(unit("13"), 1)]),
+                "unit 12\nWORK\nunit 13\nWORK\n",
+            );
+            let units: Vec<_> = earning_nothing(&found)
+                .iter()
+                .map(|finding| finding.unit_id.clone())
+                .collect();
+            assert_eq!(
+                units,
+                [Some("12".to_string()), Some("13".to_string())],
+                "{found:?}"
+            );
+        }
+
+        /// Units falling back to work are out of the agreed scope.
+        #[test]
+        fn a_unit_with_no_orders_is_not_told() {
+            let found = findings(ocean(vec![with_men(unit("12"), 1)]), "unit 12\n");
+            assert!(earning_nothing(&found).is_empty(), "{found:?}");
+        }
+
+        #[test]
+        fn the_switch_silences_it() {
+            let found = findings_with(
+                ocean(vec![with_men(unit("12"), 1)]),
+                "unit 12\nWORK\n",
+                switched_off(codes::WORK_EARNS_NOTHING),
+            );
+            assert!(earning_nothing(&found).is_empty(), "{found:?}");
+        }
+
+        /// The agreed experience: no second wage warning beside it, and with the switch off
+        /// nothing at all for these units.
+        #[test]
+        fn no_wage_pool_overrun_beside_work_that_earns_nothing() {
+            let hex = || {
+                paying(
+                    Some("$11.0"),
+                    Some(0),
+                    vec![with_men(unit("55"), 10), with_men(unit("56"), 10)],
+                )
+            };
+            let orders = "unit 55\nWORK\nunit 56\nWORK\n";
+            let pooled = |found: &[Finding]| {
+                found
+                    .iter()
+                    .filter(|finding| finding.code == codes::REGION_POOL_OVERSUBSCRIBED)
+                    .count()
+            };
+
+            let on = findings(hex(), orders);
+            assert_eq!(earning_nothing(&on).len(), 2, "{on:?}");
+            assert_eq!(pooled(&on), 0, "{on:?}");
+
+            let off = findings_with(hex(), orders, switched_off(codes::WORK_EARNS_NOTHING));
+            assert_eq!(pooled(&off), 0, "{off:?}");
+            assert!(earning_nothing(&off).is_empty(), "{off:?}");
         }
     }
 }
