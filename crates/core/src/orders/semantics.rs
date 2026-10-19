@@ -59533,7 +59533,13 @@ BUILD
         let promote: Vec<(&str, Option<usize>, &str)> = findings
             .iter()
             .filter(|finding| finding.code.as_str().starts_with("promote-"))
-            .map(|finding| (finding.code.as_str(), finding.line, finding.message.as_str()))
+            .map(|finding| {
+                (
+                    finding.code.as_str(),
+                    finding.line,
+                    finding.message.as_str(),
+                )
+            })
             .collect();
         assert_eq!(
             promote,
