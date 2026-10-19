@@ -45,7 +45,8 @@ fn script(first: &str, miners: &str) -> String {
     )
 }
 
-const SHORT: &str = "EXCHANGE will be aborted: Scout (1170) will hold only 0 of the 1 IRON it offers";
+const SHORT: &str =
+    "EXCHANGE will be aborted: Scout (1170) will hold only 0 of the 1 IRON it offers";
 
 /// The bead's case: Miners write nothing, so Scout's first line is unanswered and moves no iron.
 #[test]
@@ -56,8 +57,7 @@ fn the_beads_case_warns_the_short_pair_beside_the_unanswered_line() {
             (
                 "1170".to_string(),
                 4,
-                "EXCHANGE will be aborted: Miners (11127) has no EXCHANGE answering it"
-                    .to_string()
+                "EXCHANGE will be aborted: Miners (11127) has no EXCHANGE answering it".to_string()
             ),
             ("1170".to_string(), 5, SHORT.to_string()),
             ("7676".to_string(), 7, SHORT.to_string()),
