@@ -282,6 +282,15 @@ function WalkProblems({
 }
 
 /**
+ * The room every problem row leaves on its right for the "N more ↓" count (ah-8zbc,
+ * docs/ui/ah-8zbc-count-room.html), so the count only ever sits over empty space and never over the
+ * quoted token. 6em - 72px at the default 12px pane text - fits a two-digit count with its offset and
+ * padding, and scales with the pane's text size. Kept whether or not the count shows, so the rows do
+ * not re-wrap as it comes and goes.
+ */
+export const PROBLEM_ROW_COUNT_ROOM = "pr-[6em]";
+
+/**
  * What is wrong with this unit's orders, line by line.
  *
  * Counts alone told the player a number and left them to find it. The line is the one the editor
@@ -377,7 +386,7 @@ function ProblemList({
               key={`${problem.code}-${problem.lineStart}-${index}`}
               data-testid="orders-diagnostic"
               data-severity={problem.severity}
-              className="flex gap-2"
+              className={`flex gap-2 ${PROBLEM_ROW_COUNT_ROOM}`}
             >
               <SeverityMark severity={problem.severity} />
               {/* A finding on the unit as a whole has no line to count to, and says none (`ah-6c76`). */}

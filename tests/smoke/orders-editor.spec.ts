@@ -974,6 +974,66 @@ test("a problem list with more rows than fit says how many are below, until scro
   await expect(more).toHaveCount(0);
 });
 
+/**
+ * ah-8zbc: the count sits over room every row leaves for it, never over text
+ * (docs/ui/ah-8zbc-count-room.html). Everything the visible row draws - its line, a quoted token
+ * where the check has one, and the message - is measured glyph box by glyph box, since a wrapped
+ * message is several boxes.
+ */
+const FIVE_WROK = "WROK\nWROK\nWROK\nWROK\nWROK";
+
+/** The right edge of the first row's text, as drawn, and the left edge of the count. */
+async function textBesideCount(page: Page) {
+  return page.getByTestId("orders-diagnostics-room").evaluate((room) => {
+    const row = room.querySelector<HTMLElement>('[data-testid="orders-diagnostic"]')!;
+    const count = room.querySelector<HTMLElement>('[data-testid="orders-diagnostics-more"]')!;
+    const range = document.createRange();
+    range.selectNodeContents(row);
+    const boxes = Array.from(range.getClientRects()).filter((box) => box.width > 0);
+    return {
+      text: row.textContent,
+      textRight: Math.max(...boxes.map((box) => box.right)),
+      countLeft: count.getBoundingClientRect().left
+    };
+  });
+}
+
+test("the hidden-row count never covers the visible row's text", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
+  const first = page.getByTestId("orders-diagnostic").first();
+  await expect(first).toContainText("line 1");
+  await expect(first).toContainText("unknown order command: WROK");
+
+  const drawn = await textBesideCount(page);
+  expect(drawn.textRight, `"${drawn.text}" runs under the count`).toBeLessThanOrEqual(drawn.countLeft);
+});
+
+test("the problem rows do not re-wrap when the hidden-row count disappears", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  const more = page.getByTestId("orders-diagnostics-more");
+  await expect(more).toHaveText("4 more ↓");
+  const rowHeights = () =>
+    page
+      .getByTestId("orders-diagnostic")
+      .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+  const before = await rowHeights();
+
+  await page.getByTestId("orders-diagnostics").evaluate((list) => {
+    list.scrollTop = list.scrollHeight;
+  });
+  await expect(more).toHaveCount(0);
+  expect(await rowHeights()).toEqual(before);
+});
+
 test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({
   page
 }) => {

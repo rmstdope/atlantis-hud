@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OrdersPanel } from "./OrdersPanel";
+import { OrdersPanel, PROBLEM_ROW_COUNT_ROOM } from "./OrdersPanel";
 import { NO_PRODUCTION, NO_STUDENTS, NO_FACTION_ORDERS } from "../orderEditor";
 import { formedSelectionFor } from "./ordersLock";
 import { orderProcessingFor } from "../orderProcessing";
@@ -207,6 +207,22 @@ describe("a unit's problem with no line", () => {
     expect(markup).toContain('data-testid="orders-diagnostics-room"');
     expect(markup).toContain('data-testid="orders-diagnostics"');
     expect(markup).not.toContain("more ↓");
+  });
+
+  /**
+   * ah-8zbc: every row stops short of the right edge by the "N more ↓" count's width, so the count
+   * only ever covers empty space. Kept on every row whether or not the count shows - a static render
+   * never shows it - so the rows do not re-wrap as it comes and goes. The geometry is the smoke walk's.
+   */
+  it("every problem row keeps the count's room, whether or not the count is showing", () => {
+    for (const problems of [[problem], [problem, problem, problem]]) {
+      const rows = drawWith(problems).match(/<li[^>]*data-testid="orders-diagnostic"[^>]*>/g) ?? [];
+
+      expect(rows).toHaveLength(problems.length);
+      for (const row of rows) {
+        expect(row).toContain(PROBLEM_ROW_COUNT_ROOM);
+      }
+    }
   });
 
   it("draws no list at all with no problems, so the editor has the panel", () => {
