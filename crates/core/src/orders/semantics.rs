@@ -1928,9 +1928,10 @@ fn market_shares_sized(
     // (`rules/buy`: it "will attempt to buy as many as it can"), but not to the line - the figure
     // the oversubscription warning counts, so it agrees with the split (`ah-efb5`).
     let mut counted_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
-    // What the orders the game refuses for mixing leaders and normal men wrote, per tag: named by
-    // the warning as written and refused, never counted (`ah-efb5`).
-    let mut refused_buys: BTreeMap<String, i64> = BTreeMap::new();
+    // What the orders the game refuses for bringing normal men into a unit with leaders wrote, per
+    // tag and unit: named by the warning as written and refused, never counted (`ah-efb5`). Per
+    // unit, so a `BUY ALL` is written once however many lines say it, as `stated_buys` is.
+    let mut refused_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in &ordered.intents {
@@ -1977,19 +1978,23 @@ fn market_shares_sized(
             if matches!(side, MarketSide::Buying)
                 && refused_recruits.contains(&(index, tag.to_ascii_uppercase()))
             {
-                // A refusal for mixing leaders and men is named in the warning, with what it
-                // wrote (`ah-efb5`). A mage's is not: the warning's words would be false for it,
-                // and it stays out of every figure as before (`ah-yn2x`).
-                if !mage_recruit_refused(&ordered.unit.skills, &tag, ruleset) {
-                    let written = match &placed.intent {
+                // Normal men refused for mixing with leaders are named in the warning, with what
+                // they wrote (`ah-efb5`). Leaders refused for joining normal men, and a mage's
+                // recruits, are not: "refused for mixing with leaders" would be false for them,
+                // so they stay out of every figure as before (`ah-yn2x`).
+                if !tag.eq_ignore_ascii_case(magic::LEADER_TAG)
+                    && !mage_recruit_refused(&ordered.unit.skills, &tag, ruleset)
+                {
+                    let refused = refused_buys
+                        .entry(tag.clone())
+                        .or_insert_with(|| vec![0; hex.units.len()]);
+                    refused[index] = match &placed.intent {
                         Intent::Buy {
                             amount: Amount::Exact(count),
                             ..
-                        } => (*count).max(0),
-                        _ => pool,
+                        } => refused[index].saturating_add((*count).max(0)),
+                        _ => refused[index].max(pool),
                     };
-                    let refused = refused_buys.entry(tag.clone()).or_default();
-                    *refused = refused.saturating_add(written);
                 }
                 continue;
             }
@@ -2170,7 +2175,9 @@ fn market_shares_sized(
                         .iter()
                         .copied()
                         .fold(0, i64::saturating_add),
-                    refused_buys.get(&tag).copied().unwrap_or(0),
+                    refused_buys.get(&tag).map_or(0, |refused| {
+                        refused.iter().copied().fold(0, i64::saturating_add)
+                    }),
                 ),
             };
             if wanted > pool {
@@ -3193,16 +3200,25 @@ fn forecast_hex(
     );
     // A line the ledger's market pass sized against the purse is warned about as that pass found
     // it, so the warning counts what each buyer can pay for, as the split below does (`ah-efb5`).
+    // In place, so the findings keep their order by line (review finding 4).
+    let mut replaced = BTreeSet::new();
     for overrun in market_overruns {
         match &overrun.pool {
             ContendedPool::Market {
                 tag,
                 side: MarketSide::Buying,
-            } if ledger.buy_overruns.contains_key(tag) => {}
+            } if ledger.buy_overruns.contains_key(tag) => {
+                overruns.extend(ledger.buy_overruns[tag].iter().cloned());
+                replaced.insert(tag.clone());
+            }
             _ => overruns.push(overrun),
         }
     }
-    overruns.extend(ledger.buy_overruns.values().flatten().cloned());
+    for (tag, found) in &ledger.buy_overruns {
+        if !replaced.contains(tag) {
+            overruns.extend(found.iter().cloned());
+        }
+    }
     // Each line's buyers as the ITEMS ledger's market pass divided them, once it knew what each
     // could pay (`ah-s4hy`): the division is the ledger's, as its warning above is (`ah-efb5`).
     for (tag, sized) in &ledger.sized_buys {

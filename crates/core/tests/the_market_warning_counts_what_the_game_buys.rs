@@ -22,6 +22,7 @@ struct Unit {
     id: u32,
     men: &'static str,
     silver: i64,
+    skills: &'static str,
 }
 
 /// A market selling `for_sale`, with the given units of faction Foo standing in it. The region
@@ -41,10 +42,11 @@ fn report(for_sale: &str, units: &[Unit]) -> String {
     for unit in units {
         lines.push(format!(
             "* Unit {id} ({id}), Foo (1), {men}, {silver} silver [SILV]. Weight: 10. \
-             Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30).",
+             Capacity: 0/0/15/0. Skills: {skills}.",
             id = unit.id,
             men = unit.men,
             silver = unit.silver,
+            skills = unit.skills,
         ));
         lines.push(String::new());
     }
@@ -86,6 +88,7 @@ fn orcs(id: u32, silver: i64) -> Unit {
         id,
         men: "3 orcs [ORC]",
         silver,
+        skills: "combat [COMB] 1 (30)",
     }
 }
 
@@ -94,6 +97,15 @@ fn leader(id: u32) -> Unit {
         id,
         men: "1 leaders [LEAD]",
         silver: 1000,
+        skills: "combat [COMB] 1 (30)",
+    }
+}
+
+/// A lone leader who has studied a Foundation (`data/items`, `force [FORC]`): a mage.
+fn mage(id: u32) -> Unit {
+    Unit {
+        skills: "force [FORC] 1 (30)",
+        ..leader(id)
     }
 }
 
@@ -204,5 +216,59 @@ fn refused_and_cut_name_both_refused_first() {
         &["11", "12"],
         "your units here buy 9 orcs between them and this market has 6 \
          (17 ordered: 5 refused for mixing with leaders, 3 cut to what they can pay for)",
+    );
+}
+
+/// A leader line is refused too when the buyer holds normal men (`rules/playing_units`), but the
+/// agreed words name only men refused for mixing *with leaders*, so such a refusal is left out of
+/// both figures - as before - rather than described falsely (review finding 1).
+#[test]
+fn leaders_refused_for_mixing_with_men_are_not_named() {
+    let text = report(SIX_ORCS, &[orcs(10, 1000), leader(11), leader(12)]);
+    let review = review_of(
+        &text,
+        "unit 10\nBUY 3 leaders\nunit 11\nBUY 3 leaders\nunit 12\nBUY 3 leaders\n",
+    );
+
+    every_claimant_reads(
+        &review,
+        &["11", "12"],
+        "your units here buy 6 leaders between them and this market has 5",
+    );
+}
+
+/// A refused unit's `BUY ALL` lines are written once, as an unrefused unit's are (`ah-lauy`):
+/// two of them refuse the line's six, not twelve (review finding 2).
+#[test]
+fn a_refused_buy_all_is_written_once_per_unit() {
+    let text = report(SIX_ORCS, &[leader(10), orcs(11, 1000), orcs(12, 1000)]);
+    let review = review_of(
+        &text,
+        "unit 10\nBUY ALL orcs\nBUY ALL orcs\nunit 11\nBUY 4 orcs\nunit 12\nBUY 4 orcs\n",
+    );
+
+    every_claimant_reads(
+        &review,
+        &["11", "12"],
+        "your units here buy 8 orcs between them and this market has 6 \
+         (14 ordered, 6 of them refused for mixing with leaders)",
+    );
+}
+
+/// A mage's recruiting is refused because it is a mage (`rules/magic`, the navigator's `ah-ndp9`
+/// ruling), and the agreed words would misname that: it stays out of both figures, as before
+/// (review finding 3).
+#[test]
+fn a_mages_refused_recruits_are_not_named() {
+    let text = report(SIX_ORCS, &[mage(10), orcs(11, 1000), orcs(12, 1000)]);
+    let review = review_of(
+        &text,
+        "unit 10\nBUY 5 orcs\nunit 11\nBUY 4 orcs\nunit 12\nBUY 4 orcs\n",
+    );
+
+    every_claimant_reads(
+        &review,
+        &["11", "12"],
+        "your units here buy 8 orcs between them and this market has 6",
     );
 }
