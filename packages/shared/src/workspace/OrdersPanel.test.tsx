@@ -4,7 +4,7 @@ import { OrdersPanel } from "./OrdersPanel";
 import { NO_PRODUCTION, NO_STUDENTS, NO_FACTION_ORDERS } from "../orderEditor";
 import { formedSelectionFor } from "./ordersLock";
 import { orderProcessingFor } from "../orderProcessing";
-import { aReportUnit } from "@atlantis/core-client";
+import { aReportUnit, type OrderDiagnostic } from "@atlantis/core-client";
 
 /**
  * The orders pane's walk buttons (ah-dlao): the mouse route into the same walk F8 makes.
@@ -168,7 +168,7 @@ describe("a unit's problem with no line", () => {
     severity: "warning" as const
   };
 
-  const drawWith = (diagnostics: (typeof problem)[]) =>
+  const drawWith = (diagnostics: OrderDiagnostic[]) =>
     renderToStaticMarkup(
       <OrdersPanel orders={orderProcessingFor("neworigins")}
         unit={aReportUnit({ unitId: "161", own: true })}
@@ -207,6 +207,25 @@ describe("a unit's problem with no line", () => {
     expect(markup).toContain('data-testid="orders-diagnostics-room"');
     expect(markup).toContain('data-testid="orders-diagnostics"');
     expect(markup).not.toContain("more ↓");
+  });
+
+  /**
+   * ah-sgvo: the status line is one line whatever it says. Whether a piece is cut is measured once
+   * it is on screen, so a static render is the uncut state: every word whole, no tooltip.
+   */
+  it("draws the status line on one line, every piece whole and without a tooltip", () => {
+    // An error past the end of this unit's two-line block is some other unit's: "1 elsewhere".
+    const otherUnits = { ...problem, severity: "error" as const, unitId: "999", lineStart: 9, lineEnd: 9 };
+    const markup = drawWith([problem, otherUnits]);
+    const status = markup.slice(markup.indexOf('data-testid="orders-status"'));
+    const line = status.slice(0, status.indexOf("</p>"));
+
+    expect(line).toContain("whitespace-nowrap");
+    expect(line).toContain(">0 errors<");
+    expect(line).toContain(">1 warning<");
+    expect(line).toContain(">1 elsewhere<");
+    expect(line).toContain(">not saved yet<");
+    expect(line).not.toContain("title=");
   });
 
   it("draws no list at all with no problems, so the editor has the panel", () => {

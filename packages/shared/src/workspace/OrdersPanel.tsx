@@ -2,7 +2,7 @@ import type { OrderDiagnostic, ReportUnit } from "@atlantis/core-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HexNode } from "../hexMapModel";
 import type { OrderProcessing } from "../orderProcessing";
-import { readableTime, type SaveState } from "../orderDraft";
+import { saveNotice, type SaveState } from "../orderDraft";
 import {
   offendingText,
   summarizeOrderValidation,
@@ -15,6 +15,7 @@ import { describeLock, lockFor, type FormedSelection, type Lock } from "./orders
 import { useSettingsStore } from "../settingsStore";
 import type { Ref } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
+import { CutToFit } from "./CutToFit";
 import { OrdersEditor, type OrdersEditorHandle } from "./OrdersEditor";
 import { revealRow, rowsBelow, walkedKey, walkedRowIndex } from "./problemListScroll";
 
@@ -149,6 +150,7 @@ export function OrdersPanel({
   // What the rest of the faction has wrong, counted apart from this unit's own. A whole-document
   // total sitting beside a per-unit count reads as though the two should be added together.
   const elsewhere = summarizeOrderValidation(validated).errorCount - here.errorCount;
+  const notice = saveNotice(save);
 
   return (
     <CollapsiblePanel
@@ -193,21 +195,44 @@ export function OrdersPanel({
               }
             }}
           />
+          {/*
+            One line, always (ah-sgvo): ah-nup4's three editor lines and one problem row assumed it.
+            What does not fit is cut with "…" - the save notice first, down to the "…" alone, and
+            only then the elsewhere count - by flex-shrink weights: shrinking is shared in
+            proportion to width x factor, so the save notice's huge factor takes all of it until its
+            `min-w` floor stops it. The counts never shrink.
+          */}
           <p
             data-testid="orders-status"
-            className="m-0 flex flex-none items-center gap-3 border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
+            className="m-0 flex min-w-0 flex-none items-center gap-3 overflow-hidden whitespace-nowrap border-t border-edge pt-1.5 text-pane-sm text-ink-soft"
           >
-            <span className={here.errorCount > 0 ? "text-danger" : "text-ok"}>
+            <span
+              data-testid="orders-status-errors"
+              className={`flex-none ${here.errorCount > 0 ? "text-danger" : "text-ok"}`}
+            >
               {here.errorCount} error{here.errorCount === 1 ? "" : "s"}
             </span>
-            <span className={here.warningCount > 0 ? "text-warn" : "text-ok"}>
+            <span
+              data-testid="orders-status-warnings"
+              className={`flex-none ${here.warningCount > 0 ? "text-warn" : "text-ok"}`}
+            >
               {here.warningCount} warning{here.warningCount === 1 ? "" : "s"}
             </span>
             {elsewhere > 0 ? (
-              <span className="text-ink-dim">{elsewhere} elsewhere</span>
+              <CutToFit
+                testId="orders-status-elsewhere"
+                text={`${elsewhere} elsewhere`}
+                className="shrink text-ink-dim"
+              />
             ) : null}
             <span className="flex-1" />
-            <SaveNotice save={save} />
+            <CutToFit
+              testId="orders-status-save"
+              text={notice.text}
+              className={`shrink-[100000] ${
+                notice.tone === "danger" ? "text-danger" : notice.tone === "warn" ? "text-warn" : ""
+              }`}
+            />
           </p>
           {problems.length > 0 ? (
             // Keyed on the unit, so another unit's list starts at the top rather than wherever
@@ -407,27 +432,6 @@ function ProblemList({
       ) : null}
     </div>
   );
-}
-
-/**
- * What the document's last dealings with storage were.
- *
- * A failure is coloured and left standing rather than fading back to "unsaved changes": the player
- * needs to know their evening is not on disk, and needs to know why.
- */
-function SaveNotice({ save }: { save: SaveState }) {
-  switch (save.kind) {
-    case "clean":
-      return <span>not saved yet</span>;
-    case "dirty":
-      return <span className="text-warn">unsaved changes</span>;
-    case "saving":
-      return <span>saving…</span>;
-    case "saved":
-      return <span>saved {readableTime(save.at)}</span>;
-    case "failed":
-      return <span className="text-danger">could not save: {save.reason}</span>;
-  }
 }
 
 function LockNotice({ lock, ownFaction }: { lock: Lock; ownFaction: string }) {
