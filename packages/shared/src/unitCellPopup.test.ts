@@ -273,14 +273,14 @@ describe("the column popups", () => {
             manChange({
               cause: "given-away",
               delta: -3,
-              other: { unitId: "1604", name: "Watch" }
+              other: { unitId: "1604", name: "Watch", formedBy: null }
             }),
             manChange({
               tag: "ORC",
               name: "orcs",
               cause: "was-taken-from",
               delta: -2,
-              other: { unitId: "1502", name: "Scouts" }
+              other: { unitId: "1502", name: "Scouts", formedBy: null }
             })
           ]
         }),
@@ -515,7 +515,7 @@ describe("the column popups", () => {
           delta: -100,
           cause: "given-away",
           line: 3,
-          other: { unitId: "901", name: "Ferry" }
+          other: { unitId: "901", name: "Ferry", formedBy: null }
         })
       ]
     });
@@ -3080,7 +3080,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         study: forecast({
           monthsNumerator: 3,
           monthsDenominator: 2,
-          teachers: [{ unitId: "1774", name: "Elders", slots: 10, students: 5 }]
+          teachers: [{ unitId: "1774", name: "Elders", slots: 10, students: 5, formedBy: null }]
         })
       })
     );
@@ -3463,7 +3463,7 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "1502", name: "Scouts" },
+              other: { unitId: "1502", name: "Scouts", formedBy: null },
               isMan: false
             }
           ]
@@ -3503,7 +3503,7 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "1502", name: "Scouts" },
+              other: { unitId: "1502", name: "Scouts", formedBy: null },
               isMan: false
             }
           ]
@@ -3535,7 +3535,7 @@ describe("the items popup's pairs", () => {
               cause: "was-given",
               line: 6,
               unitPrice: null,
-              other: { unitId: "2874", name: "Lumbers" },
+              other: { unitId: "2874", name: "Lumbers", formedBy: null },
               isMan: false
             },
             {
@@ -3545,7 +3545,7 @@ describe("the items popup's pairs", () => {
               cause: "build-spent",
               line: null,
               unitPrice: null,
-              other: { unitId: "902", name: "Fieldhands" },
+              other: { unitId: "902", name: "Fieldhands", formedBy: null },
               isMan: false
             }
           ]
@@ -3581,7 +3581,7 @@ describe("the items popup's pairs", () => {
               cause: "drawn-from-sharer",
               line: 7,
               unitPrice: null,
-              other: { unitId: "4008", name: "Unit" },
+              other: { unitId: "4008", name: "Unit", formedBy: null },
               isMan: false
             },
             {
@@ -3658,7 +3658,7 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "901", name: "Ferry" },
+              other: { unitId: "901", name: "Ferry", formedBy: null },
               isMan: false
             }
           ]
@@ -5133,7 +5133,7 @@ describe("silver moved by TRANSPORT", () => {
               cause: "exchanged",
               line: 2,
               unitPrice: null,
-              other: { unitId: "1160", name: "Maurice de Bracy" },
+              other: { unitId: "1160", name: "Maurice de Bracy", formedBy: null },
               isMan: false
             }
           ]
