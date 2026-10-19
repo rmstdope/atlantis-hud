@@ -2489,6 +2489,9 @@ function UnitRow({
         —
       </span>
     </>
+  ) : cellShown === null || cellShown.kind === "unknown" ? (
+    // The dim `?` is not a number, so it is outside the whole-or-`…` rule (`ah-j92v`).
+    silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))
   ) : (
     // A number is shown whole or as `…` alone, never as its leading digits (`ah-j92v`).
     <WholeFigure>{silverFigure(cellShown, shareBoundedByAnUnreadUnit(silver))}</WholeFigure>

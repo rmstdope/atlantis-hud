@@ -17,15 +17,16 @@ export function WholeFigure({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [cut, setCut] = useState(false);
 
-  // Every render: a new figure, or the ⚠ or shortfall beside it changing, may change what fits.
+  // A new figure may not fit where the old one did.
   useLayoutEffect(() => {
     const box = ref.current;
     if (box) {
       setCut(figureIsCut(box));
     }
-  });
+  }, [children]);
 
-  // And every resize: the player narrowing or widening the column.
+  // And every resize of the box: the player narrowing or widening the column, or the ⚠ or the
+  // shortfall beside it taking more or less of the cell.
   useEffect(() => {
     const box = ref.current;
     if (!box || typeof ResizeObserver === "undefined") {
