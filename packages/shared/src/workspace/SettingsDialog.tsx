@@ -592,6 +592,11 @@ export const WARNING_GROUPS: readonly {
         title: "Promised more than the region has",
         description:
           "Your units in one hex ordered to tax, work, entertain or trade for more than the region or its market can supply between them."
+      },
+      {
+        code: "work-earns-nothing",
+        title: "Work that earns nothing",
+        description: "A WORK order in a region that pays no wages, such as the open sea."
       }
     ]
   },

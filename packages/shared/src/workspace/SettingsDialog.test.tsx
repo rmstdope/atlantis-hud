@@ -55,6 +55,24 @@ describe("the warnings tab's coverage of the core's codes", () => {
   });
 
   /**
+   * `ah-pfa0`. The words and the position are the navigator's decision: Resources, immediately
+   * after "Promised more than the region has", on by default like every other entry.
+   */
+  it("offers the work-earns-nothing advisory right after the region-pool one", () => {
+    const resources = WARNING_GROUPS.find((group) => group.heading === "Resources");
+    if (!resources) {
+      throw new Error("the Resources group is missing");
+    }
+    const at = resources.entries.findIndex((entry) => entry.code === "work-earns-nothing");
+    expect(resources.entries[at - 1]?.code).toBe("region-pool-oversubscribed");
+    expect(resources.entries[at]).toEqual({
+      code: "work-earns-nothing",
+      title: "Work that earns nothing",
+      description: "A WORK order in a region that pays no wages, such as the open sea."
+    });
+  });
+
+  /**
    * `ah-84b1`. The words and the position are the navigator's decision: Orders, immediately after
    * "Transfers a unit writes to itself", on by default like every other entry.
    */
