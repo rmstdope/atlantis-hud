@@ -471,6 +471,14 @@ pub struct FormedBlock {
     /// The flag orders written inside this `FORM` block, read exactly as
     /// [`UnitIntents::flag_changes`] reads them. An inner `FORM`'s belong to the inner unit.
     pub flag_changes: Vec<FlagChange>,
+    /// The former's last `SHARE` written above this block's `FORM` line, or `None` where it wrote
+    /// none and the report's flag stands (`ah-e529`).
+    ///
+    /// The engine sets SHARE while it parses the orders (`../Atlantis/parseorders.cpp`
+    /// `Game::ProcessShareOrder`, "Instant order") and a `FORM` copies its former's flags at that
+    /// same moment (`Game::ProcessFormOrder`, `temp->CopyFlags(former)`), so `rules/form`'s
+    /// inherited "sharing" is the former's as it stands at the `FORM` line.
+    pub inherited_share: Option<bool>,
     /// Whether this formed unit's block contains a syntactically valid `DESTROY` order.
     pub destroys_structure: bool,
     /// The syntactically valid `PROMOTE` orders in this formed unit's block, in the order written.
@@ -486,6 +494,17 @@ impl FormedBlock {
     #[must_use]
     pub fn key(&self) -> crate::orders::blocks::OrderedUnitKey {
         crate::orders::blocks::OrderedUnitKey::Formed(self.block_line)
+    }
+}
+
+/// The `on` of a `SHARE` flag order, and `None` for any other.
+fn share_toggle(change: &FlagChange) -> Option<bool> {
+    match change {
+        FlagChange::Toggle {
+            setting: crate::report::flags::Setting::Sharing,
+            on,
+        } => Some(*on),
+        _ => None,
     }
 }
 
@@ -514,6 +533,7 @@ pub fn read_formed(
         forms: super::blocks::FormStack::new(),
         by_alias: BTreeMap::new(),
         results: Vec::new(),
+        shares_so_far: BTreeMap::new(),
     };
     walk::walk(source, ruleset, |event| reader.visit(event));
     reader.results
@@ -533,6 +553,9 @@ struct FormReader<'a, 'r> {
     forms: super::blocks::FormStack<usize>,
     by_alias: BTreeMap<(String, String), usize>,
     results: Vec<FormedBlock>,
+    /// Each physically reported unit's last `SHARE` read so far, by unit id - what a `FORM` in its
+    /// block inherits ([`FormedBlock::inherited_share`]).
+    shares_so_far: BTreeMap<String, bool>,
 }
 
 impl<'a, 'r> FormReader<'a, 'r> {
@@ -625,6 +648,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             return;
         }
 
+        let inherited_share = self.share_so_far();
         let index = self.results.len();
         self.by_alias.insert(key, index);
         self.results.push(FormedBlock {
@@ -635,6 +659,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             intents: Vec::new(),
             unread: Vec::new(),
             flag_changes: Vec::new(),
+            inherited_share,
             destroys_structure: false,
             promotes: Vec::new(),
             evicts: Vec::new(),
@@ -642,7 +667,37 @@ impl<'a, 'r> FormReader<'a, 'r> {
         self.forms.open(Some(index));
     }
 
+    /// The last `SHARE` the unit whose block the next order sits in has read so far: a formed
+    /// unit's own block orders, else what it inherited; a reported unit's from `shares_so_far`.
+    fn share_so_far(&self) -> Option<bool> {
+        match self.forms.owner() {
+            super::blocks::Owner::Block => self
+                .current
+                .as_ref()
+                .and_then(|id| self.shares_so_far.get(id))
+                .copied(),
+            super::blocks::Owner::Formed(index) => {
+                let block = &self.results[*index];
+                block
+                    .flag_changes
+                    .iter()
+                    .rev()
+                    .find_map(share_toggle)
+                    .or(block.inherited_share)
+            }
+            super::blocks::Owner::Nobody => None,
+        }
+    }
+
     fn record_order(&mut self, command: &Token, arguments: &[Token], line_number: usize) {
+        if matches!(self.forms.owner(), super::blocks::Owner::Block) {
+            let share = super::effects::read_flag_order(command, arguments)
+                .as_ref()
+                .and_then(share_toggle);
+            if let (Some(on), Some(id)) = (share, self.current.as_ref()) {
+                self.shares_so_far.insert(id.clone(), on);
+            }
+        }
         let Some(active) = self.active() else {
             return;
         };
@@ -2442,6 +2497,49 @@ mod tests {
                 setting: Setting::Taxing,
                 on: true,
             }]
+        );
+    }
+
+    /// `ah-e529`: the engine sets the SHARE flag while it parses the orders
+    /// (`../Atlantis/parseorders.cpp` `Game::ProcessShareOrder`, "Instant order") and a `FORM`
+    /// copies its former's flags at that same moment (`Game::ProcessFormOrder`,
+    /// `temp->CopyFlags(former)`). So a SHARE above a FORM is what the formed unit inherits
+    /// (`rules/form`: "sharing" among the inherited flags), and one below it is not.
+    #[test]
+    fn a_share_written_above_a_form_is_what_its_unit_inherits() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let inherited = |source: &str| {
+            read_formed(source, &regions, None)
+                .iter()
+                .map(|block| (block.alias.clone(), block.inherited_share))
+                .collect::<Vec<_>>()
+        };
+        let alias = |alias: &str, share: Option<bool>| (alias.to_string(), share);
+
+        assert_eq!(
+            inherited("unit 1922\nFORM 1\nEND\nSHARE 0\n"),
+            vec![alias("1", None)],
+            "a SHARE below the FORM leaves the report's flag standing"
+        );
+        assert_eq!(
+            inherited("unit 1922\nSHARE 1\nSHARE 0\nFORM 1\nEND\nSHARE 1\nFORM 2\nEND\n"),
+            vec![alias("1", Some(false)), alias("2", Some(true))],
+            "each FORM takes the last SHARE written above it"
+        );
+        assert_eq!(
+            inherited("unit 1922\nSHARE 0\nFORM 1\nFORM 2\nEND\nSHARE 1\nFORM 3\nEND\nEND\n"),
+            vec![
+                alias("1", Some(false)),
+                alias("2", Some(false)),
+                alias("3", Some(true)),
+            ],
+            "a nested FORM inherits its own former's sharing, block orders included"
+        );
+        assert_eq!(
+            inherited("unit 1922\nTURN\nSHARE 0\nENDTURN\nFORM 1\nEND\n"),
+            vec![alias("1", None)],
+            "a SHARE inside a TURN block is a later month's"
         );
     }
 

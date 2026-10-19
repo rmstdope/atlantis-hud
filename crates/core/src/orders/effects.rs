@@ -2281,11 +2281,27 @@ pub(crate) const FORMED_ID_PREFIX: &str = "new-";
 /// unit to the checks, and it is why `semantics` builds it with this function rather than with one
 /// of its own - two readings of which units a document forms, and of what they are called, is how
 /// the table's rows and the column's figures come to disagree about one turn.
+///
+/// `share` is the former's sharing as it stands at the `FORM` line, where a `SHARE` above it
+/// changed it (`ah-e529`): the engine sets SHARE while it parses the orders
+/// (`../Atlantis/parseorders.cpp` `Game::ProcessShareOrder`) and copies the former's flags at the
+/// `FORM` (`temp->CopyFlags(former)`). `None` keeps `reported_flags`' own.
 pub(crate) fn formed_unit(
     parent: &ReportUnit,
     alias: &str,
     reported_flags: &[String],
+    share: Option<bool>,
 ) -> ReportUnit {
+    let mut flags = inherited_flags(reported_flags);
+    if let Some(on) = share {
+        crate::report::flags::apply(
+            &mut flags,
+            FlagChange::Toggle {
+                setting: crate::report::flags::Setting::Sharing,
+                on,
+            },
+        );
+    }
     ReportUnit {
         unit_id: format!("{FORMED_ID_PREFIX}{alias}"),
         name: format!("Unit (new {alias})"),
@@ -2294,7 +2310,7 @@ pub(crate) fn formed_unit(
         faction_name: parent.faction_name.clone(),
         own: true,
         on_guard: false,
-        flags: inherited_flags(reported_flags),
+        flags,
         items: Vec::new(),
         skills: Vec::new(),
         // A newly formed unit has cast nothing and been set to cast nothing.
@@ -2432,7 +2448,8 @@ struct WorkingUnit {
     /// Kept rather than read from `unit.flags`, because the walk mutates those as it reads
     /// `GUARD`/`AVOID`/`BEHIND`, and `rules/sequenceofevents` processes every `FORM` before any of
     /// those orders. A formed unit's own entry holds the set it inherited, so a nested `FORM`
-    /// inherits the same thing whatever its block wrote above it.
+    /// inherits the same thing whatever its block wrote above it. SHARE is the one exception, read
+    /// from the walked flags instead: the engine applies it while parsing (`ah-e529`).
     reported_flags: Vec<String>,
     /// The unit's ENTER and LEAVE orders so far, in the order they were written.
     ///
@@ -3318,6 +3335,13 @@ impl Working {
         let parent_flags = self.units[parent].reported_flags.clone();
         let placed_in = self.units[parent].placed_in.clone();
         let parent = &self.units[parent].unit;
+        // SHARE alone is the walked flag's, not the report's: the engine sets it while parsing,
+        // so a SHARE above this line is already in force when the FORM copies the flags
+        // (`ah-e529`, [`formed_unit`]).
+        let share = parent
+            .flags
+            .iter()
+            .any(|flag| flag.eq_ignore_ascii_case("sharing"));
         let key = (parent.region_id.clone(), alias.to_string());
         if self.by_alias.contains_key(&key) {
             // The alias is taken, so the server would refuse this FORM; its block is swallowed
@@ -3326,7 +3350,7 @@ impl Working {
             return;
         }
 
-        let unit = formed_unit(parent, alias, &parent_flags);
+        let unit = formed_unit(parent, alias, &parent_flags, Some(share));
 
         let reported = unit.structure_id.clone();
         let reported_flags = unit.flags.clone();
@@ -7452,7 +7476,8 @@ mod tests {
 
     /// `rules/sequenceofevents` processes "FORM orders" before "ADDRESS, ARMOR, AUTOTAX, AVOID,
     /// BEHIND, ..." - so what a `FORM` inherits is the report's flags, never this month's own flag
-    /// orders, whichever side of the `FORM` they are written on.
+    /// orders, whichever side of the `FORM` they are written on. SHARE is the exception, pinned by
+    /// `a_share_written_above_a_form_is_what_the_formed_unit_inherits` (`ah-e529`).
     #[test]
     fn a_form_inherits_the_flags_the_report_showed_not_this_months_flag_orders() {
         let response = preview_over(
@@ -7479,6 +7504,42 @@ mod tests {
             flags("new-2"),
             vec!["behind", "sharing"],
             "and so is the outer formed unit's own BEHIND 1"
+        );
+    }
+
+    /// `ah-e529`: SHARE is the exception to the test above. The engine sets it while it parses
+    /// the orders (`../Atlantis/parseorders.cpp` `Game::ProcessShareOrder`, "Instant order") and a
+    /// `FORM` copies its former's flags at that moment (`temp->CopyFlags(former)`), so the formed
+    /// unit's sharing is its former's as it stands at the `FORM` line (`rules/form`).
+    #[test]
+    fn a_share_written_above_a_form_is_what_the_formed_unit_inherits() {
+        let formed_flags = |report: &str, orders: &str| {
+            preview_over(report, orders).regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "new-1")
+                .expect("new-1 is previewed")
+                .unit
+                .flags
+                .clone()
+        };
+        let sharer = report_with_a_flagged_former();
+        let selfish = sharer.replace("behind, sharing, on guard", "behind, on guard");
+
+        assert_eq!(
+            formed_flags(&sharer, "unit 900\nSHARE 0\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n"),
+            vec!["behind"],
+            "a SHARE 0 above the FORM leaves the formed unit selfish"
+        );
+        assert_eq!(
+            formed_flags(&selfish, "unit 900\nSHARE 1\nFORM 1\nEND\nGIVE NEW 1 1 LEAD\n"),
+            vec!["behind", "sharing"],
+            "a SHARE 1 above the FORM makes the formed unit share"
+        );
+        assert_eq!(
+            formed_flags(&sharer, "unit 900\nFORM 1\nEND\nSHARE 0\nGIVE NEW 1 1 LEAD\n"),
+            vec!["behind", "sharing"],
+            "a SHARE 0 below the FORM does not reach it"
         );
     }
 
