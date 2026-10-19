@@ -3407,6 +3407,7 @@ impl Working {
         let Some(active) = self.active() else {
             return;
         };
+        let raw_arguments = arguments;
         let Some(arguments) =
             super::grammar::consumed_arguments(command, arguments, Some(self.ruleset.as_ref()))
         else {
@@ -3415,7 +3416,9 @@ impl Working {
 
         if command.is("name") {
             self.rename(active, arguments);
-        } else if let Some(change) = read_flag_order(command, arguments) {
+        } else if let Some(change) =
+            read_flag_line(command, raw_arguments, Some(self.ruleset.as_ref()))
+        {
             let unit = &mut self.units[active].unit;
             crate::report::flags::apply(&mut unit.flags, change);
             // Derived rather than maintained: keeping `on_guard` and the flag list in step by hand
@@ -4880,8 +4883,17 @@ pub(crate) fn read_flag_line(
     arguments: &[super::lexer::Token],
     ruleset: Option<&Ruleset>,
 ) -> Option<FlagChange> {
-    let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
-    read_flag_order(command, arguments)
+    let consumed = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+    // `REVEAL FACTON` matches the bare `REVEAL` form, which consumes nothing - but the engine
+    // refuses the line and the flag stands: "REVEAL: Invalid value." and "CONSUME: Invalid value."
+    // (`../Atlantis/parseorders.cpp` `Game::ProcessRevealOrder`, `Game::ProcessConsumeOrder`).
+    // SPOILS is not among them: `Game::ProcessSpoilsOrder` clears every spoils flag before it
+    // looks at a bad argument, which is exactly the bare order's reading.
+    let refused_choice = command.is("reveal") || command.is("consume");
+    if refused_choice && consumed.is_empty() && !arguments.is_empty() {
+        return None;
+    }
+    read_flag_order(command, consumed)
 }
 
 /// The flag order this line is, if it is one.
@@ -7562,6 +7574,35 @@ mod tests {
             vec!["behind", "sharing"],
             "a SHARE 0 below the FORM does not reach it"
         );
+    }
+
+    /// Delta-review finding on `ah-e529`: the engine refuses `REVEAL FACTON` ("REVEAL: Invalid
+    /// value.", `../Atlantis/parseorders.cpp` `Game::ProcessRevealOrder`) and the flag stands;
+    /// only a bare `REVEAL` cancels it (`rules/reveal`).
+    #[test]
+    fn a_misspelt_reveal_leaves_the_previewed_flag_standing() {
+        let report = report_with_a_flagged_former()
+            .replace("behind, sharing", "behind, revealing faction, sharing");
+        // The preview lists only what changed, so an untouched unit is absent and keeps its flag.
+        let flags = |orders: &str| {
+            preview_over(&report, orders)
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .find(|unit| unit.unit.unit_id == "900")
+                .is_none_or(|unit| {
+                    unit.unit
+                        .flags
+                        .iter()
+                        .any(|flag| flag == "revealing faction")
+                })
+        };
+
+        assert!(
+            flags("unit 900\nREVEAL FACTON\n"),
+            "a misspelt REVEAL changes nothing"
+        );
+        assert!(!flags("unit 900\nREVEAL\n"), "a bare REVEAL cancels it");
     }
 
     /// Review finding 2 on `ah-e529`: a nested `FORM` inherits its formed parent's sharing as the

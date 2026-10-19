@@ -2544,6 +2544,20 @@ mod tests {
         );
     }
 
+    /// Delta-review finding on `ah-e529`: `REVEAL FACTON` is no order the engine takes - it says
+    /// "REVEAL: Invalid value." and leaves the flag (`../Atlantis/parseorders.cpp`
+    /// `Game::ProcessRevealOrder`) - though the grammar's bare `REVEAL` form, which cancels it
+    /// (`rules/reveal`), consumes nothing and so matches. A misspelt argument changes nothing.
+    #[test]
+    fn a_choice_flag_order_with_a_misspelt_argument_changes_nothing() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let source = "unit 1922\nREVEAL FACTON\nFORM 1\nREVEAL FACTON\nEND\n";
+
+        assert_eq!(only_unit(source).flag_changes, vec![]);
+        assert_eq!(read_formed(source, &regions, None)[0].flag_changes, vec![]);
+    }
+
     /// Review finding 1 on `ah-e529`: the grammar takes `SHARE 0 note` as `SHARE 0`, trailing word
     /// ignored, and so does the engine (`ParseTF` reads one token) - on every reading of a flag
     /// order, the reported unit's own, a formed block's and what a FORM inherits.
