@@ -88153,6 +88153,49 @@ BUILD
             assert!(earning_nothing(&found).is_empty(), "{found:?}");
         }
 
+        /// A wage text that is there but cannot be read says nothing either way: nothing tells the
+        /// HUD what it pays, so it is not "no wage line" (the plan's *Decided by me*).
+        #[test]
+        fn an_unreadable_wage_line_says_nothing() {
+            let found = findings(
+                paying(Some("??"), None, vec![with_men(unit("40"), 5)]),
+                "unit 40\nWORK\n",
+            );
+            assert!(earning_nothing(&found).is_empty(), "{found:?}");
+        }
+
+        /// A unit working by default is out of scope, so it keeps today's pool sentence while the
+        /// unit ordered to WORK beside it is told only that it earns nothing (the plan's *Decided
+        /// by me*).
+        #[test]
+        fn an_idle_worker_beside_one_ordered_to_work_keeps_the_pool_sentence() {
+            let found = findings(
+                paying(
+                    Some("$11.0"),
+                    Some(0),
+                    vec![with_men(unit("55"), 10), with_men(unit("56"), 10)],
+                ),
+                "unit 55\nWORK\nunit 56\n",
+            );
+            let of = |id: &str| -> Vec<&str> {
+                found
+                    .iter()
+                    .filter(|finding| finding.unit_id.as_deref() == Some(id))
+                    .filter(|finding| {
+                        finding.code == codes::WORK_EARNS_NOTHING
+                            || finding.code == codes::REGION_POOL_OVERSUBSCRIBED
+                    })
+                    .map(|finding| finding.code.as_str())
+                    .collect()
+            };
+            assert_eq!(of("55"), [codes::WORK_EARNS_NOTHING.as_str()], "{found:?}");
+            assert_eq!(
+                of("56"),
+                [codes::REGION_POOL_OVERSUBSCRIBED.as_str()],
+                "{found:?}"
+            );
+        }
+
         /// The agreed experience: no second wage warning beside it, and with the switch off
         /// nothing at all for these units.
         #[test]
