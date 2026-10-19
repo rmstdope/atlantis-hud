@@ -1,0 +1,26 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEW 0 promote line</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 16px 64px}
+header,main{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+header p,main>p{color:var(--ink-soft);max-width:100ch;margin-top:10px;font-size:14px}
+h3{margin:30px 0 6px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+.unit{background:var(--panel);border:1px solid var(--edge);border-radius:6px;margin-top:12px;font-family:system-ui,sans-serif}
+.unit .hd{padding:7px 12px;border-bottom:1px solid var(--edge);font-size:13px;color:var(--ink-soft)}
+.unit .hd b{color:var(--ink)}
+.line{font-family:'SF Mono',Menlo,monospace;font-size:12.5px;padding:6px 12px;color:var(--ink);overflow-wrap:anywhere}
+.line .n{color:var(--ink-dim);display:inline-block;width:2.2em}
+.line .ok{color:var(--ok);font-family:system-ui;font-size:11.5px;margin-left:10px}
+.warn{font-family:system-ui,sans-serif;font-size:12.5px;background:#2a1a1a;border-left:4px solid var(--danger);padding:7px 12px 7px 14px;color:#f0d8d8;margin:0 12px 8px 3.6em}
+.warn::before{content:"⚠ ";color:var(--danger)}
+.new{outline:1px dashed var(--brass);outline-offset:2px}
+.note{color:var(--ink-soft);font-size:13px;background:var(--raised);border-left:3px solid var(--edge);padding:9px 13px;margin:12px 0;max-width:100ch;font-family:system-ui}
+ul{font-size:13px;color:var(--ink-soft);margin:10px 0 0 18px;max-width:100ch;font-family:system-ui}
+li.con{color:#d9b0b0}
+.err{font-family:system-ui,sans-serif;font-size:12.5px;background:#2b1420;border-left:4px solid #e0508a;padding:7px 12px 7px 14px;color:#f3d3e0;margin:0 12px 8px 3.6em}
+.err::before{content:"✖ error  ";color:#e0508a;font-weight:600}
+.warn::before{content:"⚠ warning  "}
+.gone{text-decoration:line-through;opacity:.45}
+.count{font-family:system-ui;font-size:12px;color:var(--ink-soft);padding:6px 12px;border-top:1px solid var(--edge)}
+</style></head><body><header><h1>Option A — <span>the warning replaces the error</span></h1><p>On a PROMOTE line only, today's error is taken away and the new warning stands in its place. The line gets one message, and it is the one that explains what the game does.</p></header><main><h3>The NEW 0 cases</h3><div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE 1162 <span class=ok>Lancer (1162) becomes owner</span></div><div class="line"><span class="n">2</span>PROMOTE FACTION 7 NEW 0</div><div class="err gone">expected a unit number, found "FACTION"</div><div class="warn new">PROMOTE will be refused: there is no new unit 0, so this line is ignored and PROMOTE 1162 still stands</div><div class="count">0 errors · 1 warning</div></div><div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · owns Fort [1]</div><div class="line"><span class="n">1</span>PROMOTE 1162 <span class=ok>Lancer (1162) becomes owner</span></div><div class="line"><span class="n">2</span>PROMOTE FACTION 0 NEW 0</div><div class="warn new">PROMOTE will be refused: there is no faction 0, so this line is ignored and PROMOTE 1162 still stands</div><div class="count">0 errors · 1 warning</div></div><h3>Other orders, unchanged in every option</h3><p>GIVE / TAKE / TEACH naming NEW 0 keep today's error:</p><div class="unit"><div class="hd"><b>Ivanhoe (683)</b> · elsewhere in the same orders</div><div class="line"><span class="n">5</span>GIVE FACTION 7 NEW 0 10 SILV</div><div class="err">expected a unit number, found "FACTION"</div></div><div class="note">Everything else we agreed stands: FACTION 0 NEW 1 gets the new warning, the forecast still makes Lancer (1162) owner. Dashed outline = the new warning; struck through = taken away.</div><h3>Trade-off</h3><ul><li>One message per line, worded the same way as the faction-0 case.</li><li>The editor's error count drops: this line is now a warning, like FACTION 0 NEW 1.</li><li class="con">GIVE / TAKE with NEW 0 still show the old error, so the same mistake reads differently on different orders.</li></ul></main></body></html>
