@@ -245,6 +245,10 @@ pub struct PlacedIntent {
 pub struct PlacedPromote {
     /// The unit it names: a unit number, or `new-<alias>` for a unit formed this month.
     pub target: String,
+    /// The order as the player wrote it: its keyword and the arguments the grammar read, joined
+    /// by single spaces, letter case kept and any comment dropped. What the `promote-no-target`
+    /// warning names as the `PROMOTE` that still stands (`ah-wjos`).
+    pub written: String,
     pub line: usize,
     /// The span of the order's keyword, counted as [`super::lexer::Token`] counts.
     pub column_start: usize,
@@ -256,6 +260,25 @@ pub struct PlacedPromote {
 /// entry per unit, so `EVICT 415 698` is two. Its line is what the `evict-refused` warning sits on
 /// (`ah-0ace`).
 pub type PlacedEvict = PlacedPromote;
+
+/// Why the game throws a `PROMOTE` line away while it parses the orders (`ah-wjos`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromoteRefusal {
+    /// `PROMOTE FACTION 0 NEW <n>`: there is no faction 0.
+    NoFaction0,
+    /// `PROMOTE FACTION <f> NEW 0`: there is no new unit 0.
+    NoNewUnit0,
+}
+
+/// A `PROMOTE` line the game throws away, placed on its keyword as a [`PlacedPromote`] is. The
+/// `promote-no-target` warning sits on it (`ah-wjos`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlacedRefusedPromote {
+    pub refusal: PromoteRefusal,
+    pub line: usize,
+    pub column_start: usize,
+    pub column_end: usize,
+}
 
 /// One unit's block, read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,6 +321,8 @@ pub struct UnitIntents {
     /// `PROMOTE` is also an instant/free order. Its target matters to the BUILD projection because
     /// `rules/sequenceofevents` settles ownership changes before `DESTROY`.
     pub promotes: Vec<PlacedPromote>,
+    /// The `PROMOTE` lines the game throws away (`ah-wjos`), in the order written.
+    pub refused_promotes: Vec<PlacedRefusedPromote>,
     /// Every unit the block's syntactically valid `EVICT` orders name, in the order written
     /// (`rules/evict`: "If multiple EVICT orders are given, all of the units will be evicted").
     pub evicts: Vec<PlacedEvict>,
@@ -356,6 +381,7 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                     flag_changes: Vec::new(),
                     destroys_structure: false,
                     promotes: Vec::new(),
+                    refused_promotes: Vec::new(),
                     evicts: Vec::new(),
                 });
             }
@@ -388,6 +414,15 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                 if let Some(target) = promoted_unit(line.command, line.arguments, ruleset) {
                     unit.promotes.push(PlacedPromote {
                         target,
+                        written: written_order(line.command, line.arguments, ruleset),
+                        line: line.number,
+                        column_start: line.command.column_start,
+                        column_end: line.command.column_end,
+                    });
+                }
+                if let Some(refusal) = refused_promote(line.command, line.arguments) {
+                    unit.refused_promotes.push(PlacedRefusedPromote {
+                        refusal,
                         line: line.number,
                         column_start: line.command.column_start,
                         column_end: line.command.column_end,
@@ -398,6 +433,7 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
                         .into_iter()
                         .map(|target| PlacedEvict {
                             target,
+                            written: written_order(line.command, line.arguments, ruleset),
                             line: line.number,
                             column_start: line.command.column_start,
                             column_end: line.command.column_end,
@@ -484,6 +520,8 @@ pub struct FormedBlock {
     pub destroys_structure: bool,
     /// The syntactically valid `PROMOTE` orders in this formed unit's block, in the order written.
     pub promotes: Vec<PlacedPromote>,
+    /// The `PROMOTE` lines the game throws away, read as [`UnitIntents::refused_promotes`].
+    pub refused_promotes: Vec<PlacedRefusedPromote>,
     /// The units this formed unit's `EVICT` orders name, read as [`UnitIntents::evicts`].
     pub evicts: Vec<PlacedEvict>,
 }
@@ -663,6 +701,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             inherited_share,
             destroys_structure: false,
             promotes: Vec::new(),
+            refused_promotes: Vec::new(),
             evicts: Vec::new(),
         });
         self.forms.open(Some(index));
@@ -721,6 +760,15 @@ impl<'a, 'r> FormReader<'a, 'r> {
         if let Some(target) = promoted_unit(command, arguments, self.ruleset) {
             block.promotes.push(PlacedPromote {
                 target,
+                written: written_order(command, arguments, self.ruleset),
+                line: line_number,
+                column_start: command.column_start,
+                column_end: command.column_end,
+            });
+        }
+        if let Some(refusal) = refused_promote(command, arguments) {
+            block.refused_promotes.push(PlacedRefusedPromote {
+                refusal,
                 line: line_number,
                 column_start: command.column_start,
                 column_end: command.column_end,
@@ -731,6 +779,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
                 .into_iter()
                 .map(|target| PlacedEvict {
                     target,
+                    written: written_order(command, arguments, self.ruleset),
                     line: line_number,
                     column_start: command.column_start,
                     column_end: command.column_end,
@@ -857,6 +906,46 @@ pub(crate) fn promoted_unit(
         }
         forms::Party::Discard => None,
     }
+}
+
+/// Why the game throws this `PROMOTE` line away, if it does (`ah-wjos`): `PROMOTE FACTION <f> NEW
+/// <n>` with a faction or a NEW number of 0. `Game::ParseUnit` (../Atlantis `parseorders.cpp`)
+/// reads the faction first and answers no unit when it is 0 (`if (!fn) return 0;`), then the NEW
+/// number (`if (!un) return 0;`), and `ProcessPromoteOrder` errors "PROMOTE: No target given."
+/// and returns before touching `u->promote`. Read from the raw tokens rather than through the
+/// grammar, which refuses a NEW 0; any trailing text is ignored, as the grammar ignores it.
+pub(crate) fn refused_promote(command: &Token, arguments: &[Token]) -> Option<PromoteRefusal> {
+    if !command.text.eq_ignore_ascii_case("PROMOTE") {
+        return None;
+    }
+    let [faction_word, faction, new_word, alias, ..] = arguments else {
+        return None;
+    };
+    if !faction_word.is("FACTION")
+        || !new_word.is("NEW")
+        || faction.kind != TokenKind::Number
+        || alias.kind != TokenKind::Number
+    {
+        return None;
+    }
+    let zero = |token: &Token| token.text.trim_start_matches('0').is_empty();
+    if zero(faction) {
+        Some(PromoteRefusal::NoFaction0)
+    } else if zero(alias) {
+        Some(PromoteRefusal::NoNewUnit0)
+    } else {
+        None
+    }
+}
+
+/// An order line as the player wrote it: its keyword and the arguments the grammar reads, joined
+/// by single spaces, letter case kept (`ah-wjos`).
+fn written_order(command: &Token, arguments: &[Token], ruleset: Option<&Ruleset>) -> String {
+    let read = super::grammar::consumed_arguments(command, arguments, ruleset).unwrap_or(arguments);
+    std::iter::once(command.text.as_str())
+        .chain(read.iter().map(|token| token.text.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The units a syntactically valid `EVICT` order names, in the order written: `rules/evict`'s
@@ -1365,6 +1454,7 @@ mod tests {
             unit.promotes,
             vec![PlacedPromote {
                 target: "7".to_string(),
+                written: "PROMOTE 7".to_string(),
                 line: 2,
                 column_start: 0,
                 column_end: 7,
@@ -1414,6 +1504,60 @@ mod tests {
             .map(|one| one.target.as_str())
             .collect();
         assert_eq!(targets, ["7"], "{unit:?}");
+    }
+
+    /// `ah-wjos`: `ParseUnit` (../Atlantis `parseorders.cpp`) answers no unit for faction 0
+    /// (`if (!fn) return 0;`), read before the NEW number, and none for NEW 0 (`if (!un) return
+    /// 0;`), so `ProcessPromoteOrder` errors "PROMOTE: No target given." on each such line.
+    #[test]
+    fn a_promote_of_faction_zero_or_new_zero_is_read_as_refused() {
+        let unit = only_unit(
+            "unit 5\nPROMOTE FACTION 0 NEW 1\nPROMOTE FACTION 00 NEW 1\nPROMOTE FACTION 7 NEW 0\n\
+             PROMOTE FACTION 0 NEW 0\nPROMOTE FACTION 7 NEW 1\n",
+        );
+        let refused: Vec<(PromoteRefusal, usize)> = unit
+            .refused_promotes
+            .iter()
+            .map(|one| (one.refusal, one.line))
+            .collect();
+        assert_eq!(
+            refused,
+            [
+                (PromoteRefusal::NoFaction0, 2),
+                (PromoteRefusal::NoFaction0, 3),
+                (PromoteRefusal::NoNewUnit0, 4),
+                (PromoteRefusal::NoFaction0, 5),
+            ],
+            "{unit:?}"
+        );
+        assert_eq!(unit.refused_promotes[0].column_start, 0);
+        assert_eq!(unit.refused_promotes[0].column_end, 7);
+        let targets: Vec<&str> = unit
+            .promotes
+            .iter()
+            .map(|one| one.target.as_str())
+            .collect();
+        assert_eq!(targets, ["faction-7-new-1"], "{unit:?}");
+    }
+
+    /// `ah-wjos`: the kept `PROMOTE` is named in the warning as the player wrote it.
+    #[test]
+    fn a_promote_carries_its_order_as_written() {
+        let unit = only_unit("unit 5\npromote  new 2 ; the scout\n");
+        assert_eq!(unit.promotes[0].written, "promote new 2", "{unit:?}");
+    }
+
+    #[test]
+    fn a_formed_units_refused_promote_is_read_too() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let blocks = read_formed(
+            "unit 1922\nFORM 1\nPROMOTE FACTION 0 NEW 1\nEND\n",
+            &regions,
+            None,
+        );
+        assert_eq!(blocks[0].refused_promotes.len(), 1, "{blocks:?}");
+        assert_eq!(blocks[0].refused_promotes[0].line, 3);
     }
 
     #[test]

@@ -4121,6 +4121,7 @@ impl OrderedUnits {
             flag_changes,
             destroys_structure,
             promotes,
+            refused_promotes: _,
             evicts,
         } in read_intents(source, ruleset)
         {
