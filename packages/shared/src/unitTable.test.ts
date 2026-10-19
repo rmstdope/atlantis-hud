@@ -31,6 +31,7 @@ import {
   silverIsRed,
   silverShortfall,
   shortfallText,
+  figureIsCut,
   nextShortfallForm,
   silverShown,
   shareOf,
@@ -777,6 +778,16 @@ describe("a shortfall a pool left unjudged", () => {
     expect(silverCellShown({ kind: "single", value: -500 }, judged)).toEqual({ kind: "single", value: -500 });
     expect(silverShortfall(40, judged)).toBe(95);
     expect(silverCellShown(null, null)).toBeNull();
+  });
+});
+
+describe("a Silver figure that does not fit whole", () => {
+  // `ah-j92v`: a figure is shown whole or not at all, so "cut" is the one test both the figure's
+  // `…` and the shortfall's narrowing read.
+  it("is cut only when its text is wider than its box", () => {
+    expect(figureIsCut({ scrollWidth: 20, clientWidth: 20 })).toBe(false);
+    expect(figureIsCut({ scrollWidth: 21, clientWidth: 20 })).toBe(true);
+    expect(figureIsCut({ scrollWidth: 12, clientWidth: 20 })).toBe(false);
   });
 });
 

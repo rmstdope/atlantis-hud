@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { nextShortfallForm, shortfallText, type ShortfallForm } from "../unitTable";
+import { figureIsCut, nextShortfallForm, shortfallText, type ShortfallForm } from "../unitTable";
 
 /**
  * The small red `<N> short` the Silver cell writes after the figure of a unit that ends the month
@@ -43,7 +43,7 @@ export function SilverShortfall({
     const figure = row.querySelector<HTMLElement>("[data-silver-figure]");
     // `data-silver-figure` is the box that truncates: around the plain figure, or inside the ⚠
     // button around its digits.
-    const figureCut = figure !== null && figure.scrollWidth > figure.clientWidth;
+    const figureCut = figure !== null && figureIsCut(figure);
     const next = nextShortfallForm(form, figureCut, row.scrollWidth > row.clientWidth);
     if (next !== form) {
       setForm(next);
