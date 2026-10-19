@@ -272,3 +272,21 @@ fn a_mages_refused_recruits_are_not_named() {
         "your units here buy 8 orcs between them and this market has 6",
     );
 }
+
+/// The same once-per-unit rule whatever order the lines come in: a refused `BUY ALL` before an
+/// exact line writes the line's six, not nine (follow-up review finding 1).
+#[test]
+fn a_refused_buy_all_before_an_exact_line_is_written_once() {
+    let text = report(SIX_ORCS, &[leader(10), orcs(11, 1000), orcs(12, 1000)]);
+    let review = review_of(
+        &text,
+        "unit 10\nBUY ALL orcs\nBUY 3 orcs\nunit 11\nBUY 4 orcs\nunit 12\nBUY 4 orcs\n",
+    );
+
+    every_claimant_reads(
+        &review,
+        &["11", "12"],
+        "your units here buy 8 orcs between them and this market has 6 \
+         (14 ordered, 6 of them refused for mixing with leaders)",
+    );
+}

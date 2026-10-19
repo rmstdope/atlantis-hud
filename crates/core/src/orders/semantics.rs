@@ -1932,6 +1932,9 @@ fn market_shares_sized(
     // tag and unit: named by the warning as written and refused, never counted (`ah-efb5`). Per
     // unit, so a `BUY ALL` is written once however many lines say it, as `stated_buys` is.
     let mut refused_buys: BTreeMap<String, Vec<i64>> = BTreeMap::new();
+    // The units among those whose refused lines include a `BUY ALL`: the line's amount is applied
+    // to them once every exact line is in, as `stated_buys` does, so line order cannot change it.
+    let mut refused_all: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
     let sharing_for_sales = Sharing::read(hex);
     for (index, ordered) in hex.units.iter().enumerate() {
         for placed in &ordered.intents {
@@ -1988,13 +1991,15 @@ fn market_shares_sized(
                     let refused = refused_buys
                         .entry(tag.clone())
                         .or_insert_with(|| vec![0; hex.units.len()]);
-                    refused[index] = match &placed.intent {
+                    match &placed.intent {
                         Intent::Buy {
                             amount: Amount::Exact(count),
                             ..
-                        } => refused[index].saturating_add((*count).max(0)),
-                        _ => refused[index].max(pool),
-                    };
+                        } => refused[index] = refused[index].saturating_add((*count).max(0)),
+                        _ => {
+                            refused_all.entry(tag.clone()).or_default().insert(index);
+                        }
+                    }
                 }
                 continue;
             }
@@ -2176,7 +2181,18 @@ fn market_shares_sized(
                         .copied()
                         .fold(0, i64::saturating_add),
                     refused_buys.get(&tag).map_or(0, |refused| {
-                        refused.iter().copied().fold(0, i64::saturating_add)
+                        let all = refused_all.get(&tag);
+                        refused
+                            .iter()
+                            .enumerate()
+                            .map(|(index, exact)| {
+                                if all.is_some_and(|all| all.contains(&index)) {
+                                    (*exact).max(pool)
+                                } else {
+                                    *exact
+                                }
+                            })
+                            .fold(0, i64::saturating_add)
                     }),
                 ),
             };
