@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OrdersPanel, PROBLEM_ROW_COUNT_ROOM } from "./OrdersPanel";
+import { OrdersPanel, PROBLEM_ROW_COUNT_ROOM, problemListFloorStyle } from "./OrdersPanel";
 import { NO_PRODUCTION, NO_STUDENTS, NO_FACTION_ORDERS } from "../orderEditor";
 import { formedSelectionFor } from "./ordersLock";
 import { orderProcessingFor } from "../orderProcessing";
@@ -223,6 +223,18 @@ describe("a unit's problem with no line", () => {
         expect(row).toContain(PROBLEM_ROW_COUNT_ROOM);
       }
     }
+  });
+
+  /**
+   * ah-8zbc: the one row the list always shows is the first row as drawn, but never more than two
+   * lines of it - the panel's smallest height holds three editor lines and a two-line row, and a
+   * longer row is read by scrolling the list (docs/ui/ah-8zbc-long-row.html).
+   */
+  it("the list's guaranteed row is the first row, but never more than two lines", () => {
+    expect(problemListFloorStyle(33)).toEqual({
+      minHeight: "min(33px, calc(2.75 * var(--text-pane-sm)))"
+    });
+    expect(problemListFloorStyle(null)).toBeUndefined();
   });
 
   it("draws no list at all with no problems, so the editor has the panel", () => {

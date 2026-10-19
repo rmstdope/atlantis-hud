@@ -67,14 +67,16 @@ describe("slotClass", () => {
 });
 
 describe("rightColumnRemFor", () => {
-  it("is the 249px the right-hand column actually gets at 1280x720", () => {
-    // Measured from the running application: header 73px, the column 121-370, so 249px tall.
-    expect(rightColumnRemFor(720, 73, 16, UNITS_DEFAULT_REM) * 16).toBeCloseTo(249, 3);
+  it("is the 285px the right-hand column actually gets at 1280x720", () => {
+    // Measured from the running application (web shell, ah-8zbc): header 37px, and the column's
+    // content 131 + 10 + 144 = 285px with the orders panel at its old smallest. It read 73px and
+    // 249px when this was first written, before the header stopped wrapping.
+    expect(rightColumnRemFor(720, 37, 16, UNITS_DEFAULT_REM) * 16).toBeCloseTo(285, 3);
   });
 
   it("the right column's floors fit the pinned 1280x720 window", () => {
     expect(rightColumnFloorsRem()).toBeLessThanOrEqual(
-      rightColumnRemFor(720, 73, 16, UNITS_DEFAULT_REM)
+      rightColumnRemFor(720, 37, 16, UNITS_DEFAULT_REM)
     );
   });
 
@@ -90,6 +92,18 @@ describe("rightColumnRemFor", () => {
   it("is zero rather than infinite when the root font size is nonsense", () => {
     expect(rightColumnRemFor(720, 73, 0, UNITS_DEFAULT_REM)).toBe(0);
     expect(rightColumnRemFor(720, 73, Number.NaN, UNITS_DEFAULT_REM)).toBe(0);
+  });
+});
+
+describe("the orders panel's floor", () => {
+  /**
+   * ah-8zbc: three editor lines, the status line and a problem row of two lines - the row the
+   * hidden-row count's reserved room wraps the acceptance message onto - measured at 151px.
+   */
+  it("is 151px, and both the pinned and the dragged editor hold it", () => {
+    expect(ORDERS_MIN_REM * 16).toBe(151);
+    expect(ordersSlotClass(OPEN, false)).toContain(`min-h-[${ORDERS_MIN_REM}rem]`);
+    expect(ordersSlotClass(OPEN, true)).toContain(`min-h-[${ORDERS_MIN_REM}rem]`);
   });
 });
 
@@ -126,7 +140,7 @@ describe("ordersSlotClass", () => {
     const className = ordersSlotClass(OPEN, true);
     expect(className).not.toContain("h-[19rem]");
     expect(className).not.toContain("max-h-");
-    expect(className).toContain("min-h-[9rem]");
+    expect(className).toContain("min-h-[9.4375rem]");
     expect(className).toContain("flex-none");
   });
 
@@ -156,7 +170,7 @@ describe("clampOrdersHeight", () => {
   });
 
   it("clamps a finite value into the stored range", () => {
-    expect(clampOrdersHeight(2.5)).toBe(9);
+    expect(clampOrdersHeight(2.5)).toBe(ORDERS_MIN_REM);
     expect(clampOrdersHeight(500)).toBe(60);
     expect(clampOrdersHeight(20)).toBe(20);
   });
@@ -171,8 +185,8 @@ describe("dragOrdersHeight", () => {
   });
 
   it("clamps at the orders minimum", () => {
-    const result = dragOrdersHeight(9, -5, RAIL);
-    expect(result.rem).toBe(9);
+    const result = dragOrdersHeight(ORDERS_MIN_REM, -5, RAIL);
+    expect(result.rem).toBe(ORDERS_MIN_REM);
     expect(result.atLimit).toBe(true);
   });
 
@@ -189,9 +203,9 @@ describe("dragOrdersHeight", () => {
   });
 
   it("floors to the orders minimum on a rail too short to hold both minimums", () => {
-    // A rail below 15.375rem (ORDERS_MIN 9 + SLOT_MIN 5.75 + GAP 0.625) inverts the range.
-    const result = dragOrdersHeight(9, 0, 12);
-    expect(result.rem).toBe(9);
+    // A rail below 15.8125rem (ORDERS_MIN 9.4375 + SLOT_MIN 5.75 + GAP 0.625) inverts the range.
+    const result = dragOrdersHeight(ORDERS_MIN_REM, 0, 12);
+    expect(result.rem).toBe(ORDERS_MIN_REM);
     expect(result.atLimit).toBe(true);
   });
 });

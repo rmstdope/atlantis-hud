@@ -683,7 +683,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       // Three lines, never fewer, while the problem list shares the panel (ah-nup4): CodeMirror's
       // 1.4 line height at the editor's own font size, times three, plus the 1px border top and
       // bottom. The content's own 4px padding scrolls away, so it is not budgeted - that is what
-      // lets three lines and one problem row fit the panel's 9rem minimum.
+      // lets three lines and a two-line problem row fit the panel's 9.4375rem minimum (ah-8zbc).
       className="min-h-[calc(4.2*var(--text-pane)+2px)] w-full flex-1 overflow-hidden rounded border border-edge bg-ground font-mono text-ink focus-within:border-select"
     />
   );

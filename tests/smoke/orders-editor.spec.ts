@@ -894,8 +894,8 @@ async function shrinkOrders(page: Page) {
   await page.mouse.down();
   await page.mouse.move(start.x, start.y + 1000, { steps: 5 });
   await page.mouse.up();
-  // 9rem, `ORDERS_MIN_REM`.
-  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(144, 0);
+  // 9.4375rem, `ORDERS_MIN_REM` (ah-8zbc).
+  await expect.poll(async () => (await boxOf(page, "orders")).height).toBeCloseTo(151, 0);
 }
 
 /** What the editor and the list each show, in pixels, and whether the panel body overflows. */
@@ -1032,6 +1032,58 @@ test("the problem rows do not re-wrap when the hidden-row count disappears", asy
   });
   await expect(more).toHaveCount(0);
   expect(await rowHeights()).toEqual(before);
+});
+
+/**
+ * Drag the right rail to about `widthPx` wide, within the 5px the drag lands in.
+ */
+async function narrowRightRail(page: Page, widthPx: number) {
+  const overlay = page.locator('[data-map-overlay="right"]');
+  const before = (await overlay.boundingBox())!.width;
+  const grip = (await page.getByTestId("rail-splitter-right").boundingBox())!;
+  const start = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  // The right rail shrinks when the pointer moves away from the map, i.e. to the right.
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + (before - widthPx), start.y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await overlay.boundingBox())!.width).toBeCloseTo(widthPx, -1);
+}
+
+/**
+ * ah-8zbc: the smallest panel holds a row of up to two lines; a longer one shows two and scrolls
+ * inside the list, and the panel keeps its height (docs/ui/ah-8zbc-long-row.html). Boxes only, never
+ * the clipped row's text - WebKit's driver reads clipped text as empty.
+ */
+test("at the smallest panel a row of three lines or more shows two and scrolls, and the panel does not grow", async ({
+  page
+}) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  // 15rem: the acceptance row runs to four lines here, well clear of the two-line boundary.
+  await narrowRightRail(page, 240);
+  await shrinkOrders(page);
+
+  await fillOrders(page, FIVE_WROK);
+  // "5 more ↓", not 4: a partly shown row counts as hidden (ah-nup4, `rowsBelow`).
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("5 more ↓");
+  const list = page.getByTestId("orders-diagnostics");
+  const shape = () =>
+    list.evaluate((element) => ({
+      shown: element.clientHeight,
+      lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+      firstRow: element.querySelector("li")!.getBoundingClientRect().height
+    }));
+  await expect.poll(async () => (await shape()).firstRow).toBeGreaterThan(40);
+
+  const { shown, lineHeight, firstRow } = await shape();
+  expect(firstRow / lineHeight, "the first row wraps onto three lines or more").toBeGreaterThan(2.5);
+  expect(shown, "two lines of it are shown").toBeGreaterThanOrEqual(2 * lineHeight - 0.5);
+  expect(shown, "and the rest is below, for the list to scroll to").toBeLessThan(firstRow);
+  expect((await boxOf(page, "orders")).height).toBeCloseTo(151, 0);
+  // The editor keeps its three lines. The status line is not asserted on: at this width its own
+  // words wrap, at any panel height, and that is ah-kbpc's.
+  expect((await ordersRoom(page)).editorLines).toBeGreaterThanOrEqual(2.98);
 });
 
 test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({
@@ -1195,3 +1247,5 @@ test("a landing-hex jump made with the Region panel folded never flashes later",
   await expect(page.getByTestId("region-problems")).toContainText("arriving by sea");
   await expect(page.getByTestId("region-problems").locator("[data-flash]")).toHaveCount(0);
 });
+
+
