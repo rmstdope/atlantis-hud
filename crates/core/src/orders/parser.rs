@@ -59,6 +59,12 @@ struct Document {
     /// pane validates whatever the player has typed, and a fragment is not a malformed document.
     opened: bool,
     closed: bool,
+    /// Whether a numbered `unit` line has opened a block yet: the orders after it are the ones
+    /// [`super::intents::read_intents`] reads (`ah-wjos`).
+    in_unit: bool,
+    /// Whether the order being checked is one the `promote-no-target` warning can reach: in a unit
+    /// block and outside any `TURN`, the lines `read_intents` and `read_formed` read (`ah-wjos`).
+    promote_warned_here: bool,
 }
 
 impl Document {
@@ -92,7 +98,11 @@ impl Document {
                 self.check_shape(&line, ruleset);
             }
             Event::Abandoned(opened) => self.unclosed(opened),
-            Event::Order { line, .. } => self.check_shape(&line, ruleset),
+            Event::Order { line, depth } => {
+                self.promote_warned_here = self.in_unit && depth.turn == 0;
+                self.check_shape(&line, ruleset);
+                self.promote_warned_here = false;
+            }
         }
     }
 
@@ -128,10 +138,12 @@ impl Document {
     }
 
     fn read_unit_line(&mut self, number: usize, command: &Token, arguments: &[Token]) {
-        if !arguments
+        if arguments
             .first()
             .is_some_and(|unit| unit.kind == TokenKind::Number)
         {
+            self.in_unit = true;
+        } else {
             self.error(
                 number,
                 command.column_start,
@@ -201,6 +213,12 @@ impl Document {
                     );
                 }
             }
+            // A PROMOTE the game throws away for its faction 0 or NEW 0 is the semantic
+            // `promote-no-target` warning's to explain, in place of this error - only where that
+            // warning is raised, so no such line is left with neither (`ah-wjos`).
+            Err(_)
+                if self.promote_warned_here
+                    && super::intents::refused_promote(line.command, line.arguments).is_some() => {}
             Err(mismatch) => self.report_mismatch(
                 line.number,
                 line.text,
@@ -613,6 +631,26 @@ mod tests {
         assert_eq!(codes("TAKE FROM NEW 0 1 SWOR\n"), ["bad-argument"]);
         // Unit zero is the discard target and stays legal, as does any positive alias.
         clean("GIVE 0 ALL SWOR\nFORM 1\nEND\nGIVE NEW 1 1 SWOR\n");
+    }
+
+    /// `ah-wjos`: a `PROMOTE FACTION <f> NEW 0` is thrown away by the game ("PROMOTE: No target
+    /// given.", ../Atlantis `parseorders.cpp` `ProcessPromoteOrder`), and the semantic
+    /// `promote-no-target` warning says so in place of this error - on PROMOTE lines only.
+    #[test]
+    fn a_promote_of_new_zero_under_faction_is_not_a_syntax_error() {
+        clean("unit 900\nPROMOTE FACTION 7 NEW 0\n");
+        clean("unit 900\nPROMOTE FACTION 0 NEW 0\n");
+        clean("unit 900\npromote faction 7 new 00\n");
+        clean("unit 900\nFORM 1\nPROMOTE FACTION 7 NEW 0\nEND\n");
+        // Where no warning can be raised, the line keeps its error rather than showing nothing:
+        // inside a TURN block, and before any unit.
+        assert_eq!(
+            codes("unit 900\nTURN\nPROMOTE FACTION 7 NEW 0\nENDTURN\n"),
+            ["bad-argument"]
+        );
+        assert_eq!(codes("PROMOTE FACTION 7 NEW 0\n"), ["bad-argument"]);
+        assert_eq!(codes("PROMOTE NEW 0\n"), ["bad-argument"]);
+        assert_eq!(codes("GIVE FACTION 15 NEW 0 1 SWOR\n"), ["bad-argument"]);
     }
 
     /// SAIL's second form is the *bare* command - "I help crew this fleet" - not a fallback for a

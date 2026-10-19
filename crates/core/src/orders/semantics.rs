@@ -29,7 +29,7 @@ use super::forms::{Amount, Party, Selector};
 use super::grammar::names_peasants;
 use super::intents::{
     read_formed, read_intents, spends_the_month, FormedBlock, Intent, PlacedEvict, PlacedIntent,
-    PlacedPromote, UnitIntents,
+    PlacedPromote, PlacedRefusedPromote, PromoteRefusal, UnitIntents,
 };
 use super::phases::{self, StatePhase};
 use super::standing::{self, Boarding};
@@ -311,6 +311,11 @@ pub mod codes {
     /// object ("PROMOTE: Can't find target.", `Do1PromoteOrder`; `ah-h9hh`). Always on: the bead
     /// asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const PROMOTE_NOT_OWNER: Code = Code("promote-not-owner");
+    /// A `PROMOTE` line the game throws away while it parses the orders, because it names faction
+    /// 0 or new unit 0 (`ah-wjos`): `Game::ParseUnit` (../Atlantis `parseorders.cpp`) answers no
+    /// unit, so `ProcessPromoteOrder` errors "PROMOTE: No target given." and keeps the unit's
+    /// other `PROMOTE`. Always on, as [`PROMOTE_NOT_OWNER`] is.
+    pub const PROMOTE_NO_TARGET: Code = Code("promote-no-target");
     /// An `EVICT` the game refuses: `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs
     /// only each object's owner's EVICT, once PROMOTE has run, and errors every other unit's
     /// "EVICT: Must be owner", or "EVICT: Can only evict inside structures." for one standing in
@@ -417,7 +422,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 13] = [
+    pub const ALWAYS_ON: [Code; 14] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -430,6 +435,7 @@ pub mod codes {
         TRANSPORT_TARGET_REFUSED,
         EXCHANGE_ABORTED,
         PROMOTE_NOT_OWNER,
+        PROMOTE_NO_TARGET,
         EVICT_REFUSED,
     ];
 }
@@ -1097,6 +1103,7 @@ pub fn review_turn(
         check_exchanges_aborted(hex, ledger, &mut findings);
         check_leave_refused_at_sea(hex, &mut findings);
         check_promote_not_owner(hex, &mut findings);
+        check_promote_no_target(hex, &mut findings);
         check_evict_refused(hex, &mut findings);
         check_village_site(hex, ledger, ruleset, &mut findings);
         check_withdraw_not_a_basic_item(hex, ruleset, &options, &mut findings);
@@ -4072,6 +4079,7 @@ struct UnitOrders {
     flag_changes: Vec<FlagChange>,
     destroys_structure: bool,
     promotes: Vec<PlacedPromote>,
+    refused_promotes: Vec<PlacedRefusedPromote>,
     evicts: Vec<PlacedEvict>,
     /// STUDY lines naming a skill nothing knows (`study::names_no_skill`), taken out of `intents`
     /// because they set no month-long order, and kept for the `unknown-skill` warning (`ah-9199`).
@@ -4126,6 +4134,7 @@ impl OrderedUnits {
             flag_changes,
             destroys_structure,
             promotes,
+            refused_promotes,
             evicts,
         } in read_intents(source, ruleset)
         {
@@ -4136,6 +4145,7 @@ impl OrderedUnits {
                 flag_changes: Vec::new(),
                 destroys_structure: false,
                 promotes: Vec::new(),
+                refused_promotes: Vec::new(),
                 evicts: Vec::new(),
                 unknown_studies: Vec::new(),
             });
@@ -4150,6 +4160,7 @@ impl OrderedUnits {
             entry.unread |= !unread.is_empty();
             entry.destroys_structure |= destroys_structure;
             entry.promotes.extend(promotes);
+            entry.refused_promotes.extend(refused_promotes);
             entry.evicts.extend(evicts);
         }
         Self { by_unit }
@@ -4362,6 +4373,8 @@ struct Ordered<'a> {
     destroys_structure: bool,
     /// The syntactically valid `PROMOTE` orders this month, in the order written.
     promotes: Vec<PlacedPromote>,
+    /// The `PROMOTE` lines the game throws away while it parses the orders (`ah-wjos`).
+    refused_promotes: Vec<PlacedRefusedPromote>,
     /// Every unit this month's `EVICT` orders name, in the order written (`ah-0ace`).
     evicts: Vec<PlacedEvict>,
     /// The intents that can actually execute this month: every order that does not spend the
@@ -4500,6 +4513,8 @@ impl<'a> Hex<'a> {
                     ),
                     destroys_structure: orders.is_some_and(|orders| orders.destroys_structure),
                     promotes: orders.map_or_else(Vec::new, |orders| orders.promotes.clone()),
+                    refused_promotes: orders
+                        .map_or_else(Vec::new, |orders| orders.refused_promotes.clone()),
                     evicts: orders.map_or_else(Vec::new, |orders| orders.evicts.clone()),
                     intents: orders.map_or_else(Vec::new, |orders| orders.intents.clone()),
                     all_intents: orders.map_or(&[][..], |orders| orders.intents.as_slice()),
@@ -4534,6 +4549,7 @@ impl<'a> Hex<'a> {
                     flags: flags_after_orders(&formed.unit.flags, &formed.block.flag_changes),
                     destroys_structure: formed.block.destroys_structure,
                     promotes: formed.block.promotes.clone(),
+                    refused_promotes: formed.block.refused_promotes.clone(),
                     evicts: formed.block.evicts.clone(),
                     intents: formed.block.intents.clone(),
                     all_intents: &formed.block.intents,
@@ -14979,6 +14995,41 @@ fn check_promote_not_owner(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
                 None,
             )
         });
+    }
+}
+
+/// Every `PROMOTE` line the game throws away while it parses the orders (`ah-wjos`,
+/// [`codes::PROMOTE_NO_TARGET`]): `Game::ParseUnit` (../Atlantis `parseorders.cpp`) answers no
+/// unit for faction 0, read first, or for NEW 0, and `ProcessPromoteOrder` errors "PROMOTE: No
+/// target given." and returns before touching `u->promote`. So the unit's last other `PROMOTE`
+/// stands, whichever side of the line it was written on, and the warning names it as written.
+/// Every unit, formed ones included: the line is thrown away whoever wrote it. Always on
+/// (`codes::ALWAYS_ON`), so no option is read.
+fn check_promote_no_target(hex: &Hex<'_>, findings: &mut Vec<Finding>) {
+    for ordered in &hex.units {
+        let outcome = ordered.promotes.last().map_or_else(
+            || "nothing changes".to_string(),
+            |kept| format!("{} still stands", kept.written),
+        );
+        for refused in &ordered.refused_promotes {
+            let reason = match refused.refusal {
+                PromoteRefusal::NoFaction0 => "there is no faction 0",
+                PromoteRefusal::NoNewUnit0 => "there is no new unit 0",
+            };
+            findings.push(Finding {
+                line: Some(refused.line),
+                column_start: Some(refused.column_start),
+                column_end: Some(refused.column_end),
+                ..ordered.finding(
+                    hex,
+                    codes::PROMOTE_NO_TARGET,
+                    format!(
+                        "PROMOTE will be refused: {reason}, so this line is ignored and {outcome}"
+                    ),
+                    None,
+                )
+            });
+        }
     }
 }
 
@@ -59402,6 +59453,152 @@ BUILD
             refused[0].message,
             "PROMOTE will be refused: Unit 900 (900) owns Castle [1] when promotions run, not \
              this unit, so nothing changes"
+        );
+    }
+
+    /// `ah-wjos`: `Game::ParseUnit` (../Atlantis `parseorders.cpp`) answers no unit for faction 0,
+    /// read before the NEW number, and none for NEW 0, so `ProcessPromoteOrder` errors "PROMOTE:
+    /// No target given." and keeps the unit's other `PROMOTE`. Each such line is warned, naming
+    /// the `PROMOTE` that is kept as the player wrote it, or saying nothing changes.
+    #[test]
+    fn a_promote_the_game_throws_away_is_warned_and_names_the_kept_promote() {
+        let no_target = |orders: &str| -> Vec<(Option<usize>, String)> {
+            check(
+                vec![ReportRegion {
+                    structures: vec![finished_of_kind("1", "Castle")],
+                    ..region(vec![
+                        in_structure(unit("900"), "1"),
+                        in_structure(unit("901"), "1"),
+                        unit("902"),
+                    ])
+                }],
+                orders,
+            )
+            .into_iter()
+            .filter(|finding| finding.code.as_str() == "promote-no-target")
+            .map(|finding| (finding.line, finding.message))
+            .collect()
+        };
+        let warned = |line: usize, message: &str| (Some(line), message.to_string());
+        let kept_901 = "PROMOTE will be refused: there is no faction 0, so this line is ignored \
+                        and PROMOTE 901 still stands";
+        assert_eq!(
+            no_target("unit 900\nPROMOTE 901\nPROMOTE FACTION 0 NEW 1\nunit 901\n"),
+            vec![warned(3, kept_901)],
+            "the reference shape: the earlier PROMOTE stands"
+        );
+        assert_eq!(
+            no_target("unit 900\nPROMOTE FACTION 0 NEW 1\nPROMOTE 901\nunit 901\n"),
+            vec![warned(2, kept_901)],
+            "a PROMOTE written after the refused line is the one kept"
+        );
+        assert_eq!(
+            no_target("unit 900\nPROMOTE FACTION 0 NEW 1\nunit 901\n"),
+            vec![warned(
+                2,
+                "PROMOTE will be refused: there is no faction 0, so this line is ignored and \
+                 nothing changes"
+            )]
+        );
+        assert_eq!(
+            no_target(
+                "unit 900\nPROMOTE FACTION 0 NEW 1\nPROMOTE 901\nPROMOTE FACTION 00 NEW 2\nunit 901\n"
+            ),
+            vec![warned(2, kept_901), warned(4, kept_901)],
+            "every refused line is warned with the same sentence"
+        );
+        assert_eq!(
+            no_target("unit 900\npromote  new 2\nPROMOTE FACTION 0 NEW 1\nunit 901\n"),
+            vec![warned(
+                3,
+                "PROMOTE will be refused: there is no faction 0, so this line is ignored and \
+                 promote new 2 still stands"
+            )],
+            "the kept PROMOTE is named as written"
+        );
+        assert_eq!(
+            no_target("unit 900\nPROMOTE 901\nPROMOTE FACTION 7 NEW 0\nunit 901\n"),
+            vec![warned(
+                3,
+                "PROMOTE will be refused: there is no new unit 0, so this line is ignored and \
+                 PROMOTE 901 still stands"
+            )]
+        );
+        assert_eq!(
+            no_target("unit 900\nPROMOTE FACTION 7 NEW 0\nunit 901\n"),
+            vec![warned(
+                2,
+                "PROMOTE will be refused: there is no new unit 0, so this line is ignored and \
+                 nothing changes"
+            )]
+        );
+        assert_eq!(
+            no_target("unit 900\nPROMOTE FACTION 0 NEW 0\nunit 901\n"),
+            vec![warned(
+                2,
+                "PROMOTE will be refused: there is no faction 0, so this line is ignored and \
+                 nothing changes"
+            )],
+            "faction 0 is the first thing the game finds wrong"
+        );
+        assert_eq!(
+            no_target("unit 900\nPROMOTE 901\nPROMOTE FACTION 7 NEW 1\nunit 901\n"),
+            Vec::<(Option<usize>, String)>::new(),
+            "a real faction's new unit is not warned"
+        );
+        assert_eq!(
+            no_target("unit 900\nFORM 1\nPROMOTE FACTION 0 NEW 1\nEND\nunit 901\n"),
+            vec![warned(
+                3,
+                "PROMOTE will be refused: there is no faction 0, so this line is ignored and \
+                 nothing changes"
+            )],
+            "a formed unit's line is thrown away too"
+        );
+    }
+
+    /// `ah-wjos`: the kept `PROMOTE` keeps its own `promote-not-owner` warning; the thrown-away
+    /// line still says the kept one stands.
+    #[test]
+    fn a_thrown_away_promote_beside_a_refused_one_carries_both_warnings() {
+        let findings = check(
+            vec![ReportRegion {
+                structures: vec![finished_of_kind("1", "Castle")],
+                ..region(vec![
+                    in_structure(unit("900"), "1"),
+                    in_structure(unit("901"), "1"),
+                ])
+            }],
+            "unit 900\nunit 901\nPROMOTE 900\nPROMOTE FACTION 0 NEW 1\n",
+        );
+        let promote: Vec<(&str, Option<usize>, &str)> = findings
+            .iter()
+            .filter(|finding| finding.code.as_str().starts_with("promote-"))
+            .map(|finding| {
+                (
+                    finding.code.as_str(),
+                    finding.line,
+                    finding.message.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            promote,
+            vec![
+                (
+                    "promote-not-owner",
+                    Some(3),
+                    "PROMOTE will be refused: Unit 900 (900) owns Castle [1] when promotions \
+                     run, not this unit, so nothing changes"
+                ),
+                (
+                    "promote-no-target",
+                    Some(4),
+                    "PROMOTE will be refused: there is no faction 0, so this line is ignored \
+                     and PROMOTE 900 still stands"
+                ),
+            ],
+            "{findings:?}"
         );
     }
 
