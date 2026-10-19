@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silver popup wrapping</title>
+<style>
+:root{--ground:#10151c;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,section{max-width:1240px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+h2{font-size:16px;margin:34px 0 4px;border-top:1px solid var(--edge);padding-top:18px}
+h2 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;margin-right:10px}
+p{color:var(--ink-soft);max-width:92ch;margin-top:8px;font-size:14px} b{color:var(--ink)}
+.tips{display:flex;flex-wrap:wrap;gap:22px;margin-top:14px;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:6px}
+.lbl{font-size:11px;color:var(--ink-dim);letter-spacing:1px;text-transform:uppercase;font-family:'Helvetica Neue',Arial,sans-serif}
+/* the real popup: max 24rem wide, 14px sans, label left / figure right */
+.tip{font-family:'Helvetica Neue',Arial,sans-serif;font-size:14px;line-height:1.35;background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:6px 10px;box-shadow:0 8px 26px rgba(0,0,0,.45);width:max-content;max-width:300px}
+.t{color:var(--brass);font-weight:500;margin-bottom:2px}
+.r{display:flex;justify-content:space-between;gap:12px}
+.k{color:var(--ink-soft)} .v{font-variant-numeric:tabular-nums;text-align:right}
+.w{color:var(--ink-dim);margin-left:6px}
+.up{color:var(--ok)} .down{color:var(--danger)}
+.nw{white-space:nowrap}
+.sub{color:var(--ink-dim);font-size:12.5px;padding-left:12px;margin-top:-1px;margin-bottom:1px}
+.bad{outline:2px dashed var(--danger);outline-offset:1px;border-radius:2px}
+.cap{font-size:12.5px;color:var(--ink-soft);margin-top:8px;max-width:300px}
+.rec{color:var(--ok);font-size:12px;font-family:'Helvetica Neue',Arial,sans-serif;margin-left:8px}
+</style></head><body>
+<header><h1>Silver popup &mdash; <span>a long line that does not fit</span></h1>
+<p>Mountain (36,4), Rebecca (1163). Each popup below is drawn at the width the real one stops growing at. The question is only what happens when a line&rsquo;s name and who-from don&rsquo;t fit on one line. The figures do not change.</p><p><b>Agreed: B, S2, L1.</b> The dim side note on any popup row always sits on its own indented line beneath the row, and wraps there keeping its indent; the row&rsquo;s name never breaks.</p></header>
+
+<section><h2><em>Today</em> the label breaks, and &ldquo;upkeep&rdquo; reads twice</h2>
+<div class="tips"><div class="col"><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k">was lent</span><span class="v"><span class="up">+50</span><span class="w">by Transporter (11124)</span></span></div>
+<div class="r"><span class="k">was lent for <span class="bad">upkeep</span></span><span class="v"><span class="up">+50</span><span class="w">by Entertainers (1164)</span></span></div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div>
+</div><p class="cap">The second word of the label lands on its own line, straight above the real upkeep row.</p></div></div></section>
+
+<section><h2><em>A</em> the line&rsquo;s name never breaks; who-from wraps on the right</h2>
+<p>Only the name on the left is held together. The figure and &ldquo;by &hellip;&rdquo; keep their place on the right and wrap there, so anything on a second line sits under the figure, never under a name. <b>Cost:</b> a part of a name, such as &ldquo;(1164)&rdquo;, can still sit alone on the second line.</p>
+<div class="tips">
+<div class="col"><span class="lbl">This case</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k">was lent</span><span class="v"><span class="up">+50</span><span class="w">by Transporter (11124)</span></span></div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v"><span class="up">+50</span><span class="w">by Entertainers (1164)</span></span></div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div></div></div>
+<div class="col"><span class="lbl">Two lenders</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v"><span class="up">+50</span><span class="w">by Transporter (11124) and Entertainers (1164)</span></span></div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div></div></div>
+</div></section>
+
+<section><h2><em>B</em> who-from always on its own dim line beneath <span class="rec">recommended</span></h2>
+<p>Every line that names someone becomes two: the name and figure on top, &ldquo;by &hellip;&rdquo; beneath it, indented and dim. Every row has the same shape whatever the names, which is how a bank statement lists who paid. <b>Cost:</b> the popup is taller by one line for each named row, even when everything would have fitted.</p>
+<div class="tips">
+<div class="col"><span class="lbl">This case</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k">was lent</span><span class="v up">+50</span></div><div class="sub">by Transporter (11124)</div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v up">+50</span></div><div class="sub">by Entertainers (1164)</div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div></div></div>
+<div class="col"><span class="lbl">Two lenders</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v up">+50</span></div><div class="sub">by Transporter (11124) and Entertainers (1164)</div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div></div></div>
+</div></section>
+
+<section><h2><em>C</em> who-from stays beside the figure when it fits, drops beneath when it doesn&rsquo;t</h2>
+<p>Short lines look exactly as today. Only a line too long for the popup moves its whole &ldquo;by &hellip;&rdquo; to a dim line beneath. <b>Cost:</b> rows in one popup can have two different shapes.</p>
+<div class="tips">
+<div class="col"><span class="lbl">This case</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k">was lent</span><span class="v"><span class="up">+50</span><span class="w nw">by Transporter (11124)</span></span></div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v up">+50</span></div><div class="sub">by Entertainers (1164)</div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div></div></div>
+<div class="col"><span class="lbl">Two lenders</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k">studied</span><span class="v down">&minus;50</span></div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v up">+50</span></div><div class="sub">by Transporter (11124) and Entertainers (1164)</div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;50</span></div></div></div>
+</div></section>
+
+<section><h2><em>Round 2</em> B is chosen &mdash; which popups follow it?</h2>
+<p>The Silver popup is not the only one with a dim side note. The Structure popup says which order moved the unit, and several popups quote what the report said with &ldquo;was: &hellip;&rdquo;. Here is one of those, both ways.</p>
+<div class="tips">
+<div class="col"><span class="lbl">S1 &mdash; Silver only: other popups stay as today</span><div class="tip"><div class="t">Structure</div>
+<div class="r"><span class="k">was</span><span class="v">in the open</span></div>
+<div class="r"><span class="k">structure</span><span class="v">Galleon [214]<span class="w">ENTER 214</span></span></div></div></div>
+<div class="col"><span class="lbl">S2 &mdash; every popup: side notes always go beneath</span><div class="tip"><div class="t">Structure</div>
+<div class="r"><span class="k">was</span><span class="v">in the open</span></div>
+<div class="r"><span class="k">structure</span><span class="v">Galleon [214]</span></div><div class="sub">ENTER 214</div></div></div>
+</div>
+<h2><em>Round 2</em> a &ldquo;by &hellip;&rdquo; too long even for its own line</h2>
+<div class="tips">
+<div class="col"><span class="lbl">L1 &mdash; it wraps, keeping its indent</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v up">+150</span></div><div class="sub">by Transporter (11124), Entertainers (1164) and Quartermaster of the Northern Reach (2207)</div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;150</span></div></div></div>
+<div class="col"><span class="lbl">L2 &mdash; one name per line</span><div class="tip"><div class="t">Silver</div>
+<div class="r"><span class="k nw">was lent for upkeep</span><span class="v up">+150</span></div><div class="sub">by Transporter (11124),</div><div class="sub">Entertainers (1164)</div><div class="sub">and Quartermaster of the Northern Reach (2207)</div>
+<div class="r"><span class="k">upkeep</span><span class="v down">&minus;150</span></div></div></div>
+</div></section>
+</body></html>
