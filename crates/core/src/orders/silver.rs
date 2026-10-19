@@ -884,6 +884,9 @@ pub struct ShipmentPriced {
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BuyAllShown {
+    /// The canonical tag of the goods, `"SILK"`, so the hover can say one share sentence per goods
+    /// however many lines the unit wrote for them (`ah-k3ew`).
+    pub tag: String,
     /// `"19 grain"`, `"1 sword"`, `"8 nomads"`, `"no grain"` - counted and pluralised **by the
     /// core**, because the unit does not hold these goods yet and TS cannot pluralise what it was
     /// never given. The same reason `castMadeNamed` is pre-counted (`ah-ofpb.4`).
@@ -2368,6 +2371,7 @@ fn exact_market_spend(
 /// fields is how one purchase comes to be described two ways.
 fn shown_buy_all(settled: &SettledBuyAll, lookups: &Lookups<'_>) -> BuyAllShown {
     BuyAllShown {
+        tag: settled.tag.clone(),
         bought_named: (lookups.counted_or_none)(settled.plan.bought, &settled.tag),
         market_named: (lookups.counted_or_none)(settled.plan.market_has, &settled.tag),
         bought: settled.plan.bought,
