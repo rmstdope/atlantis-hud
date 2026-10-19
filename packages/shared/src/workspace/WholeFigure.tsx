@@ -39,20 +39,24 @@ export function WholeFigure({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <span
-      ref={ref}
-      data-silver-figure
-      // The floor holds one `…`: the table's face is monospaced, so `…` is exactly `1ch` wide.
-      className="relative inline-block min-w-[1ch] max-w-full overflow-hidden align-bottom whitespace-nowrap"
-    >
-      <span data-figure-digits className={cut ? "opacity-0" : undefined}>
-        {children}
+    // The figure's box keeps at least one character; the `…` is drawn outside the box that clips
+    // the digits, so a face whose `…` is a little wider than its digits still draws it whole -
+    // into the cell's padding if it must (`ah-j92v`, CI's Linux face at the 36 px floor).
+    <span className="relative inline-flex min-w-[1ch] max-w-full align-bottom">
+      <span
+        ref={ref}
+        data-silver-figure
+        className="min-w-0 overflow-hidden whitespace-nowrap"
+      >
+        <span data-figure-digits className={cut ? "opacity-0" : undefined}>
+          {children}
+        </span>
       </span>
       {cut ? (
         <span
           aria-hidden
           data-figure-ellipsis
-          className="absolute inset-y-0 right-0 before:content-['\2026']"
+          className="absolute inset-y-0 right-0 whitespace-nowrap before:content-['\2026']"
         />
       ) : null}
     </span>

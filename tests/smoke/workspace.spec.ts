@@ -5970,7 +5970,11 @@ test("a unit that cannot pay for its purchase shows the shortfall beside its fig
  * With `shortfall: false` it walks a row with no shortfall. It returns the steps seen, and the
  * splitter and the settling read so a test can walk back again.
  */
-async function narrowSilverToItsFloor(page: Page, orders: string, { shortfall = true } = {}) {
+async function narrowSilverToItsFloor(
+  page: Page,
+  orders: string,
+  { shortfall = true, warned = false } = {}
+) {
   await page.setViewportSize({ width: 1400, height: 900 });
   await loadReport(page);
   await selectHex(page, "1:7,53");
@@ -5979,6 +5983,10 @@ async function narrowSilverToItsFloor(page: Page, orders: string, { shortfall = 
 
   const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
   await expect(page.getByTestId(`silver-shortfall-${OWN_UNIT}`)).toHaveCount(shortfall ? 1 : 0);
+  // The ⚠ arrives with the checks, after the figure: measuring before it would walk another row.
+  if (warned) {
+    await expect(page.getByTestId(`unit-silver-${OWN_UNIT}`)).toBeVisible();
+  }
   await expect(cell.locator("[data-silver-figure]")).toBeVisible();
   const layout = () =>
     cell.evaluate(async (node) => {
@@ -5997,6 +6005,7 @@ async function narrowSilverToItsFloor(page: Page, orders: string, { shortfall = 
       const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
       const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']");
       const digits = figure.querySelector<HTMLElement>("[data-figure-digits]");
+      const ellipsis = figure.parentElement!.querySelector("[data-figure-ellipsis]");
       const mark = [...node.querySelectorAll("button [aria-hidden]")].find((glyph) =>
         glyph.textContent?.includes("\u26a0")
       );
@@ -6008,10 +6017,15 @@ async function narrowSilverToItsFloor(page: Page, orders: string, { shortfall = 
         markShown: shown(mark ?? null),
         form: short?.dataset.form,
         // `ah-j92v`: whether the figure's `…` is drawn, and whether its digits are painted.
-        ellipsis: figure.querySelector("[data-figure-ellipsis]") !== null,
+        ellipsis: ellipsis !== null,
         // ...and that a drawn `…` is whole, not clipped to a dot by its box.
-        ellipsisShown: shown(figure.querySelector("[data-figure-ellipsis]")),
-        ellipsisWidth: figure.querySelector("[data-figure-ellipsis]")?.getBoundingClientRect().width ?? 0,
+        // Inside the cell's border box: a `…` may use the padding, but never be clipped.
+        ellipsisShown:
+          ellipsis === null
+            ? 0
+            : Math.min(ellipsis.getBoundingClientRect().right, box.right) -
+              Math.max(ellipsis.getBoundingClientRect().left, box.left),
+        ellipsisWidth: ellipsis?.getBoundingClientRect().width ?? 0,
         digitsPainted: digits !== null && getComputedStyle(digits).opacity !== "0",
       };
     });
@@ -6087,7 +6101,7 @@ test("however narrow the Silver column, neither the figure nor the shortfall dis
 test("however narrow the Silver column, a warned unit's ⚠ gives way before its figure or shortfall", async ({
   page
 }) => {
-  const { seen } = await narrowSilverToItsFloor(page, "@study obse\nBUY 50 GEM\n");
+  const { seen } = await narrowSilverToItsFloor(page, "@study obse\nBUY 50 GEM\n", { warned: true });
   expect(seen[0]!.markShown, JSON.stringify(seen[0])).toBeGreaterThanOrEqual(6);
   for (const step of seen) {
     if (step.figureCut) {
@@ -6151,7 +6165,10 @@ test("a Silver figure without a shortfall is shown whole or as … alone", async
  * cannot pay for its study, so it is warned; with no purchase, nothing is short.
  */
 test("a warned Silver figure without a shortfall is shown whole or as … alone", async ({ page }) => {
-  const { seen } = await narrowSilverToItsFloor(page, "@study obse\n", { shortfall: false });
+  const { seen } = await narrowSilverToItsFloor(page, "@study obse\n", {
+    shortfall: false,
+    warned: true
+  });
   expect(seen[0]!.markShown, JSON.stringify(seen[0])).toBeGreaterThan(0);
   expect(seen[0]!.figureCut, JSON.stringify(seen[0])).toBe(false);
   for (const step of seen) {
