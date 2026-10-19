@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutTitle, isCut } from "./cutToFit";
+import { cutTitle, isCut } from "./cutRule";
 
 /**
  * ah-sgvo: a piece of the orders status line that is cut short shows its full text on hover, and a

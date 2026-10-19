@@ -209,6 +209,22 @@ describe("a unit's problem with no line", () => {
     expect(markup).not.toContain("more ↓");
   });
 
+  /**
+   * ah-sgvo: the status line is one line whatever it says. Whether a piece is cut is measured once
+   * it is on screen, so a static render is the uncut state: every word whole, no tooltip.
+   */
+  it("draws the status line on one line, every piece whole and without a tooltip", () => {
+    const markup = drawWith([problem]);
+    const status = markup.slice(markup.indexOf('data-testid="orders-status"'));
+    const line = status.slice(0, status.indexOf("</p>"));
+
+    expect(line).toContain("whitespace-nowrap");
+    expect(line).toContain(">0 errors<");
+    expect(line).toContain(">1 warning<");
+    expect(line).toContain(">not saved yet<");
+    expect(line).not.toContain("title=");
+  });
+
   it("draws no list at all with no problems, so the editor has the panel", () => {
     const markup = drawWith([]);
 
