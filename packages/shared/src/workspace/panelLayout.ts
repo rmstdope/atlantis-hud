@@ -23,7 +23,8 @@ const FLEXIBLE = "min-h-0 flex-1";
  * The shared Unit/Movement slot, open: the flexible one, but with a floor under it.
  *
  * `FLEXIBLE`'s `min-h-0` is precisely what let this slot be crushed to two pixels once the Movement
- * panel stood beside the unit's own lines and asked for 245px of a 249px column - the orders editor
+ * panel stood beside the unit's own lines and asked for 245px of what was then a 249px column (285px
+ * since the header stopped wrapping at 1280x720) - the orders editor
  * below it was then laid out underneath the units pane and could not be clicked at all (ah-zh5i.2).
  *
  * Written out literally rather than interpolated from `SLOT_MIN_REM`: Tailwind scans source for

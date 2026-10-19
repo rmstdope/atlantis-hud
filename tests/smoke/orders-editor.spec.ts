@@ -1247,5 +1247,3 @@ test("a landing-hex jump made with the Region panel folded never flashes later",
   await expect(page.getByTestId("region-problems")).toContainText("arriving by sea");
   await expect(page.getByTestId("region-problems").locator("[data-flash]")).toHaveCount(0);
 });
-
-

@@ -32,8 +32,8 @@ type UnitMovementSlotProps = Parameters<typeof UnitPanelBody>[0] & {
 /**
  * The selected unit and the movement planner, sharing one slot as two tabs.
  *
- * They used to be two panels stacked in the right-hand column, which has 249px at the suite's
- * pinned 1280x720 window. A one-step route asked for 245px of it, crushed the unit panel to two
+ * They used to be two panels stacked in the right-hand column, which had 249px at the suite's
+ * pinned 1280x720 window then (285px since the header stopped wrapping - `rightColumnRemFor`). A one-step route asked for 245px of it, crushed the unit panel to two
  * pixels and laid the orders editor out underneath the units pane, where a player could click
  * `Apply to orders` and watch the text go into an editor they could not see (ah-zh5i.2). One slot
  * for the two of them is what keeps the column at the two panels it can actually hold.
