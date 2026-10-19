@@ -6172,7 +6172,10 @@ test("at the default layout the Silver cell has room for 999 beside 9999 short",
   await fillOrders(page, "CLAIM 2300\nBUY 50 GEM\n");
 
   const cell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="silver"]');
-  await expect(page.getByTestId(`silver-shortfall-${OWN_UNIT}`)).toBeVisible();
+  const shortfall = page.getByTestId(`silver-shortfall-${OWN_UNIT}`);
+  await expect(shortfall).toBeVisible();
+  // Settled on the long form first, so the margin read below is the long form's own.
+  await expect(shortfall).toHaveAttribute("data-form", "long");
   const room = await cell.evaluate((node) => {
     const width = (source: HTMLElement, text: string) => {
       const copy = source.cloneNode(false) as HTMLElement;
