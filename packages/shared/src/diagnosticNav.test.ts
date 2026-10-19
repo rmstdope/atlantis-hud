@@ -41,6 +41,11 @@ describe("diagnosticTargets", () => {
     expect(targets[0].problem.lineStart).toBe(1);
   });
 
+  it("carries the line its columns were counted in, so a landing can place them in the line it finds (ah-2zxh)", () => {
+    const targets = diagnosticTargets(TEXT, [problem({ lineStart: 6, lineEnd: 6 })], undefined, "origins");
+    expect(targets[0].countedLine).toBe("STUFY x");
+  });
+
   it("believes a problem that names its unit over where its line happens to sit", () => {
     const targets = diagnosticTargets(TEXT, [
       problem({ unitId: "100", lineStart: 3, lineEnd: 3 })

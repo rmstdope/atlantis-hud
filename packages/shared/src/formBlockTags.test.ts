@@ -128,6 +128,7 @@ function tag(errorCount: number, warningCount: number, messages: string[] = []):
       regionId: REGION,
       blockFirstLine: 3,
       aboveBlock: false,
+      countedLine: null,
       problem: finding(index + 1, { message })
     }))
   };
