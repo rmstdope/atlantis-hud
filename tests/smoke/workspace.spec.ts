@@ -6146,6 +6146,14 @@ test("at the default layout a three-digit figure beside a four-digit shortfall r
   const figure = cell.locator("[data-silver-figure]");
   await expect(figure).toHaveText("144");
   expect(await figure.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  const inside = await cell.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const mark = node
+      .querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!
+      .getBoundingClientRect();
+    return mark.width > 0 && mark.left >= box.left - 0.5 && mark.right <= box.right + 0.5;
+  });
+  expect(inside).toBe(true);
   await expect(shortfall.locator("[aria-hidden]")).toHaveText("8350 short");
 });
 
@@ -6184,15 +6192,20 @@ test("at the default layout the Silver cell has room for 999 beside 9999 short",
     };
     const figure = node.querySelector<HTMLElement>("[data-silver-figure]")!;
     const short = node.querySelector<HTMLElement>("[data-testid^='silver-shortfall-']")!;
-    // The long form's own gap, whatever form is drawn now.
-    const gap = 6;
+    // The gap is the long form's own margin, read off the element so a changed class moves it too.
+    const gap = parseFloat(getComputedStyle(short).marginLeft);
     const style = getComputedStyle(node);
     const content =
       node.getBoundingClientRect().width -
       parseFloat(style.paddingLeft) -
       parseFloat(style.paddingRight);
-    return { content, needed: width(figure, "999") + gap + width(short, "9999 short") };
+    return {
+      form: short.dataset.form,
+      content,
+      needed: width(figure, "999") + gap + width(short, "9999 short")
+    };
   });
+  expect(room.form).toBe("long");
   expect(room.content).toBeGreaterThanOrEqual(room.needed + 3);
 });
 
