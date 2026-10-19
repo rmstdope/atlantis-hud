@@ -1,3 +1,4 @@
+import { unitInSentence } from "./formedUnitName";
 import type {
   ItemChange,
   ItemChangeParty,
@@ -571,9 +572,12 @@ const SHIP_FINISHED_NOTE = "Finished this month: becomes a ship.";
 /** The Items hover's note for a ship a founding BUILD begins and does not finish (`ah-ywyf`). */
 const SHIP_STARTED_NOTE = "Started this month: still unfinished.";
 
-/** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
+/**
+ * The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`; a
+ * unit this month's FORM creates as `new 1, formed by Ivanhoe (683)` (`ah-uxaw`).
+ */
 function party(other: ItemChangeParty): string {
-  return other.name === null ? `unit ${other.unitId}` : `${other.name} (${other.unitId})`;
+  return unitInSentence(other);
 }
 
 /** One movement, as a fragment. The clauses are joined with `, ` and closed with one full stop. */
@@ -1510,7 +1514,7 @@ function mergeSentence(merge: SkillMerge, regionId: string, facts: PopupFacts): 
 function studySentence(study: StudyForecast, projectionDrawn: boolean): string {
   const taught =
     study.teachers.length > 0
-      ? `, taught by ${andList(study.teachers.map((teacher) => `${teacher.name} (${teacher.unitId})`))}`
+      ? `, taught by ${andList(study.teachers.map(unitInSentence))}`
       : "";
   const clauses = [
     `Studying ${study.name}${taught}: worth ${monthsInWords(study.monthsNumerator, study.monthsDenominator)}.`

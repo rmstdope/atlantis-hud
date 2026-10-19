@@ -293,6 +293,29 @@ describe("the column popups", () => {
     ]);
   });
 
+  // `ah-uxaw`: a unit this month's FORM creates is named once, by its alias and its former.
+  it("the men popup names a formed unit by its alias and the unit that formed it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 11,
+          items: [{ amount: 11, name: "humans", tag: "HUMN" }],
+          previewChanges: [{ field: "men", original: "14" }],
+          itemChanges: [
+            manChange({
+              cause: "given-away",
+              delta: -3,
+              other: { unitId: "new-1", name: "Unit (new 1)", formedBy: "Ivanhoe (683)" }
+            })
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes).toEqual(["humans: gave 3 to new 1, formed by Ivanhoe (683)."]);
+  });
+
   it("the men popup names men taken from a unit the report does not show", () => {
     const popup = columnPopup(
       popupForCell(
@@ -1740,14 +1763,14 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             held: 0,
             atMonthEnd: 1000,
-            changes: [{ amount: 1000, cause: "gift-reverted", line: null, other: "Unit (new 1) (new-1)" }]
+            changes: [{ amount: 1000, cause: "gift-reverted", line: null, other: "new 1, formed by Ivanhoe (683)" }]
           })
         })
       )
     );
     expect(popup.lines.find((line) => line.label === "reverted")).toMatchObject({
       value: "+1000",
-      why: "from Unit (new 1) (new-1), which formed with nobody"
+      why: "from new 1, formed by Ivanhoe (683), which formed with nobody"
     });
   });
 

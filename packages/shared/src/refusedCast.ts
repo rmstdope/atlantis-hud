@@ -1,3 +1,4 @@
+import { midSentence } from "./formedUnitName";
 import type { RefusedCast } from "@atlantis/core-client";
 import type { PreviewedUnit } from "./unitPreview";
 
@@ -29,7 +30,10 @@ export function andList(parts: readonly string[]): string {
   if (parts.length <= 1) {
     return parts[0] ?? "";
   }
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  // The item before "and" closes a formed unit's phrase with its comma (`ah-uxaw`); the items
+  // before it already have the list's own.
+  const leading = [...parts.slice(0, -2), midSentence(parts[parts.length - 2])];
+  return `${leading.join(", ")} and ${parts[parts.length - 1]}`;
 }
 
 /**

@@ -11436,9 +11436,19 @@ fn record_short_exchange(
         // pair is aborted for a plain shortfall, and the clause would read as a fix that is not
         // one (review on PR #1799).
         if !givers.is_empty() && held.max(0).saturating_add(arriving) >= offer.give_amount {
+            let count = givers.len();
             let names: Vec<String> = givers
                 .iter()
-                .map(|&giver| unit_label(hex, &hex.units[giver].unit.unit_id))
+                .enumerate()
+                .map(|(at, &giver)| {
+                    let label = unit_label(hex, &hex.units[giver].unit.unit_id);
+                    // A formed giver's phrase is closed before the next "and" (`ah-uxaw`).
+                    if at + 1 < count {
+                        super::naming::mid_sentence(&label).into_owned()
+                    } else {
+                        label
+                    }
+                })
                 .collect();
             part.push_str(&format!(
                 " — the {} from {} arrives after this exchange is settled",
@@ -24706,7 +24716,14 @@ fn in_a_list(names: &[String]) -> String {
     match names {
         [] => String::new(),
         [only] => only.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        // The name before "and" closes a formed unit's phrase with its comma (`ah-uxaw`); the
+        // names before it already have the list's own.
+        [rest @ .., before, last] => {
+            let mut leading: Vec<&str> = rest.iter().map(String::as_str).collect();
+            let before = super::naming::mid_sentence(before);
+            leading.push(&before);
+            format!("{} and {last}", leading.join(", "))
+        }
     }
 }
 
@@ -59151,6 +59168,26 @@ BUILD
                 );
             }
         }
+    }
+
+    /// `ah-uxaw`: a formed unit's phrase is set off by commas in a list too.
+    #[test]
+    fn a_list_closes_a_formed_units_phrase_before_its_and() {
+        let formed = "new 1, formed by Ivanhoe (683)".to_string();
+        let drones = "Drones (2404)".to_string();
+        let scouts = "Scouts (1502)".to_string();
+        assert_eq!(
+            in_a_list(&[formed.clone(), drones.clone()]),
+            "new 1, formed by Ivanhoe (683), and Drones (2404)"
+        );
+        assert_eq!(
+            in_a_list(&[formed.clone(), drones.clone(), scouts]),
+            "new 1, formed by Ivanhoe (683), Drones (2404) and Scouts (1502)"
+        );
+        assert_eq!(
+            in_a_list(&[drones, formed]),
+            "Drones (2404) and new 1, formed by Ivanhoe (683)"
+        );
     }
 
     /// `ah-7ful`: the engine adds a formed unit to its former's object as the `FORM` is parsed
