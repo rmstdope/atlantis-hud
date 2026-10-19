@@ -312,8 +312,13 @@ export async function fillOrders(page: Page, text: string) {
 export async function ordersText(page: Page): Promise<string> {
   return page.getByTestId("orders-input").evaluate((root) => {
     const lines = root.querySelectorAll(".cm-line");
+    // A FORM line's tag (`ah-j10j`) is a widget inside its line and no part of the orders.
     return Array.from(lines)
-      .map((line) => line.textContent ?? "")
+      .map((line) => {
+        const copy = line.cloneNode(true) as Element;
+        copy.querySelectorAll(".cm-form-tag").forEach((tag) => tag.remove());
+        return copy.textContent ?? "";
+      })
       .join("\n");
   });
 }

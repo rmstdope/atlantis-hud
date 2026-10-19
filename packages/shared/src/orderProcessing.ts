@@ -27,6 +27,7 @@ import {
   writeUnitOrders
 } from "./ordersDocument";
 import { diagnosticsForUnit } from "./orderEditor";
+import { formBlockTags } from "./formBlockTags";
 import { contentChanges, indentBlock, indentChanges, lineDepths, tidyInsertion } from "./orderIndent";
 import { describeOrdersImport, unitIdForDiagnostic, unitLabelForDiagnostic } from "./ordersImport";
 import { orderCommentSyntaxFor, type OrderCommentSyntax } from "./rulesets";
@@ -77,6 +78,7 @@ export interface OrderProcessing {
   readonly tidyInsertion: WithoutSyntax<typeof tidyInsertion>;
   readonly diagnosticTargets: WithoutSyntax<typeof diagnosticTargets>;
   readonly diagnosticsForUnit: WithoutSyntax<typeof diagnosticsForUnit>;
+  readonly formBlockTags: WithoutSyntax<typeof formBlockTags>;
   readonly describeOrdersImport: WithoutSyntax<typeof describeOrdersImport>;
   readonly unitIdForDiagnostic: WithoutSyntax<typeof unitIdForDiagnostic>;
   readonly unitLabelForDiagnostic: WithoutSyntax<typeof unitLabelForDiagnostic>;
@@ -126,6 +128,8 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
       diagnosticTargets(text, diagnostics, unitIdsByRegion, syntax),
     diagnosticsForUnit: (document, unitId, diagnostics, regionUnitIds) =>
       diagnosticsForUnit(document, unitId, diagnostics, regionUnitIds, syntax),
+    formBlockTags: (text, unitId, regionUnitIds, targets) =>
+      formBlockTags(text, unitId, regionUnitIds, targets, syntax),
     describeOrdersImport: (fileText, currentDocument) =>
       describeOrdersImport(fileText, currentDocument, syntax),
     unitIdForDiagnostic: (document, diagnostic) => unitIdForDiagnostic(document, diagnostic, syntax),

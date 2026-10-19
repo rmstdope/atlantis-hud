@@ -9,6 +9,7 @@ import {
   type ValidatedOrders
 } from "../orderEditor";
 import { SeverityMark } from "./primitives";
+import type { DiagnosticTarget } from "../diagnosticNav";
 import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
 import { describeLock, lockFor, type FormedSelection, type Lock } from "./ordersLock";
@@ -86,6 +87,12 @@ type OrdersPanelProps = {
 
   /** Goes to another hex and opens its Problems; see `OrdersEditor`'s prop (`ah-zjcj`). */
   onShowProblemsIn?: (regionId: string) => void;
+
+  /** Every stop on the F8 walk, against `validated.text` - what the FORM lines' tags are read from (`ah-j10j`). */
+  problemTargets?: readonly DiagnosticTarget[];
+
+  /** Lands on one of those stops exactly as F8 would: a click on a FORM line's tag. */
+  onOpenProblem?: (target: DiagnosticTarget) => void;
 };
 
 export function OrdersPanel({
@@ -109,7 +116,9 @@ export function OrdersPanel({
   walkPosition,
   walkedProblem,
   orders,
-  onShowProblemsIn
+  onShowProblemsIn,
+  problemTargets,
+  onOpenProblem
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
@@ -138,6 +147,16 @@ export function OrdersPanel({
             regionUnitIds
           ),
     [locked, unitId, validated, regionUnitIds, orders]
+  );
+  // What is wrong inside each FORM block this unit's orders write: underlined and counted only in
+  // the formed unit's own editor (`ah-ty3s.1`, F1), and so told here by a tag on the FORM line
+  // instead (`ah-j10j`). Against the same validated text as `problems`, so the two move together.
+  const formTags = useMemo(
+    () =>
+      locked || unitId === null || problemTargets === undefined
+        ? []
+        : orders.formBlockTags(validated.text, unitId, regionUnitIds, problemTargets),
+    [locked, unitId, validated, regionUnitIds, orders, problemTargets]
   );
   // The text those line and column numbers were counted in, which validation being debounced means
   // is not always the draft on screen. Quoting a token out of the draft instead would occasionally
@@ -189,6 +208,13 @@ export function OrdersPanel({
             snippets={snippets}
             caretCompletions={caretCompletions}
             onShowProblemsIn={onShowProblemsIn}
+            formTags={formTags}
+            onOpenFormTag={(tag) => {
+              const [first] = tag.stops;
+              if (first) {
+                onOpenProblem?.(first);
+              }
+            }}
             onChange={(text) => {
               if (unitId !== null) {
                 onChange(unitId, text);

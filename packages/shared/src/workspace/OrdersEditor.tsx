@@ -27,6 +27,8 @@ import { acceptCompletionWithEnter } from "../orderFinish";
 import { toEditorDiagnostics } from "../orderLint";
 import { useWorkspaceStore } from "../workspaceStore";
 import { snippetCompletionSource, type OrderSnippet } from "../orderSnippets";
+import type { FormBlockTag } from "../formBlockTags";
+import { formTagWidgets, setFormTags } from "./formTagWidgets";
 
 /** What the shell may do to the editor from outside: the shortcut layer lands here. */
 export type OrdersEditorHandle = {
@@ -83,6 +85,13 @@ type OrdersEditorProps = {
    * the diagnostics effect.
    */
   onShowProblemsIn?: (regionId: string) => void;
+  /**
+   * What is wrong inside each FORM block this unit's orders write, for the tag at the end of its
+   * FORM line (`ah-j10j`). Lines as `problems` counts them.
+   */
+  formTags?: readonly FormBlockTag[];
+  /** A click on a FORM line's tag: open the formed unit at its first problem, as F8 would. */
+  onOpenFormTag?: (tag: FormBlockTag) => void;
   onChange: (text: string) => void;
 };
 
@@ -132,6 +141,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     snippets,
     caretCompletions,
     onShowProblemsIn,
+    formTags,
+    onOpenFormTag,
     onChange
   },
   ref
@@ -153,6 +164,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     orders,
     snippets,
     caretCompletions,
+    onOpenFormTag,
     onChange
   });
   latest.current = {
@@ -165,6 +177,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     orders,
     snippets,
     caretCompletions,
+    onOpenFormTag,
     onChange
   };
 
@@ -312,6 +325,7 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
           // R1, 2026-08-17). `position: "fixed"` because the host is no longer an ancestor that
           // scrolls with the editor.
           tooltips({ parent: document.body, position: "fixed" }),
+          formTagWidgets((tag) => latest.current.onOpenFormTag?.(tag)),
           // Enter on a suggestion that ends the order writes it with no space and opens the next
           // line as `enter` would (ah-07tn). Ahead of `autocompletion()`, whose own Enter binding
           // shares this precedence, so it is asked first; it is CodeMirror's own accept underneath,
@@ -621,6 +635,12 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       )
     );
   }, [problems, unitId, showRegionProblems, onShowProblemsIn]);
+
+  // The FORM lines' tags, pushed the same way and for the same reason as the underlines: they
+  // move when validation does, so the tag and the formed unit's underline change together.
+  useEffect(() => {
+    view.current?.dispatch({ effects: setFormTags.of(formTags ?? []) });
+  }, [formTags, unitId]);
 
   useImperativeHandle(ref, () => ({
     focus() {
