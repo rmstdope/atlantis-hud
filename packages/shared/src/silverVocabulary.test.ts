@@ -950,3 +950,54 @@ describe("upkeep a faction-mate paid", () => {
     expect(silverNoteLines(onlyMates).join(" ")).not.toContain("upkeep was paid by");
   });
 });
+
+// ah-s6gk: the starvation hint is for a unit that cannot pay its own upkeep
+// (rules/economy_maintenance: a character that "ends the month without this maintenance cost" may
+// starve, and an ally's surplus pays maintenance "as a last resort"). A warning about something
+// else - a STUDY refused for want of its fee (ah-rjz2) - is no reason to mention starvation.
+describe("the starvation hint (ah-s6gk)", () => {
+  const hint = SILVER_NOTES.find((note) => note.id === "allied-upkeep-might-cover")!;
+  const shows = (silver: Partial<UnitSilver>, more: Partial<SilverFacts> = {}) =>
+    hint.when({
+      unit: unit(),
+      silver: aUnitSilver(silver),
+      warned: false,
+      countUpkeep: true,
+      ...more
+    });
+
+  it("is_not_shown_to_a_warned_unit_that_pays_its_upkeep", () => {
+    // Drone (13432): 24 held, its STUDY STEA refused, 10 upkeep - 14 left.
+    expect(shows({ held: 24, atMonthEnd: 24, upkeep: 10 }, { warned: true })).toBe(false);
+  });
+
+  it("is_not_shown_to_a_warned_unit_that_ends_at_exactly_zero", () => {
+    expect(shows({ atMonthEnd: 10, upkeep: 10 }, { warned: true })).toBe(false);
+  });
+
+  it("is_shown_to_a_warned_unit_short_after_its_upkeep", () => {
+    expect(shows({ atMonthEnd: 4, upkeep: 10 }, { warned: true })).toBe(true);
+  });
+
+  it("is_shown_to_a_unit_in_a_short_pooled_hex_that_cannot_pay_its_own_way", () => {
+    expect(shows({ atMonthEnd: 0, upkeep: 10 }, { hexShort: true })).toBe(true);
+  });
+
+  it("is_not_shown_in_a_short_pooled_hex_to_a_unit_that_pays_its_own_way", () => {
+    expect(shows({ atMonthEnd: 30, upkeep: 10 }, { hexShort: true })).toBe(false);
+  });
+
+  it("is_not_shown_to_a_short_unit_no_check_names", () => {
+    expect(shows({ atMonthEnd: 0, upkeep: 10 })).toBe(false);
+  });
+
+  it("is_not_shown_without_upkeep_counted_or_owed", () => {
+    expect(shows({ atMonthEnd: 0, upkeep: 10 }, { warned: true, countUpkeep: false })).toBe(false);
+    expect(shows({ atMonthEnd: -5, upkeep: 0 }, { warned: true })).toBe(false);
+    expect(shows({ atMonthEnd: -5, upkeep: null }, { warned: true })).toBe(false);
+  });
+
+  it("is_not_shown_where_the_month_end_is_not_a_number", () => {
+    expect(shows({ atMonthEnd: null, upkeep: 10 }, { warned: true })).toBe(false);
+  });
+});

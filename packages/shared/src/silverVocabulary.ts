@@ -937,16 +937,17 @@ export const SILVER_NOTES: readonly SilverNote[] = [
       silver.upkeep !== null &&
       silver.upkeep > 0 &&
       // A unit the checks name, or - where the hex pools its silver and the finding names no unit -
-      // one that cannot pay its own way within that short hex (`ah-5znb`).
-      (warned ||
-        ((hexShort ?? false) &&
-          silver.atMonthEnd !== null &&
-          silver.atMonthEnd - silver.upkeep < 0)),
+      // one in that short hex (`ah-5znb`); either way only one that cannot pay its own upkeep
+      // (rules/economy_maintenance). A check warning about something else, such as a STUDY refused
+      // for want of its fee, is no starvation (`ah-s6gk`).
+      (warned || (hexShort ?? false)) &&
+      silver.atMonthEnd !== null &&
+      silver.atMonthEnd - silver.upkeep < 0,
     say: () =>
       "This unit may avoid starvation if a same-region allied unit is sharing silver or food.",
     example: () => ({
       unit: aReportUnit(),
-      silver: aUnitSilver({ upkeep: 10 }),
+      silver: aUnitSilver({ atMonthEnd: 0, upkeep: 10 }),
       warned: true,
       countUpkeep: true
     })

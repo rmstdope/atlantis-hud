@@ -1040,6 +1040,8 @@ describe("the silver section", () => {
     );
   });
 
+  // Ends the month 10 up after its 50 upkeep, so no starvation sentence however short its BUY is
+  // (`ah-s6gk`).
   it("a_worker_whose_wages_arrive_late_still_is", () => {
     const summary = summariseUnit(
       aReportUnit({ unitId: "1" }),
@@ -1059,8 +1061,7 @@ describe("the silver section", () => {
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
-        "This unit is 60 short of what its purchase costs.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+        "This unit is 60 short of what its purchase costs."
       ].join("\n")
     );
   });
@@ -1389,8 +1390,7 @@ describe("the silver section", () => {
     expect(summary.silver?.note).toBe(
       [
         "Wages arrive too late to pay for this month's orders, so this unit is 60 short when it buys.",
-        "This unit is 60 short of what its purchase costs.",
-        "This unit may avoid starvation if a same-region allied unit is sharing silver or food."
+        "This unit is 60 short of what its purchase costs."
       ].join("\n")
     );
   });
