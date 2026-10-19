@@ -11262,7 +11262,7 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
     }
     let offers = &read.offers;
     let pairs = complementary_pairs(offers);
-    record_unanswered_exchanges(ledger, hex, &read, &pairs);
+    let unanswered = record_unanswered_exchanges(ledger, hex, &read, &pairs);
     // The partner's holding as the walk read it at each pair's first line.
     let mut partner_checks: Vec<Option<Result<i64, UncertainGive>>> =
         pairs.iter().map(|_| None).collect();
@@ -11361,18 +11361,21 @@ fn settle_exchanges(ledger: &mut Ledger<'_>, hex: &Hex<'_>) {
         offers,
         pairs: &pairs,
         verdicts: &verdicts,
+        unanswered: &unanswered,
     };
     for (pair, known) in aborted {
         record_short_exchange(ledger, hex, ruleset, &settled, pair, known);
     }
 }
 
-/// A hex's exchange walk once it is over: every offer, the complementary pairs among them, and
-/// each pair's verdict.
+/// A hex's exchange walk once it is over: every offer, the complementary pairs among them, each
+/// pair's verdict, and the `(unit, line)` of every line [`record_unanswered_exchanges`] found
+/// certain to be aborted.
 struct SettledExchanges<'a> {
     offers: &'a [ExchangeOffer],
     pairs: &'a [(usize, usize)],
     verdicts: &'a [Option<ExchangeVerdict>],
+    unanswered: &'a [(usize, usize)],
 }
 
 /// Records every offer [`complementary_pairs`] left without a partner line, and every line
@@ -11382,16 +11385,21 @@ struct SettledExchanges<'a> {
 /// one, is named so the player sees what does not match - the one trading the same two items
 /// first. Nothing is said where the partner wrote a line whose goods nothing can name, or one
 /// naming another faction's new unit, which may be this one: whether either answers cannot be said.
+///
+/// Returns the `(unit, line)` of every line recorded: each moves nothing, so none of them can hand
+/// a short side its goods ([`record_short_exchange`], `ah-jgym`).
 fn record_unanswered_exchanges(
     ledger: &mut Ledger<'_>,
     hex: &Hex<'_>,
     read: &ExchangeOffers,
     pairs: &[(usize, usize)],
-) {
+) -> Vec<(usize, usize)> {
+    let mut recorded = Vec::new();
     for (unit, line, why) in &read.refused {
         ledger
             .aborted_exchanges
             .push((hex.units[*unit].unit.unit_id.clone(), *line, why.clone()));
+        recorded.push((*unit, *line));
     }
     let offers = &read.offers;
     let paired: BTreeSet<usize> = pairs
@@ -11449,7 +11457,9 @@ fn record_unanswered_exchanges(
             offer.line,
             why,
         ));
+        recorded.push((offer.unit, offer.line));
     }
+    recorded
 }
 
 /// Records a complementary pair aborted because a side is short of what it offers - but only
@@ -11461,7 +11471,9 @@ fn record_unanswered_exchanges(
 /// name is not paired; so where another exchange could hand the short side (or a sharer lending to
 /// it) that item, or take it, whether this pair aborts is not certain and is not told (reviews of
 /// PR #1699); nor is a unit that moves before EXCHANGE reached where the walk puts it (`ah-fyyk`).
-/// Saying nothing there is a missed warning, never a false one.
+/// Saying nothing there is a missed warning, never a false one. A line already certain to be
+/// aborted, unanswered or refused ([`record_unanswered_exchanges`]), moves nothing and does not
+/// silence it (`ah-jgym`).
 ///
 /// The one other line that does not silence it is a pair the walk completes after it checked the
 /// short side, that goes ahead, and that gives the short unit itself the item: the walk reads the
@@ -11480,6 +11492,7 @@ fn record_short_exchange(
         offers,
         pairs,
         verdicts,
+        unanswered,
     } = *settled;
     let (first, second) = pairs[pair];
     let line_of = |index: usize| (offers[index].unit, offers[index].line);
@@ -11527,6 +11540,7 @@ fn record_short_exchange(
             })
             .collect();
         let mut allowed = vec![line_of(first), line_of(second)];
+        allowed.extend_from_slice(unanswered);
         allowed.extend(
             late.iter()
                 .flat_map(|&other| [line_of(pairs[other].0), line_of(pairs[other].1)]),
