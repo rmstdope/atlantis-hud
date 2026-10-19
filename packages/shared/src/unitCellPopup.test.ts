@@ -2379,6 +2379,32 @@ describe("the column popups", () => {
     expect(popup.notes).not.toContain("Shared silver in this hex covers the shortfall.");
   });
 
+  // ah-s6gk, found verifying ah-rjz2: Drone (13432) in swamp (10,50) holds 24, its STUDY STEA is
+  // refused for want of the 50 fee, and it pays its 10 upkeep itself - 14 left. The refusal warns,
+  // so the amber line stays, but nothing about it is starvation (rules/economy_maintenance).
+  it("a warned unit that pays its own upkeep is not told an ally might feed it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "silver",
+        unit({ own: true }),
+        facts({
+          silver: aUnitSilver({
+            held: 24,
+            atMonthEnd: 24,
+            upkeep: 10,
+            refused: [{ cause: "studied", line: 3, cost: 50, available: 24, afterSpending: false }]
+          }),
+          silverWarned: true,
+          countUpkeep: true
+        })
+      )
+    );
+    expect(popup.notes.join(" ")).not.toContain("may avoid starvation");
+    expect(popup.warning).toBe(
+      "⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel."
+    );
+  });
+
   // ah-0jxx: the forecast's explicit unjudged result must not be read as coverage.
   it("a short unit beside a doubted sharer is not told shared silver covers it", () => {
     const popup = columnPopup(
