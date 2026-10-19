@@ -46,6 +46,19 @@ export function TooltipPortal({
   // The node is held as state rather than a ref so the effect below runs once it exists.
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
+  // Bumped whenever the panel's own box changes size, so it is placed again: what it shows can
+  // grow after the first measure - a forecast the core's worker answers a moment later
+  // (`ah-iauy`) - and a panel placed for its shorter self would hang off the bottom of the window.
+  const [resized, setResized] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!node || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => setResized((count) => count + 1));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
 
   useLayoutEffect(() => {
     if (!node) {
@@ -58,7 +71,7 @@ export function TooltipPortal({
         { width: window.innerWidth, height: window.innerHeight }
       )
     );
-  }, [node, at, anchorKey]);
+  }, [node, at, anchorKey, resized]);
 
   return createPortal(
     <div

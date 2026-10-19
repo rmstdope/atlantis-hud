@@ -1204,16 +1204,17 @@ describe("the Flags column (ah-5wbc)", () => {
   });
 });
 
-describe("the Silver column's opening width (ah-kyy6)", () => {
+describe("the Silver column's opening width (ah-kyy6, ah-i984)", () => {
   // Measured against the same nominal table the defaults are written on (1504 px).
   const NOMINAL = 1504;
 
-  it("the_silver_column_opens_wide_enough_for_a_shortfall_in_words", () => {
-    expect(DEFAULT_COLUMN_SHARES.silver * NOMINAL).toBeCloseTo(146, 10);
+  // ah-i984: 156 renders at 123 px in a 1400 px window, where `999  9999 short` measures 117.7.
+  it("the_silver_column_opens_wide_enough_for_a_three_digit_figure_beside_a_shortfall", () => {
+    expect(DEFAULT_COLUMN_SHARES.silver * NOMINAL).toBeCloseTo(156, 10);
   });
 
   it("the_width_silver_gains_comes_from_structure_alone", () => {
-    expect(DEFAULT_COLUMN_SHARES.structure * NOMINAL).toBeCloseTo(158, 10);
+    expect(DEFAULT_COLUMN_SHARES.structure * NOMINAL).toBeCloseTo(148, 10);
     const others: Record<string, number> = {
       own: 24,
       unitId: 64,
