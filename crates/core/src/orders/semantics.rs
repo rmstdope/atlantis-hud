@@ -4110,7 +4110,9 @@ impl EarlierFounding {
         format!(
             "CREATE VILLAGE {will} be refused: {} {founds} a village at ({},{}) first this month, \
              within 2 hexes, and a village must be at least 3 hexes from any other settlement",
-            self.founder, self.at.x, self.at.y
+            super::naming::mid_sentence(&self.founder),
+            self.at.x,
+            self.at.y
         )
     }
 }
@@ -23004,7 +23006,11 @@ fn offer_free_slots(
             codes::TEACHER_HAS_FREE_SLOTS,
             format!(
                 "has {free} teaching slots still free and could also teach {}{and_others}",
-                teaching_ordered_label(hex, first),
+                if and_others.is_empty() {
+                    teaching_ordered_label(hex, first)
+                } else {
+                    super::naming::mid_sentence(&teaching_ordered_label(hex, first)).into_owned()
+                },
             ),
             teacher
                 .intents
@@ -29862,14 +29868,16 @@ fn named_units(names: &[String]) -> String {
     match names {
         [] => String::new(),
         [only] => only.clone(),
-        _ if names.len() <= NAMED => {
-            let (last, rest) = names.split_last().expect("at least two names");
-            format!("{} and {last}", rest.join(", "))
-        }
+        _ if names.len() <= NAMED => in_a_list(names),
         _ => {
             let others = names.len() - NAMED;
             let noun = if others == 1 { "other" } else { "others" };
-            format!("{} and {others} {noun}", names[..NAMED].join(", "))
+            // The last name before "and" closes a formed unit's phrase (`ah-uxaw`).
+            let (last, rest) = names[..NAMED].split_last().expect("three names");
+            let mut leading: Vec<&str> = rest.iter().map(String::as_str).collect();
+            let last = super::naming::mid_sentence(last);
+            leading.push(&last);
+            format!("{} and {others} {noun}", leading.join(", "))
         }
     }
 }
@@ -56041,6 +56049,30 @@ BUILD
         );
     }
 
+    /// `ah-uxaw` review: a formed first candidate's phrase is closed before " and 1 other".
+    #[test]
+    fn a_formed_unit_a_teacher_could_also_teach_is_named_once() {
+        let units = vec![
+            with_leaders(
+                with_skill(with_men(with_silver(unit("500"), 1000), 3), "COMB", 3),
+                3,
+            ),
+            with_men(with_silver(unit("700"), 1000), 2),
+            with_men(with_silver(unit("800"), 1000), 2),
+        ];
+        let finding = only(check(
+            vec![region(units)],
+            "unit 500\nTEACH 700\nunit 700\nSTUDY combat\n\
+             unit 800\nGIVE NEW 1 1 HUMN\nGIVE NEW 1 100 SILV\nGIVE NEW 2 1 HUMN\n\
+             GIVE NEW 2 100 SILV\nFORM 1\nSTUDY combat\nEND\nFORM 2\nSTUDY combat\nEND\n",
+        ));
+        assert_eq!(
+            finding.message,
+            "has 28 teaching slots still free and could also teach new 1, formed by Unit 800 \
+             (800), and 1 other"
+        );
+    }
+
     #[test]
     fn a_visible_foreign_student_makes_free_slots_unknowable() {
         let mut foreign = an_ally("800");
@@ -59168,6 +59200,40 @@ BUILD
                 );
             }
         }
+    }
+
+    /// `ah-uxaw` review: the upkeep list closes a formed phrase before its "and" too.
+    #[test]
+    fn named_units_closes_a_formed_units_phrase_before_its_and() {
+        let formed = "new 1, formed by Unit 7 (7)".to_string();
+        let eight = "Unit 8 (8)".to_string();
+        assert_eq!(
+            named_units(&[formed.clone(), eight.clone()]),
+            "new 1, formed by Unit 7 (7), and Unit 8 (8)"
+        );
+        let many: Vec<String> = ["A (1)", "B (2)"]
+            .iter()
+            .map(ToString::to_string)
+            .chain([formed, eight])
+            .collect();
+        assert_eq!(
+            named_units(&many),
+            "A (1), B (2), new 1, formed by Unit 7 (7), and 1 other"
+        );
+    }
+
+    /// `ah-uxaw` review: a formed founder's phrase is closed before "founds".
+    #[test]
+    fn an_earlier_founding_by_a_formed_unit_is_named_once() {
+        let earlier = EarlierFounding {
+            founder: "new 1, formed by Settlers (900)".to_string(),
+            at: Coordinate { x: 4, y: 6, z: 1 },
+            certain: true,
+        };
+        assert!(earlier.warning().starts_with(
+            "CREATE VILLAGE will be refused: new 1, formed by Settlers (900), founds a village at \
+             (4,6) first this month"
+        ));
     }
 
     /// `ah-uxaw`: a formed unit's phrase is set off by commas in a list too.

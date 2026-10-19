@@ -3311,6 +3311,14 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     ).toBe(
       "Elders (1774) also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said."
     );
+    // `ah-uxaw` review: a formed teacher's phrase is closed before the sentence goes on.
+    const formed = "new 1, formed by Ivanhoe (683)";
+    expect(warningFor(doubt({ reason: "teacherUnsettled", teacher: formed }))).toBe(
+      "Whether new 1, formed by Ivanhoe (683), may teach cannot be settled from this report, so its month is not counted here."
+    );
+    expect(warningFor(doubt({ reason: "teacherStudentsUnknown", teacher: formed }))).toBe(
+      "new 1, formed by Ivanhoe (683), also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said."
+    );
     expect(warningFor(doubt({ reason: "shelterUnknown" }))).toBe(
       "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said."
     );

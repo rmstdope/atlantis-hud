@@ -2550,8 +2550,6 @@ struct Transfer<'a> {
 }
 
 impl WorkingUnit {
-    /// This row as an item change names the other end of a movement: its number, its name, and
-    /// for a formed row the unit that formed it (`ah-uxaw`).
     /// How a sentence names this row: `<name> (<id>)`, or `new 1, formed by Ivanhoe (683)` for a
     /// formed one (`ah-uxaw`).
     fn sentence_label(&self) -> String {
@@ -2564,6 +2562,8 @@ impl WorkingUnit {
         }
     }
 
+    /// This row as an item change names the other end of a movement: its number, its name, and
+    /// for a formed row the unit that formed it (`ah-uxaw`).
     fn as_party(&self) -> ItemChangeParty {
         ItemChangeParty {
             unit_id: self.unit.unit_id.clone(),

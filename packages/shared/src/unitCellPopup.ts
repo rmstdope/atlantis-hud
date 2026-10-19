@@ -1,4 +1,4 @@
-import { unitInSentence } from "./formedUnitName";
+import { midSentence, unitInSentence } from "./formedUnitName";
 import type {
   ItemChange,
   ItemChangeParty,
@@ -1564,9 +1564,9 @@ function doubtSentence(doubt: StudyForecast["doubts"][number], study: StudyForec
     case "headcountEstimated":
       return "This unit's headcount is a guess, so recruiting may pull these back below what is shown.";
     case "teacherUnsettled":
-      return `Whether ${doubt.teacher} may teach cannot be settled from this report, so its month is not counted here.`;
+      return `Whether ${midSentence(doubt.teacher)} may teach cannot be settled from this report, so its month is not counted here.`;
     case "teacherStudentsUnknown":
-      return `${doubt.teacher} also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said.`;
+      return `${midSentence(doubt.teacher)} also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said.`;
     case "shelterUnknown":
       return "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said.";
   }
