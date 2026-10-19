@@ -16,7 +16,7 @@ import { minimalChange } from "../editorReconcile";
 import { buildVocabulary } from "../orderCase";
 import type { OrderProcessing } from "../orderProcessing";
 import { trailingNewlineChange } from "../orderIndent";
-import { shownUnitText } from "../orderEditor";
+import { columnsInShownLine, shownUnitText } from "../orderEditor";
 import {
   completionOptionClass,
   orderArgumentCompletions,
@@ -39,7 +39,11 @@ export type OrdersEditorHandle = {
    * Selects the text a diagnostic points at - the F8 walk's landing. The problem arrives in
    * block-relative lines, exactly as `diagnosticsForUnit` and `diagnosticTargets` speak.
    */
-  selectProblem(problem: OrderDiagnostic): void;
+  /**
+   * Lands on a problem. `countedLine` is the line its columns were counted in, when the caller
+   * knows it, so a line this editor has re-indented since is still landed on its words (`ah-2zxh`).
+   */
+  selectProblem(problem: OrderDiagnostic, countedLine?: string | null): void;
 };
 
 type OrdersEditorProps = {
@@ -660,11 +664,18 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       });
       editor.focus();
     },
-    selectProblem(problem) {
+    selectProblem(asCounted, countedLine = null) {
       const editor = view.current;
       if (!editor) {
         return;
       }
+      // Its columns moved into the line as this editor now shows it: a formed unit's editor tidies
+      // away the indent its creator's editor gave the FORM block's lines (`ah-2zxh`).
+      const line = asCounted.lineStart ?? 0;
+      const problem =
+        line >= 1 && line <= editor.state.doc.lines
+          ? columnsInShownLine(asCounted, countedLine, editor.state.doc.line(line).text)
+          : asCounted;
       // A finding with no columns has no token to put the cursor on - and `toEditorDiagnostics`
       // widens a collapsed span to its whole line, so selecting what it gives back would select
       // the `unit 4117` block header and the next keystroke would replace it. Those findings are

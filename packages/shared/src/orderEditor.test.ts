@@ -9,6 +9,7 @@ import {
   findingsForHex,
   shownUnitText,
   offendingText,
+  columnsInShownLine,
   shouldSaveOnBlur,
   shouldTriggerAutosave,
   suggestOrderCommands,
@@ -714,5 +715,46 @@ describe("nestedFormBlocks", () => {
   it("is none without the hex's units, since no NEW alias resolves", () => {
     const block = blockFor(NESTED, "1922", undefined, "origins")!;
     expect(nestedFormBlocks(NESTED, "1922", block, undefined, "origins")).toEqual([]);
+  });
+});
+
+describe("a problem's columns placed in the line an editor shows (ah-2zxh)", () => {
+  const counted: OrderDiagnostic = {
+    code: "parse",
+    message: "unknown order",
+    lineStart: 1,
+    lineEnd: 1,
+    columnStart: 1,
+    columnEnd: 5,
+    regionId: null,
+    unitId: null,
+    formed: null,
+    severity: "error"
+  };
+
+  it("moves the columns left by the indentation the shown line has lost", () => {
+    // Counted in the creator's indented FORM block, shown in the formed unit's tidied editor.
+    const placed = columnsInShownLine(counted, " WROK", "WROK");
+    expect([placed.columnStart, placed.columnEnd]).toEqual([0, 4]);
+  });
+
+  it("moves them right by indentation the shown line has gained", () => {
+    const placed = columnsInShownLine({ ...counted, columnStart: 0, columnEnd: 4 }, "WROK", "  WROK");
+    expect([placed.columnStart, placed.columnEnd]).toEqual([2, 6]);
+  });
+
+  it("still moves them when the tidy has also shouted the keywords or the document carried a CR", () => {
+    const placed = columnsInShownLine({ ...counted, columnStart: 2, columnEnd: 5 }, "  buy 5 orc\r", "BUY 5 ORC");
+    expect([placed.columnStart, placed.columnEnd]).toEqual([0, 3]);
+  });
+
+  it("leaves them alone when the line's words differ - it is not the line they were counted in", () => {
+    expect(columnsInShownLine(counted, " WROK", "STUDY")).toBe(counted);
+  });
+
+  it("leaves them alone when there is no counted line or no columns", () => {
+    expect(columnsInShownLine(counted, null, "WROK")).toBe(counted);
+    const columnless = { ...counted, columnStart: null, columnEnd: null };
+    expect(columnsInShownLine(columnless, " WROK", "WROK")).toBe(columnless);
   });
 });

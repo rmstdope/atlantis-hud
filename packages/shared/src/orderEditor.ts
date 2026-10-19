@@ -61,6 +61,42 @@ export function offendingText(text: string, diagnostic: OrderDiagnostic): string
 }
 
 /**
+ * A problem's columns, moved into the line an editor actually shows.
+ *
+ * A stop's columns are counted in the text validation saw, and the editor it lands in can have
+ * re-indented that line since: with Order OCD on, the creator's editor indents a `FORM` block's lines
+ * by one space and the formed unit's own editor tidies them back to none as it opens, so a landing
+ * from the creator would select one character to the right (`ah-2zxh`). Indentation, keyword case
+ * and a trailing `\r` are all that may differ - a line whose words changed is not the one the
+ * columns were counted in, and is left to the editor's own clamping.
+ */
+export function columnsInShownLine(
+  problem: OrderDiagnostic,
+  countedLine: string | null,
+  shownLine: string
+): OrderDiagnostic {
+  if (countedLine === null || problem.columnStart === null || problem.columnEnd === null) {
+    return problem;
+  }
+  // Compared as words, not bytes: the same tidy shouts the keywords, and a CRLF document keeps a
+  // `\r` the editor does not. Neither moves a column counted from the start of the line.
+  const words = (line: string): string => line.trim().toUpperCase();
+  if (words(countedLine) !== words(shownLine)) {
+    return problem;
+  }
+  const indent = (line: string): number => line.length - line.trimStart().length;
+  const shift = indent(shownLine) - indent(countedLine);
+  if (shift === 0) {
+    return problem;
+  }
+  return {
+    ...problem,
+    columnStart: Math.max(0, problem.columnStart + shift),
+    columnEnd: Math.max(0, problem.columnEnd + shift)
+  };
+}
+
+/**
  * Counts a validation result's diagnostics.
  *
  * Takes only the field it reads rather than the whole {@link OrderValidationResult}, so a caller

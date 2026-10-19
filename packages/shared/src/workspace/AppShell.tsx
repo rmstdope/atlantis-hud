@@ -1769,7 +1769,7 @@ export function AppShell({
     // neither the report nor the forecast's unit list, so `unit` is null for it and the landing
     // would be thrown away every time (`ah-ty3s.1`).
     if (selectedUnitId === pendingProblem.unitId) {
-      ordersEditor.current?.selectProblem(pendingProblem.problem);
+      ordersEditor.current?.selectProblem(pendingProblem.problem, pendingProblem.countedLine);
     }
     // Consumed either way once the selection has moved at all: a landing left waiting would
     // fire on some much later, unrelated visit to that unit.
@@ -1785,7 +1785,7 @@ export function AppShell({
       setWalkStop({ index: step, standing: true });
       const target = problemTargets[step];
       if (selectedUnitId === target.unitId) {
-        ordersEditor.current?.selectProblem(target.problem);
+        ordersEditor.current?.selectProblem(target.problem, target.countedLine);
       } else {
         goToUnit(target.unitId, "report", target.regionId ?? undefined);
         setPendingProblem(target);

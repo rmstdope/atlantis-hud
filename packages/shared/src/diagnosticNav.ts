@@ -28,6 +28,12 @@ export type DiagnosticTarget = {
    * whatever names its line to a reader says none - as the panel's own list does (`ah-6c76`).
    */
   aboveBlock: boolean;
+  /**
+   * The document line `problem`'s columns were counted in, as validation saw it - `null` for a
+   * finding clamped onto a line it does not sit on. The editor a stop lands in may have re-indented
+   * that line since (`ah-2zxh`), and this is what lets the landing move the columns to match.
+   */
+  countedLine: string | null;
 };
 
 /**
@@ -88,6 +94,7 @@ export function diagnosticTargets(
     return innermost === null ? null : `new-${innermost.alias}`;
   };
 
+  const lines = text.split("\n");
   const placed: DiagnosticTarget[] = [];
   for (const diagnostic of diagnostics) {
     if (diagnostic.lineStart === null) {
@@ -131,6 +138,7 @@ export function diagnosticTargets(
       regionId: formedAlias(block.unitId) === null ? null : scopeRegionId,
       blockFirstLine: block.firstLine,
       aboveBlock: (diagnostic.lineEnd ?? line) < first,
+      countedLine: line >= first && line <= last ? (lines[line - 1] ?? null) : null,
       problem: {
         ...diagnostic,
         // Clamped into the block, the same way diagnosticsForUnit clamps: a named unit's

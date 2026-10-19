@@ -886,6 +886,43 @@ test("a problem inside a FORM block tags the creator's FORM line and leads to th
 });
 
 /**
+ * With Order OCD on, the creator's editor indents a FORM block's lines by one space and the formed
+ * unit's own editor tidies them back to none as it opens - so a landing from the creator, whose
+ * stop was counted in the indented text, has to be placed in the dedented line it arrives at, or it
+ * selects one character to the right (`ah-2zxh`). Both ways onto the formed unit from its creator:
+ * the FORM line's tag, and F8.
+ */
+test("landing in a formed unit from its creator selects the problem's words when Order OCD indents the FORM block", async ({
+  page
+}) => {
+  await openEditor(page);
+  await enableOrderOcd(page);
+  await selectUnit(page, OWN_UNIT);
+  await fillOrders(page, "@study obse\nFORM 1\n WROK\nEND\n");
+  await expectOrders(page, /^@study obse\nFORM 1\n[ \u00a0]WROK\nEND/);
+
+  const tag = page.getByTestId("orders-input").getByTestId("form-tag");
+  await expect(tag).toHaveText("new 1: 1 error");
+  await tag.click();
+  await expect(page.getByTestId("panel-orders")).toContainText("— new 1, in unit 18642's block");
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toBe("WROK");
+
+  // The walk still stands on new 1's stop, so Shift-F8 steps back to the creator's own FORM-line
+  // warning - whose tidy indents the block again - and F8 then lands in new 1 from there.
+  await ordersInput(page).click();
+  await page.keyboard.press("Shift+F8");
+  await expect(page.getByTestId("panel-orders")).toContainText(`— unit ${OWN_UNIT}`);
+  await expectOrders(page, /^@study obse\nFORM 1\n[ \u00a0]WROK\nEND/i);
+  await page.keyboard.press("F8");
+  await expect(page.getByTestId("panel-orders")).toContainText("— new 1, in unit 18642's block");
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toBe("WROK");
+});
+
+/**
  * The tag stays at the end of its FORM line (`ah-j10j`): it never wraps onto a line of its own, and
  * Enter at the end of the FORM line opens the new line below it rather than carrying it down.
  */
