@@ -316,7 +316,11 @@ fn a_unit_s_whole_share_is_its_last_buy_all_s_running_total() {
 
     let line = row.buy_all.last().expect("the BUY ALL has a row");
     assert_eq!(line.tag, "GRAI", "the row names the goods it bought");
-    assert_eq!(line.capped_by, BuyAllCap::Shared, "the share is what stopped it");
+    assert_eq!(
+        line.capped_by,
+        BuyAllCap::Shared,
+        "the share is what stopped it"
+    );
     assert_eq!(line.already_bought, 5, "the exact line was bought first");
     assert!(held < 20, "the line really was split, so this is a share");
     assert_eq!(
