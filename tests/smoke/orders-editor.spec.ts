@@ -950,7 +950,7 @@ test("a FORM line's tag sits on a row of its own beneath the FORM line, through 
   await fillOrders(page, "FORM 1\nWROK\nEND\n");
   await expect(tag).toHaveText("new 1: 1 error");
   await expect(input.getByTestId("form-tag-row")).toContainText("↳");
-  expect(await lineAboveRow()).toMatch(/^[  ]*FORM 1$/);
+  expect(await lineAboveRow()).toMatch(/^[ \u00a0]*FORM 1$/);
 
   // Long, with the caret at its end: the editor scrolls to follow it, and the tag stays whole.
   const comment = "; " + "a long note about this new unit ".repeat(6);
@@ -975,7 +975,7 @@ test("a FORM line's tag sits on a row of its own beneath the FORM line, through 
   await input.locator(".cm-line").first().click({ position: { x: 5, y: 5 } });
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
-  expect(await lineAboveRow()).toMatch(/^[  ]*FORM 1$/);
+  expect(await lineAboveRow()).toMatch(/^[ \u00a0]*FORM 1$/);
 });
 
 /**
@@ -1003,14 +1003,21 @@ test("a FORM line's tag row is not a line of orders", async ({ page }) => {
   await page.keyboard.press("ArrowUp");
   await expect.poll(caretLine).toMatch(/FORM 1/);
 
+  // A proxy for a copy (CodeMirror copies from the document, which never holds the tag): the
+  // selection a person sees across the row shows only the orders.
   await page.keyboard.press("ControlOrMeta+a");
   const copied = await page.evaluate(() => window.getSelection()?.toString() ?? "");
   expect(copied).toMatch(/FORM 1/);
   expect(copied).not.toMatch(/new 1|↳/);
 
   // The arrow is a mark, not a way in: the panel stays on the creator.
+  await input.locator(".cm-content").evaluate((element) => (element as HTMLElement).blur());
   await input.locator(".cm-form-tag-arrow").click();
   await expect(page.getByTestId("panel-orders")).not.toContainText("— new 1");
+  // ...and the click is the editor's, as between lines: it keeps focus and puts the caret on an
+  // order line rather than being swallowed by the row.
+  await expect(input.locator(".cm-editor")).toHaveClass(/cm-focused/);
+  await expect.poll(caretLine).toMatch(/FORM 1|WROK/);
 
   await tag.hover();
   const hover = page.getByTestId("form-tag-hover");

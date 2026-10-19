@@ -37,7 +37,8 @@ class FormTagWidget extends WidgetType {
     readonly tag: FormBlockTag,
     readonly index: number,
     readonly onOpen: (tag: FormBlockTag) => void,
-    readonly onHover: (element: HTMLElement | null) => void
+    /** The tag now under the pointer, or null; with `within`, only if the one held is inside it. */
+    readonly onHover: (element: HTMLElement | null, within?: HTMLElement) => void
   ) {
     super();
   }
@@ -89,6 +90,11 @@ class FormTagWidget extends WidgetType {
     return row;
   }
 
+  /** A row redrawn under the pointer never sees its `mouseleave`; let go of it here instead. */
+  override destroy(dom: HTMLElement): void {
+    this.onHover(null, dom);
+  }
+
   /**
    * Only the tag is the widget's own: the arrow and the empty rest of the row are left to the
    * editor, so a click there places the caret as a click between lines would and opens nothing.
@@ -132,8 +138,10 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
 
   /** The tag under the pointer, whose own box the hover box opens beneath. */
   let hoveredElement: HTMLElement | null = null;
-  const onHover = (element: HTMLElement | null) => {
-    hoveredElement = element;
+  const onHover = (element: HTMLElement | null, within?: HTMLElement) => {
+    if (within === undefined || (hoveredElement !== null && within.contains(hoveredElement))) {
+      hoveredElement = element;
+    }
   };
 
   /** The row and its FORM line's class, hung off the end of the line holding `pos`. */
