@@ -1,3 +1,4 @@
+import { midSentence, unitInSentence } from "./formedUnitName";
 import type {
   ItemChange,
   ItemChangeParty,
@@ -571,9 +572,12 @@ const SHIP_FINISHED_NOTE = "Finished this month: becomes a ship.";
 /** The Items hover's note for a ship a founding BUILD begins and does not finish (`ah-ywyf`). */
 const SHIP_STARTED_NOTE = "Started this month: still unfinished.";
 
-/** The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`. */
+/**
+ * The other unit of a movement, as `ah-rgkk.2.3` settled it: `Scouts (1502)`, or `unit 1502`; a
+ * unit this month's FORM creates as `new 1, formed by Ivanhoe (683)` (`ah-uxaw`).
+ */
 function party(other: ItemChangeParty): string {
-  return other.name === null ? `unit ${other.unitId}` : `${other.name} (${other.unitId})`;
+  return unitInSentence(other);
 }
 
 /** One movement, as a fragment. The clauses are joined with `, ` and closed with one full stop. */
@@ -1510,7 +1514,7 @@ function mergeSentence(merge: SkillMerge, regionId: string, facts: PopupFacts): 
 function studySentence(study: StudyForecast, projectionDrawn: boolean): string {
   const taught =
     study.teachers.length > 0
-      ? `, taught by ${andList(study.teachers.map((teacher) => `${teacher.name} (${teacher.unitId})`))}`
+      ? `, taught by ${andList(study.teachers.map(unitInSentence))}`
       : "";
   const clauses = [
     `Studying ${study.name}${taught}: worth ${monthsInWords(study.monthsNumerator, study.monthsDenominator)}.`
@@ -1560,9 +1564,9 @@ function doubtSentence(doubt: StudyForecast["doubts"][number], study: StudyForec
     case "headcountEstimated":
       return "This unit's headcount is a guess, so recruiting may pull these back below what is shown.";
     case "teacherUnsettled":
-      return `Whether ${doubt.teacher} may teach cannot be settled from this report, so its month is not counted here.`;
+      return `Whether ${midSentence(doubt.teacher)} may teach cannot be settled from this report, so its month is not counted here.`;
     case "teacherStudentsUnknown":
-      return `${doubt.teacher} also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said.`;
+      return `${midSentence(doubt.teacher)} also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said.`;
     case "shelterUnknown":
       return "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said.";
   }

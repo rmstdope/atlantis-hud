@@ -273,14 +273,14 @@ describe("the column popups", () => {
             manChange({
               cause: "given-away",
               delta: -3,
-              other: { unitId: "1604", name: "Watch" }
+              other: { unitId: "1604", name: "Watch", formedBy: null }
             }),
             manChange({
               tag: "ORC",
               name: "orcs",
               cause: "was-taken-from",
               delta: -2,
-              other: { unitId: "1502", name: "Scouts" }
+              other: { unitId: "1502", name: "Scouts", formedBy: null }
             })
           ]
         }),
@@ -291,6 +291,29 @@ describe("the column popups", () => {
       "humans: recruited 6 at 60 silver each, gave 3 to Watch (1604).",
       "orcs: 2 taken by Scouts (1502)."
     ]);
+  });
+
+  // `ah-uxaw`: a unit this month's FORM creates is named once, by its alias and its former.
+  it("the men popup names a formed unit by its alias and the unit that formed it", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "men",
+        unit({
+          men: 11,
+          items: [{ amount: 11, name: "humans", tag: "HUMN" }],
+          previewChanges: [{ field: "men", original: "14" }],
+          itemChanges: [
+            manChange({
+              cause: "given-away",
+              delta: -3,
+              other: { unitId: "new-1", name: "Unit (new 1)", formedBy: "Ivanhoe (683)" }
+            })
+          ]
+        }),
+        facts()
+      )
+    );
+    expect(popup.notes).toEqual(["humans: gave 3 to new 1, formed by Ivanhoe (683)."]);
   });
 
   it("the men popup names men taken from a unit the report does not show", () => {
@@ -492,7 +515,7 @@ describe("the column popups", () => {
           delta: -100,
           cause: "given-away",
           line: 3,
-          other: { unitId: "901", name: "Ferry" }
+          other: { unitId: "901", name: "Ferry", formedBy: null }
         })
       ]
     });
@@ -1740,14 +1763,14 @@ describe("the column popups", () => {
           silver: aUnitSilver({
             held: 0,
             atMonthEnd: 1000,
-            changes: [{ amount: 1000, cause: "gift-reverted", line: null, other: "Unit (new 1) (new-1)" }]
+            changes: [{ amount: 1000, cause: "gift-reverted", line: null, other: "new 1, formed by Ivanhoe (683)" }]
           })
         })
       )
     );
     expect(popup.lines.find((line) => line.label === "reverted")).toMatchObject({
       value: "+1000",
-      why: "from Unit (new 1) (new-1), which formed with nobody"
+      why: "from new 1, formed by Ivanhoe (683), which formed with nobody"
     });
   });
 
@@ -3057,7 +3080,7 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
         study: forecast({
           monthsNumerator: 3,
           monthsDenominator: 2,
-          teachers: [{ unitId: "1774", name: "Elders", slots: 10, students: 5 }]
+          teachers: [{ unitId: "1774", name: "Elders", slots: 10, students: 5, formedBy: null }]
         })
       })
     );
@@ -3288,6 +3311,14 @@ describe("the skills popup's chain and its sentences (ah-rgkk.2.3)", () => {
     ).toBe(
       "Elders (1774) also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said."
     );
+    // `ah-uxaw` review: a formed teacher's phrase is closed before the sentence goes on.
+    const formed = "new 1, formed by Ivanhoe (683)";
+    expect(warningFor(doubt({ reason: "teacherUnsettled", teacher: formed }))).toBe(
+      "Whether new 1, formed by Ivanhoe (683), may teach cannot be settled from this report, so its month is not counted here."
+    );
+    expect(warningFor(doubt({ reason: "teacherStudentsUnknown", teacher: formed }))).toBe(
+      "new 1, formed by Ivanhoe (683), also teaches a unit of another faction whose headcount the report does not show, so how far its teaching spreads cannot be said."
+    );
     expect(warningFor(doubt({ reason: "shelterUnknown" }))).toBe(
       "This unit ends the month in a structure this region's report does not list, so whether it shelters a mage cannot be said."
     );
@@ -3440,7 +3471,7 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "1502", name: "Scouts" },
+              other: { unitId: "1502", name: "Scouts", formedBy: null },
               isMan: false
             }
           ]
@@ -3480,7 +3511,7 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "1502", name: "Scouts" },
+              other: { unitId: "1502", name: "Scouts", formedBy: null },
               isMan: false
             }
           ]
@@ -3512,7 +3543,7 @@ describe("the items popup's pairs", () => {
               cause: "was-given",
               line: 6,
               unitPrice: null,
-              other: { unitId: "2874", name: "Lumbers" },
+              other: { unitId: "2874", name: "Lumbers", formedBy: null },
               isMan: false
             },
             {
@@ -3522,7 +3553,7 @@ describe("the items popup's pairs", () => {
               cause: "build-spent",
               line: null,
               unitPrice: null,
-              other: { unitId: "902", name: "Fieldhands" },
+              other: { unitId: "902", name: "Fieldhands", formedBy: null },
               isMan: false
             }
           ]
@@ -3558,7 +3589,7 @@ describe("the items popup's pairs", () => {
               cause: "drawn-from-sharer",
               line: 7,
               unitPrice: null,
-              other: { unitId: "4008", name: "Unit" },
+              other: { unitId: "4008", name: "Unit", formedBy: null },
               isMan: false
             },
             {
@@ -3635,7 +3666,7 @@ describe("the items popup's pairs", () => {
               cause: "given-away",
               line: 3,
               unitPrice: null,
-              other: { unitId: "901", name: "Ferry" },
+              other: { unitId: "901", name: "Ferry", formedBy: null },
               isMan: false
             }
           ]
@@ -5110,7 +5141,7 @@ describe("silver moved by TRANSPORT", () => {
               cause: "exchanged",
               line: 2,
               unitPrice: null,
-              other: { unitId: "1160", name: "Maurice de Bracy" },
+              other: { unitId: "1160", name: "Maurice de Bracy", formedBy: null },
               isMan: false
             }
           ]

@@ -483,9 +483,9 @@ fn sail_mode(
     {
         if owner.unit_id != unit.unit_id {
             return Err(RouteProblem::NotFleetOwner {
-                unit: format!("{} ({})", unit.name, unit.unit_id),
+                unit: crate::orders::naming::report_unit_label(unit),
                 fleet: crate::movement::mode::fleet_label(fleet),
-                owner: format!("{} ({})", owner.name, owner.unit_id),
+                owner: crate::orders::naming::report_unit_label(owner),
             });
         }
     }

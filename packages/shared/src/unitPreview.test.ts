@@ -135,7 +135,7 @@ describe("itemChanges", () => {
         cause: "was-given" as const,
         line: 2,
         unitPrice: null,
-        other: { unitId: "900", name: "Source" },
+        other: { unitId: "900", name: "Source", formedBy: null },
         isMan: false
       }
     ];
@@ -1147,7 +1147,7 @@ describe("formatItems and itemsTooltip", () => {
           cause: "drawn-from-sharer",
           line: 4,
           unitPrice: null,
-          other: { unitId: "3526", name: "Soldier" },
+          other: { unitId: "3526", name: "Soldier", formedBy: null },
           isMan: false
         },
         {
@@ -1191,7 +1191,7 @@ describe("formatItems and itemsTooltip", () => {
           cause: "build-spent",
           line: 4,
           unitPrice: null,
-          other: { unitId: "1502", name: "Scouts" },
+          other: { unitId: "1502", name: "Scouts", formedBy: null },
           isMan: false
         }
       ],
@@ -2341,7 +2341,7 @@ describe("the study forecast", () => {
     pointsBefore: 53,
     monthsNumerator: 3,
     monthsDenominator: 2,
-    teachers: [{ unitId: "1774", name: "Teacher", slots: 10, students: 20 }],
+    teachers: [{ unitId: "1774", name: "Teacher", slots: 10, students: 20, formedBy: null }],
     halvedOutsideABuilding: false,
     pointsAfter: 98,
     levelAfter: 2,

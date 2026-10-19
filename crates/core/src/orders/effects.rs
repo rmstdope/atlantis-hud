@@ -474,6 +474,10 @@ pub struct StudyForecast {
 pub struct StudyTeacher {
     pub unit_id: String,
     pub name: String,
+    /// For a teacher this month's `FORM` creates, the unit whose orders form it, as a sentence
+    /// names it - `Ivanhoe (683)`, or `new 1` when that unit is formed too - so the study note
+    /// reads `new 2, formed by Ivanhoe (683)` (`ah-uxaw`). `None` for a unit the report shows.
+    pub formed_by: Option<String>,
     /// Student-months this teacher has: ten per **person**, so a two-leader unit has twenty.
     pub slots: i64,
     /// How many men it teaches in total this month, this unit's included - what dilutes the month.
@@ -761,6 +765,9 @@ pub struct ItemChangeParty {
     /// The other unit's name as the preview leaves it, when this hex's own rows show it. `None`
     /// where only a number is known - a transport target the report does not show, for one.
     pub name: Option<String>,
+    /// For a unit this month's `FORM` creates, the unit whose orders form it, as a sentence names
+    /// it - see [`StudyTeacher::formed_by`] (`ah-uxaw`). `None` for a unit the report shows.
+    pub formed_by: Option<String>,
 }
 
 /// One item this month's orders move into or out of a unit, with its cause (`ah-rgkk.3.1`).
@@ -1350,7 +1357,7 @@ fn settle(
             .find(|candidate| candidate.unit_id == owner_id)
             .map_or_else(
                 || format!("unit {owner_id}"),
-                |candidate| format!("{} ({})", candidate.name, candidate.unit_id),
+                super::naming::report_unit_label,
             );
         unit.unit.structure_id = None;
         unit.evicted_cause = Some(format!("EVICT by {owner}"));
@@ -2408,6 +2415,9 @@ struct WorkingUnit {
     unit: ReportUnit,
     original: Option<ReportUnit>,
     formed: bool,
+    /// For a formed row, the unit whose orders form it as a sentence names it (`ah-uxaw`,
+    /// `naming::former_name`); `None` for a unit the report shows.
+    formed_by: Option<String>,
     move_steps: Option<Vec<crate::movement::orders::MoveStep>>,
     /// The movement command as written, upper-cased: `MOVE`, `ADVANCE` or `SAIL`. Kept beside
     /// `move_steps` so a rendered order clause names the word the player actually typed.
@@ -2540,6 +2550,28 @@ struct Transfer<'a> {
 }
 
 impl WorkingUnit {
+    /// How a sentence names this row: `<name> (<id>)`, or `new 1, formed by Ivanhoe (683)` for a
+    /// formed one (`ah-uxaw`).
+    fn sentence_label(&self) -> String {
+        match (
+            self.unit.unit_id.strip_prefix(FORMED_ID_PREFIX),
+            &self.formed_by,
+        ) {
+            (Some(alias), Some(former)) => super::naming::formed_unit_phrase(alias, Some(former)),
+            _ => super::naming::report_unit_label(&self.unit),
+        }
+    }
+
+    /// This row as an item change names the other end of a movement: its number, its name, and
+    /// for a formed row the unit that formed it (`ah-uxaw`).
+    fn as_party(&self) -> ItemChangeParty {
+        ItemChangeParty {
+            unit_id: self.unit.unit_id.clone(),
+            name: Some(self.unit.name.clone()),
+            formed_by: self.formed_by.clone(),
+        }
+    }
+
     /// What this row holds at the moment `rules/sequenceofevents` would delete it as empty - after
     /// `BUY` and `FORGET`, before `WITHDRAW` (`runorders.cpp` `RunOrders`) - in report-tag order.
     ///
@@ -2943,6 +2975,7 @@ impl Working {
                 unit: unit.clone(),
                 original: Some(unit.clone()),
                 formed: false,
+                formed_by: None,
                 move_steps: None,
                 move_command: None,
                 refused_overloaded: false,
@@ -3135,10 +3168,7 @@ impl Working {
                     &item.tag,
                     item.amount,
                 );
-                let dissolving = ItemChangeParty {
-                    unit_id: self.units[index].unit.unit_id.clone(),
-                    name: Some(self.units[index].unit.name.clone()),
-                };
+                let dissolving = self.units[index].as_party();
                 // `Stock::Moved` keeps the row where the revert was silver alone (`ah-6m7b.5.1`).
                 self.units[recipient].item_log.record(
                     ItemChange {
@@ -3163,13 +3193,7 @@ impl Working {
                 .unit
                 .items
                 .retain(|item| ruleset.is_man(&item.tag));
-            dissolved.insert(
-                index,
-                Some(format!(
-                    "{} ({})",
-                    self.units[recipient].unit.name, self.units[recipient].unit.unit_id
-                )),
-            );
+            dissolved.insert(index, Some(self.units[recipient].sentence_label()));
         }
         dissolved
     }
@@ -3351,6 +3375,7 @@ impl Working {
         }
 
         let unit = formed_unit(parent, alias, &parent_flags, Some(share));
+        let formed_by = Some(super::naming::former_name(&parent.unit_id, &parent.name));
 
         let reported = unit.structure_id.clone();
         let reported_flags = unit.flags.clone();
@@ -3360,6 +3385,7 @@ impl Working {
             unit,
             original: None,
             formed: true,
+            formed_by,
             move_steps: None,
             move_command: None,
             refused_overloaded: false,
@@ -3778,6 +3804,7 @@ impl Working {
                             other: Some(ItemChangeParty {
                                 unit_id: id.clone(),
                                 name: None,
+                                formed_by: None,
                             }),
                             // The refusal above already asked the same question of the same tag.
                             borrower: None,
@@ -3836,23 +3863,18 @@ impl Working {
         // whatever unit id the order named. `party_unit_id` answers `None` for `Party::Discard`
         // and `Party::Foreign`, which is the whole of the "no unit to name" case.
         let far_end: Option<ItemChangeParty> = match receiver {
-            Some(index) => Some(ItemChangeParty {
-                unit_id: self.units[index].unit.unit_id.clone(),
-                name: Some(self.units[index].unit.name.clone()),
-            }),
+            Some(index) => Some(self.units[index].as_party()),
             None => super::targets::party_unit_id(party).map(|unit_id| ItemChangeParty {
                 unit_id,
                 // A target no row of ours holds: a foreign unit the region shows. (A number the
                 // report never prints gives nothing and never gets here, `ah-xaem`.)
                 // `ah-rgkk.2.3` writes that as `unit <id>`, which needs no name.
                 name: None,
+                formed_by: None,
             }),
         };
         // What the receiver's change points at - always a real row, since a receiver is an index.
-        let near_end = ItemChangeParty {
-            unit_id: self.units[source].unit.unit_id.clone(),
-            name: Some(self.units[source].unit.name.clone()),
-        };
+        let near_end = self.units[source].as_party();
         // `receiver_cause` is unread on the `Discard` arm - `give` resolves `GiveReach::Discard`
         // to `receiver: None` - and is written out anyway so the match stays exhaustive over the
         // pair without an `unreachable!()`.
@@ -4581,9 +4603,14 @@ impl Working {
                     // Read before the push: `self.units` is borrowed mutably below. The receiver's
                     // name only where this hex's rows show it - a target the report does not show
                     // is a number and nothing more (`TransportSent::to_unshown`).
-                    let receiver_name = pending
-                        .receiver
-                        .map(|receiver| self.units[receiver].unit.name.clone());
+                    let receiver_party = pending.receiver.map_or_else(
+                        || ItemChangeParty {
+                            unit_id: pending.to.clone(),
+                            name: None,
+                            formed_by: None,
+                        },
+                        |receiver| self.units[receiver].as_party(),
+                    );
                     // `line` is `None`: what a transport carries is the order's `order_index`,
                     // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
                     self.units[pending.sender].item_log.record(
@@ -4594,10 +4621,7 @@ impl Working {
                             cause: ItemChangeCause::TransportedOut,
                             line: None,
                             unit_price: None,
-                            other: Some(ItemChangeParty {
-                                unit_id: pending.to.clone(),
-                                name: receiver_name,
-                            }),
+                            other: Some(receiver_party),
                             borrower: None,
                             is_man,
                             plural: None,
@@ -4608,7 +4632,7 @@ impl Working {
                 if let Some(receiver) = pending.receiver {
                     add_item(&mut self.units[receiver].unit.items, &name, &tag, moved);
                     let from = self.units[pending.sender].unit.unit_id.clone();
-                    let from_name = self.units[pending.sender].unit.name.clone();
+                    let from_party = self.units[pending.sender].as_party();
                     if moved != 0 {
                         self.units[receiver].item_log.record(
                             ItemChange {
@@ -4618,10 +4642,7 @@ impl Working {
                                 cause: ItemChangeCause::TransportedIn,
                                 line: None,
                                 unit_price: None,
-                                other: Some(ItemChangeParty {
-                                    unit_id: from.clone(),
-                                    name: Some(from_name),
-                                }),
+                                other: Some(from_party),
                                 borrower: None,
                                 is_man,
                                 plural: None,
@@ -13142,6 +13163,7 @@ mod tests {
                     Some(ItemChangeParty {
                         unit_id: "902".to_string(),
                         name: Some("Recipient".to_string()),
+                        formed_by: None,
                     }),
                     Some("901".to_string()),
                 )]
@@ -13230,6 +13252,7 @@ mod tests {
                     other: Some(ItemChangeParty {
                         unit_id: "902".to_string(),
                         name: Some("Recipient".to_string()),
+                        formed_by: None,
                     }),
                     borrower: None,
                     is_man: false,
@@ -13250,6 +13273,7 @@ mod tests {
                     other: Some(ItemChangeParty {
                         unit_id: "900".to_string(),
                         name: Some("Source".to_string()),
+                        formed_by: None,
                     }),
                     borrower: None,
                     is_man: false,
@@ -13460,6 +13484,7 @@ mod tests {
                     other: Some(ItemChangeParty {
                         unit_id: "900".to_string(),
                         name: Some("Source".to_string()),
+                        formed_by: None,
                     }),
                     borrower: None,
                     is_man: false,
@@ -13480,6 +13505,7 @@ mod tests {
                     other: Some(ItemChangeParty {
                         unit_id: "901".to_string(),
                         name: Some("Taker".to_string()),
+                        formed_by: None,
                     }),
                     borrower: None,
                     is_man: false,
@@ -13510,6 +13536,7 @@ mod tests {
                     other: Some(ItemChangeParty {
                         unit_id: "7777".to_string(),
                         name: None,
+                        formed_by: None,
                     }),
                     borrower: None,
                     is_man: false,
