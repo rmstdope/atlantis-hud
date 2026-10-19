@@ -277,9 +277,9 @@ export function productionMenSentence(silver: UnitSilver | null | undefined): st
  * One sentence per `BUY ALL` this unit wrote, in document order - what it buys and what stopped
  * it buying more. Empty when the unit wrote none, or when its sums are doubted.
  *
- * Except a later line on a market line faction-mates share (`ah-0pa7`): there every line is an
- * attempt that enlarged the unit's share (`ah-ecfl`), so the earlier line's share sentence speaks
- * for the unit and the later one adds none, matching the order editor's silence on it. "Shared" is
+ * Except a later line on a market line faction-mates share (`ah-0pa7`): the earlier line's share
+ * sentence speaks for the unit, and a later line adds none whatever its cause, matching the order
+ * editor's silence on it (`ah-ecfl`). "Shared" is
  * the core's own test in `price_buy_all` - a share smaller than the line - and `alreadyBought`
  * counts an earlier exact `BUY` as well as an earlier `BUY ALL`.
  *
