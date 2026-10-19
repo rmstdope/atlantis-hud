@@ -10,12 +10,14 @@ import {
 import { formTagHover, formTagLabel, type FormBlockTag } from "../formBlockTags";
 
 /**
- * The tag at the end of a FORM line saying what is wrong inside its block (`ah-j10j`,
- * docs/ui/ah-j10j-form-line-tag.html), its hover box, and its click.
+ * The tag saying what is wrong inside a FORM block (`ah-j10j`, docs/ui/ah-j10j-form-line-tag.html),
+ * its hover box, and its click - on a row of its own directly beneath the FORM line, after a dim
+ * "↳" pointing back up at it (`ah-z27v`, docs/ui/ah-z27v-form-tag-row.html).
  *
  * What the tags say is worked out in `formBlockTags`, which is pure and unit-tested; this is only
- * how CodeMirror draws them. The tag is a widget rather than text, so it is never part of the
- * orders - never saved, never copied - and it is not focusable: F8 is the keyboard's way there.
+ * how CodeMirror draws them. The row is a block widget rather than text, so it is never part of the
+ * orders - never saved, never copied, no line of its own for the caret to stop on - and the tag is
+ * not focusable: F8 is the keyboard's way there.
  */
 
 /** Replaces the tags shown, as `setDiagnostics` replaces the underlines. */
@@ -34,7 +36,8 @@ class FormTagWidget extends WidgetType {
   constructor(
     readonly tag: FormBlockTag,
     readonly index: number,
-    readonly onOpen: (tag: FormBlockTag) => void
+    readonly onOpen: (tag: FormBlockTag) => void,
+    readonly onHover: (element: HTMLElement | null) => void
   ) {
     super();
   }
@@ -49,6 +52,17 @@ class FormTagWidget extends WidgetType {
   }
 
   override toDOM(view: EditorView): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "cm-form-tag-row";
+    row.dataset.testid = "form-tag-row";
+    // The arrow and the tag travel together, held at the left margin while the FORM line's text
+    // scrolls sideways under a long note (the sticky offset is in the theme below).
+    const pin = document.createElement("span");
+    pin.className = "cm-form-tag-pin";
+    const arrow = document.createElement("span");
+    arrow.className = "cm-form-tag-arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "↳";
     const element = document.createElement("span");
     element.className = "cm-form-tag";
     element.dataset.testid = "form-tag";
@@ -62,14 +76,31 @@ class FormTagWidget extends WidgetType {
       event.preventDefault();
       this.onOpen(this.tag);
     });
-    element.addEventListener("mouseenter", () => view.dispatch({ effects: setHovered.of(this.index) }));
-    element.addEventListener("mouseleave", () => view.dispatch({ effects: setHovered.of(null) }));
-    return element;
+    element.addEventListener("mouseenter", () => {
+      this.onHover(element);
+      view.dispatch({ effects: setHovered.of(this.index) });
+    });
+    element.addEventListener("mouseleave", () => {
+      this.onHover(null);
+      view.dispatch({ effects: setHovered.of(null) });
+    });
+    pin.append(arrow, element);
+    row.append(pin);
+    return row;
   }
 
-  override ignoreEvent(): boolean {
-    return true;
+  /**
+   * Only the tag is the widget's own: the arrow and the empty rest of the row are left to the
+   * editor, so a click there places the caret as a click between lines would and opens nothing.
+   */
+  override ignoreEvent(event: Event): boolean {
+    return event.target instanceof Element && event.target.closest(".cm-form-tag") !== null;
   }
+}
+
+/** Where the hover box would go with no tag under the pointer: never shown, but a Rect is owed. */
+function emptyRect(_pos: number) {
+  return { left: 0, right: 0, top: 0, bottom: 0 };
 }
 
 function hoverBox(tag: FormBlockTag): HTMLElement {
@@ -94,15 +125,21 @@ function hoverBox(tag: FormBlockTag): HTMLElement {
 
 /** The tags, their hover box and their click, which `onOpen` is handed. */
 export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
-  // The FORM line keeps to one visual line while it carries a tag: the editor wraps long lines,
-  // and wrapped, the tag would drop onto a line of its own under `FORM 1` - the one state the
-  // agreed experience rules out. That line scrolls sideways instead.
+  // The FORM line keeps to one visual line while it carries a tag, as ah-j10j agreed: the editor
+  // wraps long lines, and this one scrolls sideways instead. It also makes `.cm-content` as wide as
+  // the line, which is what lets the row's sticky pin follow the scroll all the way along it.
   const taggedLine = Decoration.line({ class: "cm-form-tag-line" });
 
-  /** The widget and its line's class, at the end of the line holding `pos`. */
+  /** The tag under the pointer, whose own box the hover box opens beneath. */
+  let hoveredElement: HTMLElement | null = null;
+  const onHover = (element: HTMLElement | null) => {
+    hoveredElement = element;
+  };
+
+  /** The row and its FORM line's class, hung off the end of the line holding `pos`. */
   const placed = (state: EditorState, pos: number, widget: FormTagWidget): Range<Decoration>[] => {
     const line = state.doc.lineAt(pos);
-    return [taggedLine.range(line.from), Decoration.widget({ widget, side: 1 }).range(line.to)];
+    return [taggedLine.range(line.from), Decoration.widget({ widget, side: 1, block: true }).range(line.to)];
   };
 
   const decorate = (state: EditorState, tags: readonly FormBlockTag[]): DecorationSet => {
@@ -113,7 +150,7 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
       if (tag.line < 1 || tag.line > state.doc.lines) {
         return;
       }
-      ranges.push(...placed(state, state.doc.line(tag.line).from, new FormTagWidget(tag, index, onOpen)));
+      ranges.push(...placed(state, state.doc.line(tag.line).from, new FormTagWidget(tag, index, onOpen, onHover)));
     });
     return Decoration.set(ranges, true);
   };
@@ -170,7 +207,18 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
           }
           return undefined;
         });
-        return pos === null ? null : { pos, above: false, create: () => ({ dom: hoverBox(tag) }) };
+        // Anchored to the tag's own box: at the FORM line's end, `above: false` would open the box
+        // over the tag row rather than beneath it.
+        return pos === null
+          ? null
+          : {
+              pos,
+              above: false,
+              create: () => ({
+                dom: hoverBox(tag),
+                getCoords: (at: number) => hoveredElement?.getBoundingClientRect() ?? emptyRect(at)
+              })
+            };
       })
     ]
   });
@@ -178,8 +226,19 @@ export function formTagWidgets(onOpen: (tag: FormBlockTag) => void): Extension {
   return [
     shown,
     EditorView.baseTheme({
+      // One editor line high, so the lines below move down by exactly one row.
+      ".cm-form-tag-row": { paddingLeft: "2px", lineHeight: "inherit" },
+      // 6px: the editor's whole left-edge budget (gutter and line padding, OrdersEditor's theme),
+      // so a scrolled row keeps the place an unscrolled one has.
+      ".cm-form-tag-pin": { position: "sticky", left: "6px", display: "inline-block", whiteSpace: "nowrap" },
+      ".cm-form-tag-arrow": {
+        marginRight: "6px",
+        color: "var(--color-ink-dim)",
+        fontFamily: "var(--font-sans, sans-serif)",
+        fontSize: "0.85em",
+        userSelect: "none"
+      },
       ".cm-form-tag": {
-        marginLeft: "12px",
         padding: "0 7px",
         borderRadius: "9px",
         border: "1px solid var(--color-warn)",
