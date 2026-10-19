@@ -56,8 +56,8 @@ fn the_beads_case_warns_both_lines_of_the_pair_the_walk_reaches_first() {
     );
 }
 
-/// Scout (1170), City Guard (7676), Miners (11127) and Smiths (2210), all ours and in that report
-/// order, with Mark (7001) of another faction looking on.
+/// Scout (1170), City Guard (7676), Miners (11127), Smiths (2210) and Smelters (3301), all ours
+/// and in that report order, with Mark (7001) of another faction looking on.
 fn hex(scout_iron: u32, guard_silver: u32) -> String {
     let scout_iron = if scout_iron == 0 {
         String::new()
@@ -91,6 +91,9 @@ fn hex(scout_iron: u32, guard_silver: u32) -> String {
             .to_string(),
         "* Smiths (2210), Foo (1), leader [LEAD], 7 iron [IRON], 2 swords [SWOR]. Weight: 82. \
          Capacity: 0/0/15/0."
+            .to_string(),
+        "* Smelters (3301), Foo (1), leader [LEAD], 7 iron [IRON]. Weight: 80. Capacity: \
+         0/0/15/0."
             .to_string(),
         "- Mark (7001), Bar (2), 5 orcs [ORC], 900 silver [SILV], 4 iron [IRON].".to_string(),
         String::new(),
@@ -250,4 +253,48 @@ fn a_late_exchange_of_the_item_to_another_unit_keeps_it_silent() {
         "EXCHANGE 11127 1 SWOR 1 IRON",
     ];
     assert_eq!(warned(0, 100, orders), vec![]);
+}
+
+/// Three late units are each joined with "and", in report order.
+#[test]
+fn three_late_exchanges_are_joined_with_and() {
+    let text = hex(0, 100);
+    let script = format!(
+        "{}unit 3301\nEXCHANGE 1170 1 IRON 1 SWOR\n",
+        script(
+            &text,
+            [
+                "EXCHANGE 11127 1 SWOR 1 IRON\nEXCHANGE 2210 1 SWOR 1 IRON\n\
+                 EXCHANGE 3301 1 SWOR 1 IRON\nEXCHANGE 7676 3 IRON 3 SILV",
+                "EXCHANGE 1170 3 SILV 3 IRON",
+                "EXCHANGE 1170 1 IRON 1 SWOR",
+                "EXCHANGE 1170 1 IRON 1 SWOR",
+            ],
+        )
+    );
+    let message = "EXCHANGE will be aborted: Scout (1170) will hold only 0 of the 3 IRON it offers — \
+                   the IRON from Miners (11127) and Smiths (2210) and Smelters (3301) arrives after \
+                   this exchange is settled";
+    let found: Vec<(String, String)> = warnings(&text, &script)
+        .into_iter()
+        .map(|(unit, _, message)| (unit, message))
+        .collect();
+    assert_eq!(found, on_both(message));
+}
+
+/// What the late exchanges bring would not cover the offer even in time: Scout offers 3 iron and
+/// Miners bring 1, so the pair is aborted for a plain shortfall and the warning is the plain one,
+/// without a clause that would read as if waiting for Miners would do (review on PR #1799).
+#[test]
+fn a_late_exchange_too_small_to_cover_the_offer_is_not_named() {
+    let orders = [
+        "EXCHANGE 11127 1 SWOR 1 IRON\nEXCHANGE 7676 3 IRON 3 SILV",
+        "EXCHANGE 1170 3 SILV 3 IRON",
+        "EXCHANGE 1170 1 IRON 1 SWOR",
+        "",
+    ];
+    assert_eq!(
+        warned(0, 100, orders),
+        on_both("EXCHANGE will be aborted: Scout (1170) will hold only 0 of the 3 IRON it offers")
+    );
 }

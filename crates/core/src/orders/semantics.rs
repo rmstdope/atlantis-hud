@@ -11403,15 +11403,20 @@ fn record_short_exchange(
             offer.give_amount,
             offer.give_tag
         );
-        let mut givers: Vec<usize> = late
+        let deliveries: Vec<&ExchangeOffer> = late
             .iter()
             .flat_map(|&other| [pairs[other].0, pairs[other].1])
-            .filter(|&index| offers[index].partner == offer.unit)
-            .map(|index| offers[index].unit)
+            .map(|index| &offers[index])
+            .filter(|delivery| delivery.partner == offer.unit)
             .collect();
+        let arriving: i64 = deliveries.iter().map(|delivery| delivery.give_amount).sum();
+        let mut givers: Vec<usize> = deliveries.iter().map(|delivery| delivery.unit).collect();
         givers.sort_unstable();
         givers.dedup();
-        if !givers.is_empty() {
+        // Named only where the late goods would have covered the offer in time: otherwise the
+        // pair is aborted for a plain shortfall, and the clause would read as a fix that is not
+        // one (review on PR #1799).
+        if !givers.is_empty() && held.max(0).saturating_add(arriving) >= offer.give_amount {
             let names: Vec<String> = givers
                 .iter()
                 .map(|&giver| unit_label(hex, &hex.units[giver].unit.unit_id))
