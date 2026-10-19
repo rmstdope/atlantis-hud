@@ -1776,12 +1776,10 @@ export function AppShell({
     setPendingProblem(null);
   }, [pendingProblem, selectedUnitId]);
 
-  const walkProblems = useCallback(
-    (direction: 1 | -1) => {
-      const step = stepDiagnostic(problemTargets.length, walkIndex.current, direction);
-      if (step === null) {
-        return;
-      }
+  // One landing for every way onto a stop - F8, Shift-F8 and a FORM line's tag (`ah-j10j`) - so
+  // a click on the tag is the walk standing on that stop, counter and all, not a second jump.
+  const landOnStop = useCallback(
+    (step: number) => {
       walkIndex.current = step;
       walkKey.current = problemKeys[step] ?? null;
       setWalkStop({ index: step, standing: true });
@@ -1794,6 +1792,27 @@ export function AppShell({
       }
     },
     [problemTargets, problemKeys, selectedUnitId, goToUnit]
+  );
+
+  const walkProblems = useCallback(
+    (direction: 1 | -1) => {
+      const step = stepDiagnostic(problemTargets.length, walkIndex.current, direction);
+      if (step !== null) {
+        landOnStop(step);
+      }
+    },
+    [problemTargets, landOnStop]
+  );
+
+  // A FORM line's tag hands back one of `problemTargets`' own stops, so its index is identity.
+  const openProblem = useCallback(
+    (target: (typeof problemTargets)[number]) => {
+      const step = problemTargets.indexOf(target);
+      if (step !== -1) {
+        landOnStop(step);
+      }
+    },
+    [problemTargets, landOnStop]
   );
 
   // Which of the key-opened dialogs is on screen (ah-gucy): at most one, since their keys only
@@ -6364,6 +6383,8 @@ export function AppShell({
                     editorRef={ordersEditor}
                     onWalkProblems={walkProblems}
                     onShowProblemsIn={showProblemsIn}
+                    problemTargets={problemTargets}
+                    onOpenProblem={openProblem}
                     walkPosition={
                       walkStop.standing && walkStop.index !== null
                         ? { at: walkStop.index + 1, of: problemTargets.length }

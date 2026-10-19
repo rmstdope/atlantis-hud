@@ -843,6 +843,84 @@ test("a unit formed this month edits its own orders inside the FORM that creates
 });
 
 /**
+ * A problem inside a FORM block is the formed unit's (`ah-ty3s.1`, F1), so the editor that wrote the
+ * block shows its lines clean and its foot does not count them - but its FORM line carries a tag
+ * saying what is wrong inside, which leads to the formed unit (`ah-j10j`,
+ * docs/ui/ah-j10j-form-line-tag.html).
+ */
+test("a problem inside a FORM block tags the creator's FORM line and leads to the formed unit", async ({
+  page
+}) => {
+  await openEditor(page);
+  await fillOrders(page, "@study obse\nFORM 1\nWROK\nEND\n");
+
+  const tag = page.getByTestId("orders-input").getByTestId("form-tag");
+  await expect(tag).toHaveText("new 1: 1 error");
+  await expect(tag).toHaveAttribute("data-severity", "error");
+  // On the FORM line itself, and the tag's words are no part of the orders.
+  await expect(page.getByTestId("orders-input").locator(".cm-line", { has: page.getByTestId("form-tag") })).toContainText("FORM 1");
+  await expectOrders(page, /^@study obse\n[ \u00a0]*FORM 1\n[ \u00a0]*WROK\n[ \u00a0]*END/);
+  // The creator's own counts and list are unchanged by it: the error is new 1's. (The creator does
+  // carry a warning of its own here, on the FORM line, which is no business of this test.)
+  await expect(page.getByTestId("orders-status-errors")).toHaveText("0 errors");
+  await expect(page.getByTestId("orders-status-warnings")).toHaveText("1 warning");
+  await expect(page.getByTestId("orders-diagnostic").filter({ hasText: "WROK" })).toHaveCount(0);
+
+  await tag.hover();
+  const hover = page.getByTestId("form-tag-hover");
+  await expect(hover).toBeVisible();
+  await expect(hover.locator("b")).toHaveText("new 1");
+  await expect(hover).toContainText("line 1 · ");
+  await expect(hover).toContainText("Click to open new 1's orders");
+
+  await tag.click();
+  await expect(page.getByTestId("panel-orders")).toContainText("— new 1, in unit 18642's block");
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .toBe("WROK");
+
+  // Fixed in the formed unit's editor, the tag goes when the orders are next checked.
+  await fillOrders(page, "@work");
+  await selectUnit(page, OWN_UNIT);
+  await expect(page.getByTestId("orders-input").getByTestId("form-tag")).toHaveCount(0);
+});
+
+/**
+ * The tag stays at the end of its FORM line (`ah-j10j`): it never wraps onto a line of its own, and
+ * Enter at the end of the FORM line opens the new line below it rather than carrying it down.
+ */
+test("a FORM line's tag stays on its FORM line, through a long line and through Enter", async ({ page }) => {
+  await openEditor(page);
+  const comment = "; " + "a long note about this new unit ".repeat(6);
+  await fillOrders(page, `FORM 1 ${comment}\nWROK\nEND\n`);
+
+  const input = page.getByTestId("orders-input");
+  const tag = input.getByTestId("form-tag");
+  await expect(tag).toHaveText("new 1: 1 error");
+  // One visual line however long: the FORM line scrolls sideways rather than wrapping its tag under.
+  const formLine = input.locator(".cm-line", { has: page.getByTestId("form-tag") });
+  const otherLine = input.locator(".cm-line", { hasText: "WROK" });
+  const formBox = await formLine.boundingBox();
+  const otherBox = await otherLine.boundingBox();
+  expect(formBox!.height).toBeLessThan(otherBox!.height * 1.5);
+
+  // Enter on a short FORM line, where End is the end of the line rather than of what is in view.
+  await fillOrders(page, "FORM 1\nWROK\nEND\n");
+  await expect(tag).toHaveText("new 1: 1 error");
+  await input.locator(".cm-line").first().click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  // Read at once, before the next check could put it back: the tag never left the FORM line.
+  const tagged = await input.evaluate((root) => {
+    const line = root.querySelector(".cm-form-tag")?.closest(".cm-line");
+    const copy = line?.cloneNode(true) as Element | undefined;
+    copy?.querySelectorAll(".cm-form-tag").forEach((element) => element.remove());
+    return copy?.textContent ?? null;
+  });
+  expect(tagged).toMatch(/^[ \u00a0]*FORM 1/);
+});
+
+/**
  * A `FORM` that recruits nobody keeps its row, marked as dissolving (`ah-ty3s.3`, decision K2).
  *
  * The negative of the walk above: the same recipe with `CLAIM 200` dropped, so the hex's shared
