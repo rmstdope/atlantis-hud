@@ -501,6 +501,15 @@ export function silverShortfall(shown: number | null, silver: UnitSilver | null)
 }
 
 /**
+ * Whether a Silver figure is too wide for its box (`ah-j92v`): a figure is shown whole or, when
+ * this holds, as a single `…` - never as its leading digits. The shortfall beside it reads the same
+ * test to decide when to narrow (`ah-ottr`, `ah-sa9p`).
+ */
+export function figureIsCut(box: { scrollWidth: number; clientWidth: number }): boolean {
+  return box.scrollWidth > box.clientWidth;
+}
+
+/**
  * How much of the shortfall a narrow Silver column can hold (`ah-ottr`): spelled out, then `▾`
  * and the number, then `▾…`, then the red `▾` alone (`ah-sa9p`) - so the figure is never what is
  * cut first and a shortfall is never hidden completely. `unmarked` is still `▾` alone, for a row
