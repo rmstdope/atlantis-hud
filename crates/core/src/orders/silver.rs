@@ -2053,6 +2053,9 @@ pub struct FactionPurse {
 ///
 /// Returns `None` for anything it cannot read, which the caller treats as "this region pays no
 /// wages" rather than as doubt: a region with no wages line genuinely pays none.
+/// `semantics::pays_no_wages` is the exception: it warns on a missing line, never on one that is
+/// there but unreadable, so it asks `ReportRegion::wages` itself rather than reading `None` here
+/// as "no wage line" (`ah-pfa0`).
 #[must_use]
 pub fn parse_wage_centis(wages: Option<&str>) -> Option<i64> {
     let text = wages?.trim().trim_start_matches('$').trim();

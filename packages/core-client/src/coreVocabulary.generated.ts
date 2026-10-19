@@ -61,7 +61,8 @@ export const ADVISORY_CHECK_CODES = [
   "sail-not-by-owner",
   "study-gains-nothing",
   "leaders-and-men-mixed",
-  "discard-from-shared-stock"
+  "discard-from-shared-stock",
+  "work-earns-nothing"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

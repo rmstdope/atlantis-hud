@@ -48,6 +48,10 @@ fn report_with(region: &str, structures: &str) -> String {
         "Foo (1) Report",
         "",
         region,
+        "------------------------------------------------------------",
+        // Courier's WORK is a bystander, so the region pays wages: with no wage line it would earn
+        // nothing and be told so (`ah-pfa0`).
+        "  Wages: $11.0 (Max: $50).",
         "",
         "Exits:",
         "  Southeast : plain (2,2) in Nowhere.",
