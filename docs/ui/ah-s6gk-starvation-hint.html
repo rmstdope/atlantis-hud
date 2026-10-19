@@ -1,0 +1,27 @@
+<!doctype html><meta charset=utf-8><title>ah-s6gk starvation hint (chosen: A)</title><style>body{font:14px system-ui,sans-serif;background:#1e1f22;color:#ddd;margin:16px;max-width:900px}
+h1{font-size:18px}h2{font-size:15px;margin-top:28px;color:#9ec3ff}
+.row{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+table{border-collapse:collapse;font-size:13px}td,th{border:1px solid #444;padding:4px 8px}
+.cell{background:#3a3320}.warn{color:#f2b33d}
+.pop{background:#2b2d31;border:1px solid #555;border-radius:6px;padding:10px 12px;width:360px;font-size:13px;box-shadow:0 4px 14px #0008}
+.pop .fig{display:flex;justify-content:space-between;font-weight:600;margin-bottom:6px}
+.pop .line{display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:2px 0;border-top:1px solid #3a3a3a}
+.pop p{margin:8px 0 0}.amber{color:#f2b33d}.gone{text-decoration:line-through;color:#888}
+.new{background:#284a2c;border-radius:4px;padding:3px 5px}.red{color:#ff7a7a}
+.cap{color:#999;font-size:12px;margin-top:6px;max-width:360px}</style>
+<h1>Option A — the sentence simply goes</h1>
+<p>Swamp (10,50). Drone has 24 silver and orders STUDY STEA, which costs 50 — the study is refused. Drone still pays its 10 upkeep and ends the month with 14.</p>
+<table><tr><th>Unit</th><th>Silver</th></tr><tr><td>Drone (13432)</td><td class="cell">14 <span class="warn">⚠</span></td></tr></table>
+<h2>Hovering Drone's Silver cell</h2><div class="row"><div class="pop"><div class="fig"><span>Silver — Drone (13432)</span><span>14 <span class="amber">⚠</span></span></div>
+<div class="line"><span>In the report</span><span></span><span>24</span></div>
+<div class="line"><span>upkeep</span><span>1 man</span><span>−10</span></div>
+<div class="line"><span>study STEA</span><span>refused</span><span>0</span></div>
+<p class="amber">⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel.</p>
+<p class="gone">This unit may avoid starvation if a same-region allied unit is sharing silver or food.</p>
+</div><div class="cap">The starvation sentence is removed. The amber line already points to the Problems panel, where the refused study is explained.<br><br>Struck-through text is what shows today and will no longer show.</div></div>
+<h2>A unit that really cannot pay its upkeep</h2><div class="row"><div class="pop"><div class="fig"><span>Silver — Scout (13440)</span><span class="red">−6 <span class="amber">⚠</span></span></div>
+<div class="line"><span>In the report</span><span></span><span>4</span></div>
+<div class="line"><span>upkeep</span><span>1 man</span><span>−10</span></div>
+<p class="amber">A red figure in the cell: this unit ends the month 6 short. ⚠ in the cell: a check warns about this unit's money. Select the unit to read it in the Problems panel.</p>
+<p>This unit may avoid starvation if a same-region allied unit is sharing silver or food.</p></div>
+<div class="cap">Unchanged in both options: a unit that cannot pay its upkeep keeps the sentence.</div></div>
