@@ -9,8 +9,9 @@ import { figureIsCut } from "../unitTable";
  * The whole figure always stays in the box and in layout, so the box is exactly as wide as a
  * truncated figure would be and the shortfall beside it (`SilverShortfall`, which measures this box
  * through `data-silver-figure`) narrows exactly as before. Only the paint changes: a cut figure's
- * digits are given no opacity (not a transparent colour, which forced colours would repaint) and the `…` is drawn over the box's right edge, from a `::before` on an
- * `aria-hidden` span, so the cell's text and what a screen reader hears are still the whole figure.
+ * digits are given no opacity (not a transparent colour, which forced colours would repaint) and
+ * the `…` is drawn over the box's right edge, from a `::before` on an `aria-hidden` span, so the
+ * cell's text and what a screen reader hears are still the whole figure.
  * Since nothing here changes layout, measuring it cannot feed back into what is measured.
  */
 export function WholeFigure({ children }: { children: ReactNode }) {
