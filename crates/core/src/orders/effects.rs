@@ -4872,6 +4872,18 @@ pub(crate) fn merge_skills(
         .collect()
 }
 
+/// [`read_flag_order`] on a raw order line: its arguments trimmed through `consumed_arguments`
+/// first, so `SHARE 0 note` reads as `SHARE 0` exactly as the walk's own arm reads it - the one
+/// entry for every reader that sees the line before the grammar has (review finding 1, `ah-e529`).
+pub(crate) fn read_flag_line(
+    command: &super::lexer::Token,
+    arguments: &[super::lexer::Token],
+    ruleset: Option<&Ruleset>,
+) -> Option<FlagChange> {
+    let arguments = super::grammar::consumed_arguments(command, arguments, ruleset)?;
+    read_flag_order(command, arguments)
+}
+
 /// The flag order this line is, if it is one.
 ///
 /// `None` for every other command and for a flag order whose argument the grammar refuses, so a
@@ -7549,6 +7561,38 @@ mod tests {
             ),
             vec!["behind", "sharing"],
             "a SHARE 0 below the FORM does not reach it"
+        );
+    }
+
+    /// Review finding 2 on `ah-e529`: a nested `FORM` inherits its formed parent's sharing as the
+    /// walk has it at that line - the outer block's own SHARE included - mirroring
+    /// `intents::a_share_written_above_a_form_is_what_its_unit_inherits`.
+    #[test]
+    fn a_nested_form_inherits_the_share_its_formed_parent_wrote_above_it() {
+        let nested_shares = |orders: &str| {
+            preview_over(&report_with_a_flagged_former(), orders).regions[0]
+                .units
+                .iter()
+                .find(|unit| unit.unit.unit_id == "new-2")
+                .expect("new-2 is previewed")
+                .unit
+                .flags
+                .iter()
+                .any(|flag| flag == "sharing")
+        };
+        let gifts = "GIVE NEW 1 1 LEAD\nGIVE NEW 2 1 LEAD\n";
+
+        assert!(
+            !nested_shares(&format!(
+                "unit 900\nSHARE 0\nFORM 1\nFORM 2\nEND\nEND\n{gifts}"
+            )),
+            "the outer unit inherited SHARE 0 and passed it on"
+        );
+        assert!(
+            nested_shares(&format!(
+                "unit 900\nSHARE 0\nFORM 1\nSHARE 1 note\nFORM 2\nEND\nEND\n{gifts}"
+            )),
+            "the outer block's SHARE 1, trailing word and all, is in force at the nested FORM"
         );
     }
 

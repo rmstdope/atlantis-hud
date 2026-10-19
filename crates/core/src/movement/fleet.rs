@@ -202,8 +202,11 @@ impl WrittenMovement {
                     if let Some(crate::report::flags::FlagChange::Toggle {
                         setting: crate::report::flags::Setting::NoCross,
                         on,
-                    }) = crate::orders::effects::read_flag_order(line.command, line.arguments)
-                    {
+                    }) = crate::orders::effects::read_flag_line(
+                        line.command,
+                        line.arguments,
+                        ruleset,
+                    ) {
                         nocross_by_unit.insert(unit_id.clone(), on);
                     }
                 }

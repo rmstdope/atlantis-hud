@@ -364,7 +364,8 @@ pub fn read_intents(source: &str, ruleset: Option<&Ruleset>) -> Vec<UnitIntents>
         // (see `read_intents`'s own doc); an order inside either is not this reading's business.
         Event::Order { line, depth } if depth == Depth::default() => {
             if let Some(unit) = units.last_mut() {
-                if let Some(change) = super::effects::read_flag_order(line.command, line.arguments)
+                if let Some(change) =
+                    super::effects::read_flag_line(line.command, line.arguments, ruleset)
                 {
                     unit.flag_changes.push(change);
                 }
@@ -691,7 +692,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
 
     fn record_order(&mut self, command: &Token, arguments: &[Token], line_number: usize) {
         if matches!(self.forms.owner(), super::blocks::Owner::Block) {
-            let share = super::effects::read_flag_order(command, arguments)
+            let share = super::effects::read_flag_line(command, arguments, self.ruleset)
                 .as_ref()
                 .and_then(share_toggle);
             if let (Some(on), Some(id)) = (share, self.current.as_ref()) {
@@ -702,7 +703,7 @@ impl<'a, 'r> FormReader<'a, 'r> {
             return;
         };
         let block = &mut self.results[active];
-        if let Some(change) = super::effects::read_flag_order(command, arguments) {
+        if let Some(change) = super::effects::read_flag_line(command, arguments, self.ruleset) {
             block.flag_changes.push(change);
         }
         if let Some(intent) = read_order(command, arguments, self.ruleset) {
@@ -2540,6 +2541,35 @@ mod tests {
             inherited("unit 1922\nTURN\nSHARE 0\nENDTURN\nFORM 1\nEND\n"),
             vec![alias("1", None)],
             "a SHARE inside a TURN block is a later month's"
+        );
+    }
+
+    /// Review finding 1 on `ah-e529`: the grammar takes `SHARE 0 note` as `SHARE 0`, trailing word
+    /// ignored, and so does the engine (`ParseTF` reads one token) - on every reading of a flag
+    /// order, the reported unit's own, a formed block's and what a FORM inherits.
+    #[test]
+    fn a_flag_order_with_a_trailing_word_is_read_as_the_grammar_reads_it() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let source = "unit 1922\nSHARE 0 note\nFORM 1\nSHARE 1 note\nFORM 2\nEND\nEND\n";
+        let formed = read_formed(source, &regions, None);
+
+        let off = FlagChange::Toggle {
+            setting: Setting::Sharing,
+            on: false,
+        };
+        let on = FlagChange::Toggle {
+            setting: Setting::Sharing,
+            on: true,
+        };
+        assert_eq!(only_unit(source).flag_changes, vec![off]);
+        assert_eq!(formed[0].flag_changes, vec![on]);
+        assert_eq!(
+            formed
+                .iter()
+                .map(|block| block.inherited_share)
+                .collect::<Vec<_>>(),
+            vec![Some(false), Some(true)]
         );
     }
 
