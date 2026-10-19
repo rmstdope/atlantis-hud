@@ -15,10 +15,12 @@ import {
   summarizeOrderValidation,
   unitsWarnedAboutSilver,
   hexesShortOfSilver,
+  nestedFormBlocks,
   NO_PRODUCTION,
   NO_STUDENTS, NO_FACTION_ORDERS
 } from "./orderEditor";
 import { unitRowKey } from "./unitTable";
+import { blockFor } from "./ordersDocument";
 
 describe("orderEditor policy", () => {
   // The vocabulary is the core's, fetched through the client, so that the two cannot drift. The
@@ -692,4 +694,25 @@ describe("a FORM nested inside a FORM", () => {
     expect(diagnosticsForUnit(NESTED, "1922", [unnamed(5)], REGION, "origins")).toEqual([]);
   });
 
+});
+
+describe("nestedFormBlocks", () => {
+  //   0 unit 1922  1 form 1  2 buy 1 hdwa  3 form 2  4 WROK  5 end  6 end
+  const NESTED = "unit 1922\nform 1\nbuy 1 hdwa\nform 2\nWROK\nend\nend";
+  const REGION = new Set(["1922"]);
+  const aliases = (unitId: string) =>
+    nestedFormBlocks(NESTED, unitId, blockFor(NESTED, unitId, REGION, "origins")!, REGION, "origins").map(
+      (block) => block.alias
+    );
+
+  it("is the FORM blocks written directly in the block on screen, one level deep", () => {
+    expect(aliases("1922")).toEqual(["1"]);
+    expect(aliases("new-1")).toEqual(["2"]);
+    expect(aliases("new-2")).toEqual([]);
+  });
+
+  it("is none without the hex's units, since no NEW alias resolves", () => {
+    const block = blockFor(NESTED, "1922", undefined, "origins")!;
+    expect(nestedFormBlocks(NESTED, "1922", block, undefined, "origins")).toEqual([]);
+  });
 });

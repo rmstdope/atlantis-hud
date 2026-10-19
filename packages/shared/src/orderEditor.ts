@@ -9,7 +9,7 @@ import type {
 import { SILVER_TROUBLE_CODES } from "@atlantis/core-client";
 import { blockFor, findFormBlocks, formBlockFor, formedAlias } from "./ordersDocument";
 import type { OrderCommentSyntax } from "./rulesets";
-import type { FormBlock } from "./ordersDocument";
+import type { FormBlock, UnitBlock } from "./ordersDocument";
 import { unitRowKey, type UnitRowKey } from "./unitTable";
 
 export type OrderValidationSummary = {
@@ -163,6 +163,43 @@ export const NO_STUDENTS: NewStudents = { quartermasters: 0, mages: 0, apprentic
 export const NO_FACTION_ORDERS: FactionOrders = { applied: null, lastFailure: null };
 
 /**
+ * The `FORM` blocks written directly in the block on screen: the ones whose findings belong to the
+ * unit each forms rather than to `unitId` (`ah-ty3s.1`, F1), and so the ones whose FORM line
+ * carries a tag in this editor (`ah-j10j`). One rule for both, so the tag and the routing cannot
+ * disagree about which blocks are this editor's.
+ *
+ * "Directly" is one level, and it is asked of the block on screen rather than of the reported
+ * unit: a `FORM 2` inside `new-1`'s own block is `new-2`'s business and not `new-1`'s, exactly as
+ * `form 1` is `new-1`'s and not `1922`'s. `FormBlock.unitId` is always the enclosing *reported*
+ * unit however deep the nesting, so the parent is read from `parentIndex`.
+ *
+ * Only a block a formed unit's own editor can actually reach: a duplicate `form 1` the server
+ * swallows is reachable from no editor, so excluding its lines would leave a syntax error inside
+ * it underlined nowhere. Without the hex's units no `NEW` alias resolves, so there are none.
+ */
+export function nestedFormBlocks(
+  document: string,
+  unitId: string,
+  block: UnitBlock,
+  regionUnitIds: ReadonlySet<string> | undefined,
+  syntax: OrderCommentSyntax
+): FormBlock[] {
+  if (regionUnitIds === undefined) {
+    return [];
+  }
+  const formBlocks = findFormBlocks(document, syntax);
+  return formBlocks.filter((candidate) => {
+    if (formBlockFor(document, candidate.alias, regionUnitIds, syntax)?.headerLine !== candidate.headerLine) {
+      return false;
+    }
+    const parent = candidate.parentIndex === null ? null : formBlocks[candidate.parentIndex];
+    return parent === null
+      ? formedAlias(unitId) === null && candidate.unitId === unitId
+      : parent.headerLine === block.headerLine;
+  });
+}
+
+/**
  * The diagnostics belonging to one unit, numbered from the top of that unit's block.
  *
  * The core validates the whole faction document at once and counts its lines from the top of it,
@@ -191,29 +228,7 @@ export function diagnosticsForUnit(
   // unit that block forms, not to the unit whose editor this is - the same rule the name-first
   // test above delivers for the findings that do name one. The `form` line and its `end` are
   // deliberately outside the span, so a finding about the `FORM` order itself stays here.
-  //
-  // "Nested in this one" is one level, and it is asked of the block on screen rather than of the
-  // reported unit: a `FORM 2` inside `new-1`'s own block is `new-2`'s business and not `new-1`'s,
-  // exactly as `form 1` is `new-1`'s and not `1922`'s. `FormBlock.unitId` is always the enclosing
-  // *reported* unit however deep the nesting, so the parent is read from `parentIndex`.
-  //
-  // Only a block a formed unit's own editor can actually reach: a duplicate `form 1` the server
-  // swallows is reachable from no editor, so excluding its lines would leave a syntax error inside
-  // it underlined nowhere.
-  const formBlocks = regionUnitIds === undefined ? [] : findFormBlocks(document, syntax);
-  const reachable = (candidate: FormBlock): boolean =>
-    regionUnitIds !== undefined &&
-    formBlockFor(document, candidate.alias, regionUnitIds, syntax)?.headerLine ===
-      candidate.headerLine;
-  const nested = formBlocks.filter((candidate) => {
-    if (!reachable(candidate)) {
-      return false;
-    }
-    const parent = candidate.parentIndex === null ? null : formBlocks[candidate.parentIndex];
-    return parent === null
-      ? formedAlias(unitId) === null && candidate.unitId === unitId
-      : parent.headerLine === block.headerLine;
-  });
+  const nested = nestedFormBlocks(document, unitId, block, regionUnitIds, syntax);
   const insideNestedForm = (lineStart: number, lineEnd: number): boolean =>
     nested.some(
       (candidate) => lineEnd >= candidate.firstLine + 1 && lineStart <= candidate.lastLine + 1
