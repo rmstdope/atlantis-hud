@@ -328,6 +328,7 @@ describe("buyAllSentences (ah-jown)", () => {
     aUnitSilver({
       buyAll: [
         {
+          tag: "GRAI",
           boughtNamed: "19 grain",
           marketNamed: "30 grain",
           bought: 19,
@@ -402,6 +403,7 @@ describe("buyAllSentences (ah-jown)", () => {
           marketPurseHeldOnly: true,
           buyAll: [
             {
+              tag: "HORS",
               boughtNamed: "12 horses",
               marketNamed: "100 horses",
               bought: 12,
@@ -486,6 +488,7 @@ describe("buyAllSentences (ah-jown)", () => {
     const silk = (
       overrides: Partial<UnitSilver["buyAll"][number]>
     ): UnitSilver["buyAll"][number] => ({
+      tag: "SILK",
       boughtNamed: "12 silk",
       marketNamed: "16 silk",
       bought: 12,
@@ -514,21 +517,25 @@ describe("buyAllSentences (ah-jown)", () => {
       ]);
     });
 
-    it("says nothing for a BUY ALL after an exact BUY", () => {
+    // Amended by `ah-k3ew`: the BUY ALL is the unit's only row for the silk, so it carries the one
+    // share sentence, and names the whole share rather than nothing.
+    it("names the whole share for a BUY ALL after an exact BUY", () => {
+      const whole =
+        "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it.";
       expect(
         buyAllSentences(
           aUnitSilver({
             buyAll: [silk({ bought: 0, boughtNamed: "no silk", alreadyBought: 12 })]
           })
         )
-      ).toEqual([]);
+      ).toEqual([whole]);
       expect(
         buyAllSentences(
           aUnitSilver({
             buyAll: [silk({ bought: 3, boughtNamed: "3 silk", alreadyBought: 9 })]
           })
         )
-      ).toEqual([]);
+      ).toEqual([whole]);
     });
 
     it("leaves the faction-mate's single line as it was", () => {
@@ -580,6 +587,98 @@ describe("buyAllSentences (ah-jown)", () => {
       ).toEqual([
         "This unit buys no silk: your other units in this region have claimed all 16 this market has."
       ]);
+    });
+  });
+
+  // `ah-k3ew`: the share sentence names everything the unit buys of the goods at this market,
+  // summed over all its BUY lines, and is said once per goods.
+  describe("the whole share (ah-k3ew)", () => {
+    // Fixture neworigins-3.0.0-g3-f42-t42, tundra (35,9): 16 silk at $85, the Scout holding 869.
+    const scout = (
+      overrides: Partial<UnitSilver["buyAll"][number]>
+    ): UnitSilver["buyAll"][number] => ({
+      tag: "SILK",
+      boughtNamed: "3 silk",
+      marketNamed: "16 silk",
+      bought: 3,
+      affordable: 10,
+      available: 8,
+      marketHas: 16,
+      alreadyBought: 5,
+      silverAvailable: 869,
+      price: 85,
+      cappedBy: "shared",
+      ...overrides
+    });
+
+    it("counts an exact BUY 5 SILK into the BUY ALL's share", () => {
+      expect(buyAllSentences(aUnitSilver({ buyAll: [scout({})] }))).toEqual([
+        "This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("counts an exact BUY 3 SILK into the BUY ALL's share", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [scout({ bought: 4, boughtNamed: "4 silk", available: 7, alreadyBought: 3 })]
+          })
+        )
+      ).toEqual([
+        "This unit gets 7 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("says the whole share once, on the first BUY ALL, however many lines follow", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              scout({ bought: 10, boughtNamed: "10 silk", available: 12, alreadyBought: 2 }),
+              scout({ bought: 0, boughtNamed: "no silk", available: 12, alreadyBought: 12 })
+            ]
+          })
+        )
+      ).toEqual([
+        "This unit gets 12 of the 16 silk this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("gives each goods its own share sentence", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              scout({}),
+              scout({
+                tag: "GRAI",
+                boughtNamed: "4 grain",
+                marketNamed: "10 grain",
+                bought: 4,
+                available: 6,
+                marketHas: 10,
+                alreadyBought: 2,
+                price: 18
+              })
+            ]
+          })
+        )
+      ).toEqual([
+        "This unit gets 8 of the 16 silk this market has, because your units in this region are competing for it.",
+        "This unit gets 6 of the 10 grain this market has, because your units in this region are competing for it."
+      ]);
+    });
+
+    it("stays silent after an exact BUY where silver, not the share, stopped the BUY ALL", () => {
+      expect(
+        buyAllSentences(
+          aUnitSilver({
+            buyAll: [
+              scout({ bought: 1, boughtNamed: "1 silk", affordable: 1, cappedBy: "silver" })
+            ]
+          })
+        )
+      ).toEqual([]);
     });
   });
 

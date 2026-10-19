@@ -289,3 +289,43 @@ fn a_second_buy_all_cannot_take_its_share_twice() {
     );
     assert_eq!(held, 13, "and the ITEMS ledger says the same");
 }
+
+/// `ah-k3ew`: on a line two own units contend for (`rules/buy`: an oversubscribed line is "split
+/// among the buyers in proportion to the amount each buyer attempted to buy"), a unit that writes
+/// an exact `BUY` and then a `BUY ALL` of the same goods is told its whole share. The row names its
+/// goods, so the sentence can be said once per goods, and its running total is everything the
+/// unit buys of them - the exact line included - because every exact `BUY` of a tag settles
+/// before that tag's `BUY ALL` lines do.
+#[test]
+fn a_unit_s_whole_share_is_its_last_buy_all_s_running_total() {
+    let text = report(
+        QUIET,
+        "20 grain [GRAI] at $12.",
+        &[
+            &buyer(10_000),
+            "* Rivals (901), Foo (1), orc [ORC], 10000 silver [SILV]. Weight: 10. \
+             Capacity: 0/0/15/0.",
+        ],
+    );
+    let (row, held) = both_surfaces(
+        &text,
+        "unit 900\nBUY 5 grain\nBUY ALL grain\nunit 901\nBUY ALL grain\n",
+        "900",
+        "GRAI",
+    );
+
+    let line = row.buy_all.last().expect("the BUY ALL has a row");
+    assert_eq!(line.tag, "GRAI", "the row names the goods it bought");
+    assert_eq!(
+        line.capped_by,
+        BuyAllCap::Shared,
+        "the share is what stopped it"
+    );
+    assert_eq!(line.already_bought, 5, "the exact line was bought first");
+    assert!(held < 20, "the line really was split, so this is a share");
+    assert_eq!(
+        line.already_bought + line.bought,
+        held,
+        "and the running total is the whole share the ITEMS ledger leaves the unit"
+    );
+}

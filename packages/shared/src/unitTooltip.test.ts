@@ -1902,6 +1902,7 @@ describe("no note can be shadowed by another (ah-x36v)", () => {
       shippingTargetUnshown: true,
       buyAll: [
         {
+          tag: "GRAI",
           boughtNamed: "19 grain",
           marketNamed: "30 grain",
           bought: 19,
