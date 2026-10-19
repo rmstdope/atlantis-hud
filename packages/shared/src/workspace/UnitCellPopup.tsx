@@ -45,10 +45,7 @@ export function UnitCellPopup({
       ) : null}
 
       {popup.lines.map((line, index) => (
-        <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
-          <PopupLineLabel line={line} />
-          <PopupLineValue line={line} />
-        </div>
+        <PopupRow key={`${line.label}-${index}`} line={line} />
       ))}
 
       {popup.notes.map((note, index) => (
@@ -88,12 +85,43 @@ export function PopupCaveat({ caveat }: { caveat: readonly string[] | undefined 
 }
 
 /**
+ * One line of a popup: its name and figure on top, and its dim side note - who lent, which order,
+ * what the report said - on a line of its own beneath, indented (`ah-w28r`, decisions B, S2, L1).
+ *
+ * The note is always beneath, never beside the figure, so every row with one has the same shape
+ * and a long note wraps under its own indent instead of breaking the row's name. It keeps the
+ * marking it had beside the value: struck under a struck row, italic under an uncounted one.
+ * Exported for the same reason `PopupLineValue` is.
+ */
+export function PopupRow({ line }: { line: PopupLine }) {
+  return (
+    <div>
+      <div className="flex justify-between gap-3">
+        <PopupLineLabel line={line} />
+        <PopupLineValue line={line} />
+      </div>
+      {line.why ? (
+        <p
+          data-popup-side-note="true"
+          className={`m-0 pl-3 text-pane-sm text-ink-dim${line.struck ? " line-through" : ""}${
+            line.uncounted ? " italic" : ""
+          }`}
+        >
+          {line.why}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * What one line of a popup is, on the left - with the unfinished mark before an unfinished ship's
  * own name (`ah-2ql5`). Exported for the same reason `PopupLineValue` is.
  */
 export function PopupLineLabel({ line }: { line: PopupLine }) {
   return (
-    <span className={popupLabelInk(line)}>
+    // The name never breaks: a wrapped name reads as a row of its own (`ah-w28r`).
+    <span className={`shrink-0 whitespace-nowrap ${popupLabelInk(line)}`.trimEnd()}>
       {line.unfinished === "label" ? <UnfinishedMark /> : null}
       {line.label}
     </span>
@@ -142,7 +170,6 @@ export function PopupLineValue({ line }: { line: PopupLine }) {
       ) : (
         line.value
       )}
-      {line.why ? <span className="ml-1.5 text-ink-dim">{line.why}</span> : null}
     </span>
   );
 }

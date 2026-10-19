@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PopupLine } from "../unitCellPopup";
-import { PopupCaveat, PopupLineLabel, PopupLineValue } from "./UnitCellPopup";
+import { PopupCaveat, PopupLineLabel, PopupLineValue, PopupRow } from "./UnitCellPopup";
 
 const draw = (line: PopupLine) => renderToStaticMarkup(<PopupLineValue line={line} />);
 
@@ -136,5 +136,42 @@ describe("PopupCaveat", () => {
 
   it("draws nothing without lines", () => {
     expect(renderToStaticMarkup(<PopupCaveat caveat={undefined} />)).toBe("");
+  });
+});
+
+// `ah-w28r`: a row's dim side note sits on its own indented line beneath the row (B + S2 + L1).
+describe("PopupRow", () => {
+  const row = (line: PopupLine) => renderToStaticMarkup(<PopupRow line={line} />);
+  const NOTE = /<p data-popup-side-note="true" class="([^"]*)">([^<]*)<\/p>/;
+
+  it("draws a side note on its own indented, dim line beneath its row", () => {
+    const markup = row({ label: "was lent for upkeep", value: "+50", tone: "up", why: "by Entertainers (1164)" });
+    const note = NOTE.exec(markup);
+    expect(note?.[2]).toBe("by Entertainers (1164)");
+    expect(note?.[1]).toContain("pl-3");
+    expect(note?.[1]).toContain("text-ink-dim");
+    expect(markup.indexOf("+50")).toBeLessThan(markup.indexOf("by Entertainers"));
+  });
+
+  it("keeps the side note off the value side", () => {
+    expect(draw({ label: "was lent", value: "+50", why: "by Transporter (11124)" })).not.toContain("Transporter");
+  });
+
+  it("draws a row with no side note as one line", () => {
+    expect(row({ label: "upkeep", value: "-50", tone: "down" })).not.toContain("data-popup-side-note");
+  });
+
+  it("never breaks a row's name", () => {
+    expect(renderToStaticMarkup(<PopupLineLabel line={{ label: "was lent for upkeep", value: "+50" }} />)).toContain(
+      "whitespace-nowrap"
+    );
+  });
+
+  it("keeps a struck row's note struck and an uncounted row's note italic", () => {
+    const struck = row({ label: "Cloudship CLOU", value: "0-1", struck: true, why: "was: none" });
+    expect(NOTE.exec(struck)?.[1]).toContain("line-through");
+    expect(struck).toMatch(/line-through[^>]*>[^<]*Cloudship/);
+    const uncounted = row({ label: "not counted", value: "50", uncounted: true, why: "sent to unit 123" });
+    expect(NOTE.exec(uncounted)?.[1]).toContain("italic");
   });
 });
