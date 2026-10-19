@@ -685,7 +685,8 @@ fn formed_units(
                 .copied()
                 .filter(|parent| parent.own)
                 .or_else(|| minted.get(&unit_key(&block.region_id, &block.formed_by)))?;
-            let unit = effects::formed_unit(parent, &block.alias, &parent.flags);
+            let unit =
+                effects::formed_unit(parent, &block.alias, &parent.flags, block.inherited_share);
             minted.insert(unit_key(&unit.region_id, &unit.unit_id), unit.clone());
             let unknown_studies = take_unknown_studies(&mut block.intents, ruleset, report_skills);
             Some(Formed {
@@ -46842,6 +46843,29 @@ BUILD
             });
         }
 
+        /// `ah-e529`: the same hex with `SHARE 0` written above the `FORM` - the formed unit
+        /// inherits its former's flag as it stands at that line (`../Atlantis/parseorders.cpp`
+        /// `Game::ProcessShareOrder`, `temp->CopyFlags(former)`), so it is no sharer and lends
+        /// nothing; the tower's sharer lends instead.
+        #[test]
+        fn a_formed_unit_under_a_share_0_above_its_form_lends_nothing() {
+            let hex_region = region(vec![
+                sharing(with_item(unit("2000"), 5, "swords", "SWOR")),
+                in_structure(sharing(with_item(unit("3001"), 5, "swords", "SWOR")), "4"),
+                in_structure(unit("3002"), "4"),
+                in_structure(unit("3003"), "4"),
+            ]);
+            let orders = "unit 2000\nGIVE NEW 1 5 SWOR\nSHARE 0\nFORM 1\nEND\n\n\
+                          unit 3002\nGIVE 3003 5 SWOR\n";
+            settled(hex_region, orders, |hex, _| {
+                assert_eq!(
+                    (early(hex, "new-1", "SWOR"), early(hex, "3001", "SWOR")),
+                    (5, 0),
+                    "the formed unit keeps its swords, the tower's sharer lends"
+                );
+            });
+        }
+
         /// Review finding 2: a giver holding none of the goods still gives a sharer's.
         #[test]
         fn a_giver_holding_none_gives_a_sharers_goods_on_both_surfaces() {
@@ -47501,6 +47525,38 @@ BUILD
                 claims_pool: false,
             }],
             "the formed unit inherited sharing, so the hex answers for it and it claims nothing"
+        );
+    }
+
+    /// `ah-e529`: a `SHARE 0` written above the `FORM` is in force when the engine copies the
+    /// former's flags (`../Atlantis/parseorders.cpp` `Game::ProcessShareOrder`, "Instant order";
+    /// `Game::ProcessFormOrder`, `temp->CopyFlags(former)`), so the formed unit does not share and
+    /// its overdraft is a claim on the pool - the mirror of the test above.
+    #[test]
+    fn a_formed_unit_under_a_share_0_above_its_form_claims_the_pool() {
+        let orders = "unit 5\nSHARE 0\nFORM 1\nGIVE 0 30 swords\nEND\n";
+        let parsed = report(vec![region(vec![
+            sharing(unit("5")),
+            sharing(with_item(unit("7"), 20, "swords", "SWOR")),
+            an_ally("9"),
+        ])]);
+        let ordered = OrderedUnits::read(orders);
+        let formed = formed_units(&parsed, orders, None, &study::ReportSkills::default());
+        let hex = Hex::read(&parsed.regions[0], &ordered, &formed);
+        let rules = ruleset();
+        let ledger = ledger_for(&hex, Some(&rules));
+        let sharing = Sharing::read(&hex);
+        let found = judge_shortfalls(&hex, &ledger, &sharing, Some(&rules));
+
+        assert_eq!(
+            found,
+            vec![Verdict::DeferredToPool {
+                unit_id: "new-1".to_string(),
+                tag: "SWOR".to_string(),
+                short: 30,
+                claims_pool: true,
+            }],
+            "the former stopped sharing above the FORM, so the formed unit does not share"
         );
     }
 
