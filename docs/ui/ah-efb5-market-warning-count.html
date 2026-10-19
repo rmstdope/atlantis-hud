@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Market warning count</title><style>
+:root{--ground:#10151c;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--warn:#e0a03a;--bad:#e06a5a;--sel:#2a3a52}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:14px/1.5 'Helvetica Neue',Arial,sans-serif;padding:24px 16px 48px}
+main{max-width:980px;margin:0 auto}
+h1{font:22px Georgia,serif}h1 span{color:var(--brass)}
+.lede{color:var(--soft);margin:8px 0 20px;max-width:90ch}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--raised);border:1px solid var(--edge);border-radius:6px;overflow:hidden}
+.panel h3{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--brass);font-weight:normal;padding:8px 12px;border-bottom:1px solid var(--edge)}
+.orders{font:13px/1.7 'SF Mono',Menlo,monospace;padding:8px 0}
+.orders div{padding:0 12px}
+.orders .unit{color:var(--soft)}
+.orders .flag{text-decoration:underline wavy var(--warn);text-underline-offset:3px}
+.tip{margin:6px 12px 10px 24px;background:#26303d;border-left:3px solid var(--warn);padding:8px 10px;font:13px/1.45 'Helvetica Neue',Arial,sans-serif;color:var(--ink);border-radius:3px}
+.tip a,.prob a{color:#8fb8ff;text-decoration:underline;cursor:pointer}
+.prob{padding:6px 0}
+.hexhead{padding:6px 12px;color:var(--brass);font-weight:bold;font-size:13px}
+.item{padding:4px 12px 8px 28px;color:var(--ink);font-size:13px;position:relative}
+.item:before{content:'\26A0';color:var(--warn);position:absolute;left:10px}
+.item.unit{color:var(--soft)}
+.note{color:var(--dim);font-size:12.5px;font-style:italic;margin-top:14px;max-width:90ch}
+.cost{margin-top:14px;padding:10px 12px;border:1px dashed var(--edge);color:var(--soft);font-size:13px;border-radius:4px}
+.cost b{color:var(--ink)}
+.row{display:flex;justify-content:space-between;padding:3px 12px;font-size:13px}
+.row .s{color:var(--bad)}
+
+section{margin-bottom:36px}
+.today{color:var(--dim);text-decoration:line-through}</style></head><body><main><h1><span>ah-efb5</span> &mdash; the market warning counts what the game will try to buy (agreed 2026-10-19)</h1>
+<p class="lede">Chosen: the count is what the game will try to buy after cutting orders a unit cannot pay for and leaving out men it refuses outright; when the count differs from the orders as written, a clause gives the written total and names each reason with its own number (B, then A, then A). When nothing is cut or refused the sentence is unchanged; when the cut brings the total down to what the market has, there is no warning.</p>
+<h1><span>Option B &mdash; count what the game will try to buy, and say why it is fewer than written</span></h1>
+<p class="lede">The number becomes 7 and, only when some order was cut for lack of silver, a short clause gives the written total. When nothing is cut, the sentence reads exactly as today.</p>
+<section>
+<div class="grid">
+<div class="panel"><h3>Orders &mdash; mountain (36,4)</h3><div class="orders">
+<div class="unit">unit 13303 &nbsp;; City Guards</div>
+<div>GIVE 1164 1000 SILV</div><div>FORM 1</div><div>&nbsp;&nbsp;BUY 1 LEAD</div><div>&nbsp;&nbsp;<span class="flag">BUY 5 ORC</span></div><div>END</div><div>GIVE NEW 1 100 SILV</div>
+<div class="tip">your units here buy 7 orcs between them and this market has 6 (11 ordered, cut to what they can pay for)</div>
+<div class="unit">unit 1164 &nbsp;; Entertainers</div><div><span class="flag">BUY 6 ORC</span></div>
+<div class="tip">your units here buy 7 orcs between them and this market has 6 (11 ordered, cut to what they can pay for)</div>
+</div>
+<div class="row"><span>new unit 1 &middot; spent on orcs</span><span>1 orc &middot; 62</span></div>
+<div class="row"><span>Entertainers (1164) &middot; spent on orcs</span><span>5 orcs &middot; 310</span></div>
+</div>
+<div class="panel"><h3>Problems</h3><div class="prob">
+<div class="hexhead">mountain (36,4)</div>
+<div class="item">new unit 1 of City Guards (13303): your units here buy 7 orcs between them and this market has 6 (11 ordered, cut to what they can pay for)</div>
+<div class="item">Entertainers (1164): your units here buy 7 orcs between them and this market has 6 (11 ordered, cut to what they can pay for)</div>
+</div>
+<p class="note" style="margin:10px 12px">Today it reads: <span class="today">your units here buy 11 orcs between them and this market has 6</span></p>
+</div>
+</div>
+<div class="cost"><b>Cost:</b> Cost: a longer sentence in exactly the case that confuses; the usual case is unchanged.</div>
+<p class="note">The market sells 6 orcs at $62. The new unit has $100, so it cannot afford its leader and can pay for only 1 of its 5 orcs; the game tries to buy 1 + 6 = 7 orcs and shares the 6 in proportion. Figures from the team's test report.</p>
+</section>
+<h1><span>One buyer alone, option A</span></h1><p class="lede">The one-unit sentence gets the same clause as the several-unit one, with &ldquo;it&rdquo; for &ldquo;they&rdquo;.</p><section><div class="grid"><div class="panel"><h3>Orders &mdash; mountain (36,4)</h3><div class="orders"><div class="unit">unit 1164 &nbsp;; Entertainers, $186</div><div><span class="flag">BUY 5 ORC</span></div><div class="tip">this unit buys 3 orcs and this market has 2 (5 ordered, cut to what it can pay for)</div></div><div class="row"><span>Entertainers (1164) &middot; spent on orcs</span><span>2 orcs &middot; 124</span></div></div>
+<div class="panel"><h3>Problems</h3><div class="prob"><div class="hexhead">mountain (36,4)</div><div class="item">Entertainers (1164): this unit buys 3 orcs and this market has 2 (5 ordered, cut to what it can pay for)</div></div></div></div></section><div class="cost"><b>Cost:</b> A longer sentence, but it reads the same way as the several-unit one.</div><p class="note">Illustrative: the market has 2 orcs at $62; Entertainers order 5 but can pay for 3, so the game tries to buy 3. Today it reads &ldquo;this unit buys 5 orcs and this market has 2&rdquo;.</p>
+<h1><span>Orders refused outright, option A</span></h1><p class="lede">Each reason is named, with its own count; both appear when both happen.</p><section><div class="grid"><div class="panel"><h3>Orders &mdash; mountain (36,4) &mdash; refused only</h3><div class="orders"><div class="unit">new unit 1 of City Guards (13303), $300</div><div>BUY 1 LEAD</div><div><span class="flag">BUY 5 ORC</span></div><div class="unit">unit 1164 &nbsp;; Entertainers</div><div><span class="flag">BUY 6 ORC</span></div><div class="unit">unit 1170 &nbsp;; Miners</div><div><span class="flag">BUY 3 ORC</span></div><div class="tip">your units here buy 9 orcs between them and this market has 6 (14 ordered, 5 of them refused for mixing with leaders)</div></div></div>
+<div class="panel"><h3>Problems</h3><div class="prob"><div class="hexhead">mountain (36,4) &mdash; refused only</div><div class="item">Entertainers (1164): your units here buy 9 orcs between them and this market has 6 (14 ordered, 5 of them refused for mixing with leaders)</div><div class="item">Miners (1170): your units here buy 9 orcs between them and this market has 6 (14 ordered, 5 of them refused for mixing with leaders)</div></div></div></div></section><section><div class="grid"><div class="panel"><h3>Orders &mdash; mountain (36,4) &mdash; refused and cut</h3><div class="orders"><div class="unit">the same, Miners order BUY 6 ORC but can pay for 3</div><div class="tip">your units here buy 9 orcs between them and this market has 6 (17 ordered: 5 refused for mixing with leaders, 3 cut to what they can pay for)</div></div></div>
+<div class="panel"><h3>Problems</h3><div class="prob"><div class="hexhead">mountain (36,4) &mdash; refused and cut</div><div class="item">Entertainers (1164): your units here buy 9 orcs between them and this market has 6 (17 ordered: 5 refused for mixing with leaders, 3 cut to what they can pay for)</div></div></div></div></section><div class="cost"><b>Cost:</b> The longest wording, but every orc missing from the written total is accounted for.</div><p class="note">Illustrative: City Guards&rsquo; new unit buys 1 leader, then 5 orcs. It can afford its leader, so the game refuses the 5 orcs outright (leaders and ordinary men cannot share a unit) and tries to buy only Entertainers&rsquo; 6 &mdash; plus the second case, where a third unit, Miners, is cut for silver at the same time.</p></main></body></html>
