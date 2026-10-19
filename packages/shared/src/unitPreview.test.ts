@@ -1526,6 +1526,7 @@ describe("formatItems and itemsTooltip", () => {
       productionCappedBy: "materials",
       buyAll: [
         {
+          tag: "GRAI",
           boughtNamed: "19 grain",
           marketNamed: "30 grain",
           bought: 19,
@@ -1555,6 +1556,7 @@ describe("formatItems and itemsTooltip", () => {
       previewChanges: [{ field: "items", original: "0 SILK" }]
     });
     const line = {
+      tag: "SILK",
       boughtNamed: "12 silk",
       marketNamed: "16 silk",
       bought: 12,
