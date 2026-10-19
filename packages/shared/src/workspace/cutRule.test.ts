@@ -14,6 +14,14 @@ describe("isCut", () => {
     expect(isCut(121, 120)).toBe(true);
   });
 
+  it("is cut by a fraction of a pixel, which still draws the ellipsis", () => {
+    expect(isCut(100.3, 100)).toBe(true);
+  });
+
+  it("is not cut by layout's rounding noise", () => {
+    expect(isCut(100.004, 100)).toBe(false);
+  });
+
   it("is not cut when there is nothing to measure", () => {
     expect(isCut(0, 0)).toBe(false);
   });

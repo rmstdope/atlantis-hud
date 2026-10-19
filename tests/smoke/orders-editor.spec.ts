@@ -945,6 +945,8 @@ test("at its smallest height the orders panel keeps three editor lines and one p
  * problem row out of the panel (docs/ui/ah-sgvo-status-one-line.html).
  */
 async function withProblemsElsewhere(page: Page) {
+  // The bead's own window: its 348 px right rail is where the line used to wrap.
+  await page.setViewportSize({ width: 1400, height: 813 });
   await onlyChecks(page, []);
   await openEditor(page);
   await shrinkOrders(page);
@@ -954,6 +956,7 @@ async function withProblemsElsewhere(page: Page) {
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, FIVE_PROBLEMS);
+  await saveNow(page);
   await expect(page.getByTestId("orders-status-elsewhere")).toHaveText("1 elsewhere");
   await expect(page.getByTestId("orders-status-save")).toHaveText(/saved \d/u);
 }
@@ -997,7 +1000,13 @@ test("with problems elsewhere the smallest orders panel keeps one status line, t
   const room = await ordersRoom(page);
   expect(room.listHeight).toBeGreaterThanOrEqual(room.rowHeight - 0.5);
   expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
-  expect((await statusPieces(page)).wrapped).toBe(false);
+  const pieces = await statusPieces(page);
+  expect(pieces.wrapped).toBe(false);
+  // The case is reached: at the rail's own width the line does not fit, and the save notice is
+  // what gave way - cut, with its full text on hover.
+  const saveText = (await page.getByTestId("orders-status-save").textContent())!;
+  await expect.poll(async () => (await statusPieces(page)).save.title).toBe(saveText);
+  expect(pieces.elsewhere.title).toBeNull();
 });
 
 test("a narrow status line cuts the save notice to … before the elsewhere count, and never the counts", async ({
@@ -1039,6 +1048,11 @@ test("a narrow status line cuts the save notice to … before the elsewhere coun
   expect(pieces.warnings.shown).toBeGreaterThanOrEqual(pieces.warnings.full);
   expect(pieces.errors.title).toBeNull();
   expect(pieces.warnings.title).toBeNull();
+
+  // Room again: the line re-fits at once, and what now fits is shown whole, without a tooltip.
+  await squeezeStatus(page, counts + natural.elsewhere.full + natural.save.full + 20);
+  await expect.poll(async () => (await statusPieces(page)).save.title).toBeNull();
+  await expect.poll(async () => (await statusPieces(page)).elsewhere.title).toBeNull();
 });
 
 test("the line just typed stays visible when its warning list appears", async ({ page }) => {

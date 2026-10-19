@@ -214,13 +214,16 @@ describe("a unit's problem with no line", () => {
    * it is on screen, so a static render is the uncut state: every word whole, no tooltip.
    */
   it("draws the status line on one line, every piece whole and without a tooltip", () => {
-    const markup = drawWith([problem]);
+    // An error past the end of this unit's two-line block is some other unit's: "1 elsewhere".
+    const otherUnits = { ...problem, severity: "error" as const, unitId: "999", lineStart: 9, lineEnd: 9 };
+    const markup = drawWith([problem, otherUnits as typeof problem]);
     const status = markup.slice(markup.indexOf('data-testid="orders-status"'));
     const line = status.slice(0, status.indexOf("</p>"));
 
     expect(line).toContain("whitespace-nowrap");
     expect(line).toContain(">0 errors<");
     expect(line).toContain(">1 warning<");
+    expect(line).toContain(">1 elsewhere<");
     expect(line).toContain(">not saved yet<");
     expect(line).not.toContain("title=");
   });

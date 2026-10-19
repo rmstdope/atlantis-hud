@@ -26,7 +26,11 @@ export function CutToFit({
     if (!element) {
       return;
     }
-    const measure = () => setCut(isCut(element.scrollWidth, element.clientWidth));
+    // The text's own laid-out width, which `overflow: hidden` does not change, against the box's.
+    const text = document.createRange();
+    text.selectNodeContents(element);
+    const measure = () =>
+      setCut(isCut(text.getBoundingClientRect().width, element.getBoundingClientRect().width));
     measure();
     const resized = new ResizeObserver(measure);
     resized.observe(element);
