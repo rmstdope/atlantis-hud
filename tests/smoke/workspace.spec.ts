@@ -21,7 +21,8 @@ import {
   waitForSettledHeader,
   waitForStableBox,
   waitForStableHeight,
-  closeRulesetCheck
+  closeRulesetCheck,
+  waitForValidation
 } from "./gameSetup";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
@@ -1110,6 +1111,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // (ah-8qh8); that the chip counts other hexes too is "a unit named in the problems panel is a
   // way to go there", below.
   const chip = page.getByTestId("turn-report-chip");
+  await waitForValidation(page);
   await expect(chip).toHaveAttribute("data-problems", "1");
   await chip.click();
   await page.getByTestId("turn-report-tab-problems").click();
@@ -1126,6 +1128,7 @@ test("a unit told to spend silver it has not got is warned about, without blocki
   // `fillOrders` replaces the draft, so "@work" takes the GIVE away and the shortfall goes with it.
   // Asserted after the "@work" rather than before, so the recount has landed (ah-yw4p).
   await fillOrders(page, "@work");
+  await waitForValidation(page);
   await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "0");
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
 });
@@ -1222,6 +1225,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await fillOrders(page, "GIVE 0 999999999 SILV");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
+  await waitForValidation(page);
   await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "1");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1230,6 +1234,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
+  await waitForValidation(page);
   await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "0");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1238,6 +1243,7 @@ test("a silenced advisory check disappears everywhere at once", async ({ page })
   await page.keyboard.press("Escape");
 
   await expect(page.getByTestId("region-problems")).toContainText("short");
+  await waitForValidation(page);
   await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", "1");
 });
 
@@ -2645,9 +2651,9 @@ test("the interface is not blocked while the core reads a report", async ({ page
   // out a 300ms debounce, so they ran inside the sampling window and were charged to the import:
   // the reload's validation and preview were the whole of the 900ms this guard tripped on in CI,
   // against about a tenth of that for the import itself (`ah-q767`). The chip's problem count
-  // turning non-zero is the validation landing - the restored orders carry findings - and one
-  // timer turn after it the preview queued beside it has run too, since timers fire in due order.
-  await expect(page.getByTestId("turn-report-chip")).not.toHaveAttribute("data-problems", "0");
+  // landing is waited on directly (ah-119b), and one timer turn after it the preview queued beside it
+  // has run too, since timers fire in due order.
+  await waitForValidation(page);
   await page.evaluate(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
 
   // Sample how long the main thread goes unresponsive, by watching a timer miss its deadline.
@@ -2715,7 +2721,7 @@ test("the interface is not blocked while the orders are checked", async ({ page 
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   // The load's own checks, and their answers being drawn, are not what this measures.
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /\d/);
+  await waitForValidation(page);
   await page.waitForTimeout(2500);
 
   const throttle = Number(process.env.ATLANTIS_CPU_THROTTLE ?? "1");
@@ -4169,6 +4175,7 @@ test("a unit named in the problems panel is a way to go there", async ({ page })
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 
+  await waitForValidation(page);
   await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /^[1-9]/);
   await page.getByTestId("turn-report-chip").click();
   await page.getByTestId("turn-report-tab-problems").click();

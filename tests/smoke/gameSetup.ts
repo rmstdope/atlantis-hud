@@ -372,6 +372,30 @@ export async function waitForStableHeight(page: Page, panel: string) {
 }
 
 /**
+ * Waits until order validation has answered for the orders, settings and report as they stand now.
+ *
+ * Validation is debounced and answered by the core's worker, and the problem count it leaves on the
+ * chip cannot say on its own whether it is fresh: "0" is the value before validation has run, and
+ * after `fillOrders` the previous count is still showing. Three retrospectives paid for a read made
+ * in that gap (ah-qffa, ah-dlao, ah-f9q9), each with a differently improvised wait. The chip's
+ * `data-validation` is "current" only when the answer is for exactly the present inputs (ah-119b),
+ * so read `data-problems` after this and never instead of it.
+ *
+ * The frame and timer turn first: the editor's change reaches the shell from CodeMirror's
+ * MutationObserver flush, which React schedules rather than commits on the spot, so straight after
+ * a `fill` the chip can still be showing the last render's "current".
+ */
+export async function waitForValidation(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => window.setTimeout(resolve, 0))
+      )
+  );
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-validation", "current");
+}
+
+/**
  * Waits until the header has every chip it is going to get.
  *
  * It waited on the problems chip, which arrived ~310ms after a report loaded - once the async
