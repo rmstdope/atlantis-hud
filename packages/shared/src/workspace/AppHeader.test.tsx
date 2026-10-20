@@ -27,6 +27,7 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       factionPanel={null}
       status={null}
       counts={null}
+      validation="pending"
       reportPanel={null}
       tradeCount={0}
       tradePanel={null}
@@ -368,6 +369,12 @@ describe("AppHeader, one chip for everything the turn wants checked (ah-30hg.2)"
     const markup = draw({ counts: { problems: 0, engine: 0, unreadable: 0, events: 333 } });
     expect(markup).toContain("Turn report");
     expect(markup).not.toContain("border-warn");
+  });
+
+  it("says whether validation has landed for the current orders (ah-119b)", () => {
+    const counts = { problems: 0, engine: 0, unreadable: 0, events: 0 };
+    expect(draw({ counts, validation: "pending" })).toContain('data-validation="pending"');
+    expect(draw({ counts, validation: "current" })).toContain('data-validation="current"');
   });
 
   it("has no chip at all until a report is loaded", () => {

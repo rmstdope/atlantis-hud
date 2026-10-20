@@ -1,4 +1,5 @@
 import type { ChangeEvent, DragEvent, MutableRefObject, ReactNode } from "react";
+import type { ValidationMarker } from "./validationInputs";
 import { useRef } from "react";
 import type { MageSheetChip } from "../alliedMageChip";
 import type { MapLevel } from "../hexMapModel";
@@ -100,6 +101,12 @@ type AppHeaderProps = {
    * Null when no report is loaded, which is what hides the chip entirely.
    */
   counts: TurnReportCounts | null;
+  /**
+   * Whether the problem count on the chip is the answer for the orders as they stand, or one
+   * still being checked (ah-119b). Not drawn: it is `data-validation`, for the smoke suite to wait on
+   * instead of guessing from a count whose "0" reads the same before validation as after.
+   */
+  validation: ValidationMarker;
   /** The panel itself, rendered under the chip when it is open. */
   reportPanel: ReactNode;
   /**
@@ -223,6 +230,7 @@ export function AppHeader({
   factionPanel,
   status,
   counts,
+  validation,
   reportPanel,
   tradeCount,
   tradePanel,
@@ -529,6 +537,7 @@ export function AppHeader({
             data-errors={counts.engine}
             data-unreadable={counts.unreadable}
             data-events={counts.events}
+            data-validation={validation}
             aria-haspopup="dialog"
             aria-expanded={openPopover === "report"}
             onClick={() => toggle("report")}
