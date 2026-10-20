@@ -153,3 +153,15 @@ fn an_overloaded_fleet_does_not_pass() {
         &common::ruleset(),
     );
 }
+
+/// The control for a fleet nobody sails: the sailing check judges only a hull someone SAILs, so
+/// with no SAIL it raises nothing, and that silence must not pass for a fleet that sails.
+#[test]
+#[should_panic(expected = "no unit issues SAIL")]
+fn a_fleet_nobody_sails_does_not_pass() {
+    assert_fleet_sails(
+        &coast_with(&built_longship()),
+        "unit 900\nWORK\n",
+        &common::ruleset(),
+    );
+}

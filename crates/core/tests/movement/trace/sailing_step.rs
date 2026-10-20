@@ -197,6 +197,7 @@ fn a_passenger_of_a_sail_an_eligible_teach_replaced_is_not_traced() {
     // `ah-r3rv` review: a unit formed aboard this month is formed "in the same structure if any"
     // (`rules/form`), so it rides the same hull and must be judged the same way.
     let formed_orders = "unit 900\nSAIL S\nTEACH 901\nunit 901\nFORM 1\nEND\nGIVE NEW 1 1 CTAU\n";
+    crate::common::assert_fleet_sails(&human, formed_orders, &crate::common::ruleset());
     let trace_formed = |text: &str| {
         trace_orders_for_remembered_report(
             &mut ReportCache::new(),

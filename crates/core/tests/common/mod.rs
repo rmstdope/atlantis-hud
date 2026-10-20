@@ -5,7 +5,7 @@
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::orders::effects::{ItemChangeCause, OrdersPreviewResponse, UnitPreview};
-use atlantis_hud_core::orders::intents::{read_intents, spends_the_month};
+use atlantis_hud_core::orders::intents::{read_intents, spends_the_month, Intent};
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::report::model::Coordinate;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
@@ -123,8 +123,9 @@ pub fn expect_preview_row<'a>(
 /// every surface (`ah-zbtx`, `docs/retrospectives/ah-zbtx.md`). This one reads the hull's capacity,
 /// crew requirement and speed from the ruleset, gives the captain that requirement on its own, and
 /// refuses a load over capacity. **Start every new sailing test from it**, and pair it with
-/// [`assert_fleet_sails`] once the orders are written: a test that wants a refused fleet writes the
-/// refusal on purpose, by editing what this returns.
+/// [`assert_fleet_sails`] once the orders are written - read that function's doc for what its
+/// silence does and does not prove. A test that wants a refused fleet writes the refusal on
+/// purpose, by editing what this returns.
 pub struct FleetThatSails {
     structure_id: String,
     hull: String,
@@ -173,8 +174,10 @@ impl FleetThatSails {
     /// headcount. Each man is given the sailing level that lets the captain alone meet the hull's
     /// requirement - a level is held by every man of a unit ("the sailing skill increases the
     /// usefulness of a unit proportionally", `rules/movement_sailing`) - so four men sail a
-    /// Longship at level 1 and three need level 2. The days beside the level are a month of
-    /// training's 30 for each of the 1 + 2 + ... + level months it takes (`rules/skills_studying`).
+    /// Longship at level 1 and three need level 2. The days beside the level are 30 for each of the
+    /// 1 + 2 + ... + level months of training it takes (`rules/skills_studying` gives the months;
+    /// the 30 days a month is the report format's, as in the committed fixtures' `sailing [SAIL] 4
+    /// (300)`). Nothing here reads the days; they keep the line a report would print.
     pub fn captain(mut self, unit: &str, men: i64) -> Self {
         assert!(men > 0, "a captain has men");
         let level = (self.requirement + men - 1) / men;
@@ -242,7 +245,20 @@ fn stated_weight(line: &str) -> i64 {
 ///
 /// For a departure test's own fixture, so that one which sails a fleet the rules keep in port fails
 /// as a broken fixture rather than passing on a departure the game would never make (`ah-zbtx`).
+///
+/// **Silence is only as good as the check's reach.** The check judges a hull only when one of its
+/// would-be captains issues SAIL, so this also panics when no unit in `orders` issues SAIL at all.
+/// It still passes, saying nothing, where the check declines to judge: a MOVE aboard or into the
+/// hull, a foreign unit aboard, an estimated or doubted headcount (the crew half), or a unit of
+/// unknown weight (the load half). A fixture built with [`fleet_that_sails`] has none of these.
 pub fn assert_fleet_sails(report: &str, orders: &str, ruleset: &Ruleset) {
+    assert!(
+        read_intents(orders, None)
+            .iter()
+            .flat_map(|block| block.intents.iter())
+            .any(|placed| matches!(placed.intent, Intent::Sail { .. })),
+        "no unit issues SAIL in the fixture's orders, so the sailing check judges no fleet and its silence proves nothing"
+    );
     let mut parsed = parse_report_full(report);
     classify_units(&mut parsed, ruleset);
     let refused: Vec<String> = review_turn(&parsed, orders, Some(ruleset), CheckOptions::default())
