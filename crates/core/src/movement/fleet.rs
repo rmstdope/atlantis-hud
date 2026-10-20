@@ -69,9 +69,9 @@ pub struct WrittenMovement {
 }
 
 /// A unit a `FORM` block creates, and the structure it stands in when `Game::RunPromoteOrders`
-/// runs (`ah-vweq`). Where in the object's list it stands is [`standing::occupants_after_promotes`]'s: one
-/// that stays where it was formed ahead of every entrant, since the engine appends it as the
-/// `FORM` is read, before any ENTER runs (`ah-7ful`).
+/// runs (`ah-vweq`). Where in the object's list it stands is
+/// [`standing::occupants_after_promotes`]'s: one that stays where it was formed ahead of every
+/// entrant, since the engine appends it as the `FORM` is read, before any ENTER runs (`ah-7ful`).
 ///
 /// `rules/form`: the new unit is "in the same structure if any" as the unit that formed it -
 /// `../Atlantis parseorders.cpp` moves it into its former's object as the `FORM` is read
@@ -701,9 +701,10 @@ pub fn fleet_owner(
 
 /// Everyone standing in a structure once this month's boardings, `PROMOTE`s and `EVICT`s have
 /// run, owner first, as unit ids - the object's list [`fleet_owner`] reads its first entry from,
-/// ordered by [`standing::occupants_after_promotes`] and then thinned by the EVICTs. A structure of any kind, not only a hull: the engine keeps one list per object
-/// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
-/// movement phase has taken more units off it (`ah-1jl9`).
+/// ordered by [`standing::occupants_after_promotes`] and then thinned by the EVICTs. A structure
+/// of any kind, not only a hull: the engine keeps one list per object (`Object::GetOwner`), and
+/// `CheckTransportOrders` asks it about a Caravanserai long after the movement phase has taken
+/// more units off it (`ah-1jl9`).
 ///
 /// Every unit this month's `FORM`s put in the structure stands in the list while PROMOTE and
 /// EVICT run, men or none ([`OrderedUnits::formed_at_promotion`]; `ah-vweq`, `ah-7ful`), but only
