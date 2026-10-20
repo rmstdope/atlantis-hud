@@ -459,6 +459,92 @@ pub fn standing_through_move(before: Option<&str>, steps: &[MoveStep]) -> MoveSt
     }
 }
 
+/// One unit standing in a structure once this month's ENTER and LEAVE have run, and how it came to
+/// be there - what [`occupants_after_promotes`] orders the structure's list by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Occupant<'a> {
+    pub unit_id: &'a str,
+    /// Created by this month's `FORM` rather than shown in the report.
+    pub formed: bool,
+    /// Already stood in it before any ENTER ran: listed under it in the report, or, for a formed
+    /// unit, standing in its former's structure.
+    pub stood_in_it: bool,
+    /// Its own ENTER names this structure.
+    pub enters_it: bool,
+}
+
+impl Occupant<'_> {
+    /// Where the unit stands in the object's list as `Game::RunPromoteOrders` finds it: lower is
+    /// nearer the head.
+    fn arrival(&self) -> u8 {
+        let stayed = self.stood_in_it && !self.enters_it;
+        match (stayed, self.formed) {
+            (true, false) => 0,
+            (true, true) => 1,
+            (false, false) => 2,
+            (false, true) => 3,
+        }
+    }
+}
+
+/// Everyone standing in a structure once this month's ENTER and LEAVE, FORM and `PROMOTE` have
+/// run, owner first, as unit ids. The one statement of the rule (`ah-2eb6`): `movement::fleet`
+/// and `orders::semantics` each feed it their own view of a structure's occupants and read the
+/// owner off its head, so a fix to it is made once.
+///
+/// `occupants` are the units standing in the structure once ENTER and LEAVE have run, the
+/// reported ones in report order and then the formed ones in the order their `FORM`s were written.
+/// The engine's owner is the first unit in the object's list (`Object::GetOwner`), and LEAVE and
+/// ENTER run in one pass before PROMOTE (`Game::RunEnterOrders`; `rules/sequenceofevents`). A unit
+/// that leaves is taken off the list and one that enters is appended to its end
+/// (`Unit::MoveUnit`), so the list is: the report's occupants who stayed, in report order ("the
+/// first unit listed under the object", `rules/world_structures`); then the units formed where
+/// they stand, which the engine appends to their former's object as each `FORM` is parsed
+/// (../Atlantis `parseorders.cpp` `temp->MoveUnit(former->object)`), before any ENTER runs
+/// (`ah-7ful`); then the reported units that boarded - a reported occupant whose own ENTER names
+/// the structure it stands in boards again, and goes to the end; then the formed units that
+/// boarded by their own ENTER. Which of the last two the engine appends first turns on the order
+/// it walks the region's objects in, which the report does not show.
+///
+/// Then the owner's `PROMOTE`, and only the owner's (`ah-c1p2`): `Game::RunPromoteOrders`
+/// (../Atlantis `runorders.cpp`) runs one per object, its owner's once ENTER and LEAVE have run,
+/// and errors every other unit's "PROMOTE: Must be owner" - so `promotes_of` is asked once, for
+/// that owner, and the unit it promotes hands nothing on again. Of its `PROMOTE`s, in the order
+/// written, only the last is kept (`ah-nhgo`: `ProcessPromoteOrder` overwrites `u->promote`), and
+/// it promotes nobody when it names a unit not in the list (`Do1PromoteOrder`: "PROMOTE: Can't
+/// find target."); an earlier one does not run in its place. `Do1PromoteOrder` takes the target
+/// off the list and puts it back at its head. Ask for the list as PROMOTE finds it by following
+/// no `PROMOTE` at all. Nobody aboard is no owner (`ah-877p`): an empty list.
+pub fn occupants_after_promotes<'a, P, S>(
+    occupants: impl IntoIterator<Item = Occupant<'a>>,
+    promotes_of: impl FnOnce(&str) -> P,
+) -> Vec<String>
+where
+    P: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut occupants: Vec<Occupant<'a>> = occupants.into_iter().collect();
+    // Stable, so report order and FORM order survive inside each arrival.
+    occupants.sort_by_key(Occupant::arrival);
+    let mut list: Vec<String> = occupants
+        .iter()
+        .map(|occupant| occupant.unit_id.to_string())
+        .collect();
+    let Some(owner) = list.first() else {
+        return list;
+    };
+    let promoted = promotes_of(owner)
+        .into_iter()
+        .last()
+        .map(|target| target.as_ref().to_string())
+        .filter(|target| list.contains(target));
+    if let Some(next) = promoted {
+        list.retain(|unit| unit != &next);
+        list.insert(0, next);
+    }
+    list
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -784,5 +870,163 @@ mod hex_tests {
             Some("77")
         );
         assert!(!elsewhere.leave_refused(WALKER));
+    }
+}
+
+#[cfg(test)]
+mod owner_tests {
+    use std::cell::RefCell;
+
+    use super::*;
+
+    /// A reported unit: `stood` when the report lists it under the structure.
+    fn reported(unit_id: &str, stood: bool, enters: bool) -> Occupant<'_> {
+        Occupant {
+            unit_id,
+            formed: false,
+            stood_in_it: stood,
+            enters_it: enters,
+        }
+    }
+
+    /// A unit this month's FORM creates: `stood` when its former stands in the structure.
+    fn formed(unit_id: &str, stood: bool, enters: bool) -> Occupant<'_> {
+        Occupant {
+            unit_id,
+            formed: true,
+            stood_in_it: stood,
+            enters_it: enters,
+        }
+    }
+
+    fn no_promotes(_: &str) -> Vec<&'static str> {
+        Vec::new()
+    }
+
+    #[test]
+    fn owner_after_promotes_stayed_occupants_keep_report_order_ahead_of_entrants() {
+        let list = occupants_after_promotes(
+            [
+                reported("7", false, true),
+                reported("1", true, false),
+                reported("2", true, false),
+            ],
+            no_promotes,
+        );
+        assert_eq!(list, ["1", "2", "7"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_runs_only_the_owners_promote() {
+        // ah-c1p2: `Game::RunPromoteOrders` runs one PROMOTE per object, its owner's.
+        let asked = RefCell::new(Vec::new());
+        let list = occupants_after_promotes(
+            [
+                reported("1", true, false),
+                reported("2", true, false),
+                reported("3", true, false),
+            ],
+            |unit: &str| {
+                asked.borrow_mut().push(unit.to_string());
+                match unit {
+                    "1" => vec!["2"],
+                    "2" => vec!["3"],
+                    _ => Vec::new(),
+                }
+            },
+        );
+        assert_eq!(list.first().map(String::as_str), Some("2"));
+        assert_eq!(asked.into_inner(), ["1"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_keeps_the_owners_last_promote() {
+        // ah-nhgo: `ProcessPromoteOrder` overwrites `u->promote`.
+        let list = occupants_after_promotes(
+            [
+                reported("1", true, false),
+                reported("2", true, false),
+                reported("3", true, false),
+            ],
+            |_: &str| vec!["2", "3"],
+        );
+        assert_eq!(list, ["3", "1", "2"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_a_last_promote_of_a_unit_not_aboard_promotes_nobody() {
+        // ah-nhgo: `Do1PromoteOrder` "PROMOTE: Can't find target.", and the earlier one does
+        // not run in its place.
+        let list = occupants_after_promotes(
+            [reported("1", true, false), reported("2", true, false)],
+            |_: &str| vec!["2", "99"],
+        );
+        assert_eq!(list, ["1", "2"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_formed_in_place_stands_behind_stayed_and_ahead_of_entrants() {
+        // ah-7ful: a formed unit joins its former's object as the FORM is parsed.
+        let list = occupants_after_promotes(
+            [
+                reported("5", false, true),
+                reported("1", true, false),
+                formed("new-1", true, false),
+            ],
+            no_promotes,
+        );
+        assert_eq!(list, ["1", "new-1", "5"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_formed_in_place_owns_an_otherwise_boarded_structure() {
+        let list = occupants_after_promotes(
+            [reported("5", false, true), formed("new-1", true, false)],
+            no_promotes,
+        );
+        assert_eq!(list.first().map(String::as_str), Some("new-1"));
+    }
+
+    #[test]
+    fn owner_after_promotes_formed_unit_that_enters_stands_behind_reported_entrants() {
+        // ah-7ful: one that boards by its own ENTER is an entrant itself.
+        let list = occupants_after_promotes(
+            [
+                reported("5", false, true),
+                formed("new-1", false, true),
+                formed("new-2", true, true),
+            ],
+            no_promotes,
+        );
+        assert_eq!(list, ["5", "new-1", "new-2"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_a_reported_occupant_that_reenters_its_structure_is_an_entrant() {
+        let list = occupants_after_promotes(
+            [reported("1", true, true), reported("2", true, false)],
+            no_promotes,
+        );
+        assert_eq!(list, ["2", "1"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_promote_onto_a_formed_unit_hands_it_on() {
+        let list = occupants_after_promotes(
+            [reported("1", true, false), formed("new-1", true, false)],
+            |_: &str| vec!["new-1"],
+        );
+        assert_eq!(list, ["new-1", "1"]);
+    }
+
+    #[test]
+    fn owner_after_promotes_nobody_aboard_is_no_owner() {
+        let asked = RefCell::new(false);
+        let list = occupants_after_promotes(Vec::<Occupant<'_>>::new(), |_: &str| {
+            *asked.borrow_mut() = true;
+            Vec::<&str>::new()
+        });
+        assert!(list.is_empty());
+        assert!(!asked.into_inner());
     }
 }
