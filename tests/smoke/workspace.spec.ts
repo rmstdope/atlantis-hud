@@ -3075,9 +3075,49 @@ test("the planner buttons fit the title line at the default width, even in its w
 });
 
 /**
+ * The panel width the title line needs to hold its widest state on one line: the frame, the
+ * header's padding, the tab strip (which keeps the route dot's room) and the buttons' reserved room.
+ * Measured rather than written down, since it is a matter of the platform's monospace font: CI's
+ * Linux font fits the widest state at 20rem where macOS's does not.
+ */
+async function widestTitleLine(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="panel-unit"]') as HTMLElement;
+    const header = panel.querySelector("header") as HTMLElement;
+    const width = (selector: string) =>
+      (panel.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+    const style = getComputedStyle(header);
+    const frame = panel.getBoundingClientRect().width - header.getBoundingClientRect().width;
+    return (
+      frame +
+      Number.parseFloat(style.paddingLeft) +
+      width('[data-testid="slot-tabs"]') +
+      Number.parseFloat(style.columnGap) +
+      width('[data-testid="planner-actions-room"]') +
+      Number.parseFloat(style.paddingRight)
+    );
+  });
+}
+
+/** Drags the right rail until the unit panel is `width` pixels wide. */
+async function unitPanelAt(page: Page, width: number) {
+  const panel = page.getByTestId("panel-unit");
+  const grip = (await page.getByTestId("rail-splitter-right").boundingBox())!;
+  const start = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  const by = (await panel.boundingBox())!.width - width;
+  // The right rail shrinks when the pointer moves away from the map, i.e. to the right.
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + by, start.y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeCloseTo(width, 0);
+}
+
+/**
  * ah-14xq: when to drop the buttons to their own row is judged against the widest state, never the
- * one showing, so just below the default width the header is already two rows before Plan move is
- * pressed - and pressing it, or Clear, moves nothing.
+ * one showing, so just below the width the widest state needs the header is already two rows before
+ * Plan move is pressed - although "Plan move" itself would still fit - and pressing it, or Clear,
+ * moves nothing.
  */
 test("just below the default width the planner buttons sit on their own row, and pressing Plan move moves nothing", async ({
   page
@@ -3086,9 +3126,20 @@ test("just below the default width the planner buttons sit on their own row, and
   await enableMovementPlanner(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
-  await rightRailAt(page, 20);
+  const widest = await widestTitleLine(page);
+  await unitPanelAt(page, Math.floor(widest) - 3);
 
   const idle = await slotHeader(page);
+  // In the band the rule is about: what the header shows now would fit on one line.
+  const showing =
+    idle.panel.width -
+    idle.header.width +
+    (idle.tabs.x - idle.header.x) +
+    idle.tabs.width +
+    4 +
+    (idle.clear.x + idle.clear.width - idle.arm.x) +
+    (idle.header.x + idle.header.width - (idle.clear.x + idle.clear.width));
+  expect(showing).toBeLessThan(idle.panel.width);
   expectButtonRow(idle);
   expectInsidePanel(idle);
 
