@@ -555,182 +555,87 @@ pub fn read_formed(
     regions: &BTreeMap<&str, &ReportRegion>,
     ruleset: Option<&Ruleset>,
 ) -> Vec<FormedBlock> {
+    let hex_of = |unit: &str| regions.get(unit).map(|region| region.region_id.clone());
     let mut reader = FormReader {
-        regions,
         ruleset,
-        current: None,
-        current_region: None,
-        forms: super::blocks::FormStack::new(),
-        by_alias: BTreeMap::new(),
+        forms: super::blocks::FormBlocks::new(),
         results: Vec::new(),
-        flag_changes_so_far: BTreeMap::new(),
     };
-    walk::walk(source, ruleset, |event| reader.visit(event));
-    reader.results
+    walk::walk(source, ruleset, |event| reader.visit(&event, &hex_of));
+    let FormReader { forms, mut results, .. } = reader;
+    // The record holds each block's own flag orders; it is the one place they are read.
+    for (block, formed) in results.iter_mut().zip(forms.into_formed()) {
+        block.flag_changes = formed.flag_changes;
+    }
+    results
 }
 
-struct FormReader<'a, 'r> {
-    regions: &'a BTreeMap<&'a str, &'a ReportRegion>,
+/// Reads each formed unit's orders into its [`FormedBlock`]. What each `FORM` creates - alias,
+/// former, hex, inherited flags - and who each order belongs to is [`super::blocks::FormBlocks`]'s,
+/// shared with the preview and the movement reader (`ah-0vc6`).
+struct FormReader<'r> {
     ruleset: Option<&'r Ruleset>,
-    /// The physically reported unit whose block we are in.
-    current: Option<String>,
-    /// That unit's hex, unchanged by `FORM` nesting: forming a unit never moves anybody to a
-    /// different hex.
-    current_region: Option<String>,
-    /// The forming unit at each open `FORM` depth, innermost last. `None` for a block that could
-    /// not be read or whose alias was already taken - its orders are swallowed rather than falling
-    /// through to whatever encloses it.
-    forms: super::blocks::FormStack<usize>,
-    by_alias: BTreeMap<(String, String), usize>,
+    forms: super::blocks::FormBlocks,
+    /// One per [`super::blocks::FormBlocks::formed`] entry, at the same index.
     results: Vec<FormedBlock>,
-    /// Each physically reported unit's flag orders read so far, by unit id - what a `FORM` in its
-    /// block inherits ([`FormedBlock::inherited_flag_changes`]).
-    flag_changes_so_far: BTreeMap<String, Vec<FlagChange>>,
 }
 
-impl<'a, 'r> FormReader<'a, 'r> {
-    fn visit(&mut self, event: Event<'_>) {
-        match event {
-            Event::Directive(_) => {
-                self.current = None;
-                self.current_region = None;
-                self.forms.reset();
+impl FormReader<'_> {
+    fn visit(&mut self, event: &Event<'_>, hex_of: &dyn Fn(&str) -> Option<String>) {
+        use super::blocks::{Hexes, Owner, Step};
+
+        match self
+            .forms
+            .visit(event, self.ruleset, Hexes::Of(hex_of))
+        {
+            Step::Formed(index) => {
+                let formed = &self.forms.formed()[index];
+                let formed_by = match &formed.former {
+                    super::blocks::OrderedUnitKey::Shown(unit) => unit.clone(),
+                    super::blocks::OrderedUnitKey::Formed(form_line) => self
+                        .forms
+                        .formed()
+                        .iter()
+                        .find(|outer| outer.form_line == *form_line)
+                        .map(super::blocks::FormedUnit::unit_id)
+                        .unwrap_or_default(),
+                };
+                self.results.push(FormedBlock {
+                    alias: formed.alias.clone(),
+                    formed_by,
+                    // Always known: `Hexes::Of` forms nobody under a unit without a hex.
+                    region_id: formed.region_id.clone().unwrap_or_default(),
+                    block_line: formed.form_line,
+                    intents: Vec::new(),
+                    unread: Vec::new(),
+                    flag_changes: Vec::new(),
+                    inherited_flag_changes: formed.inherited_flag_changes.clone(),
+                    destroys_structure: false,
+                    promotes: Vec::new(),
+                    refused_promotes: Vec::new(),
+                    evicts: Vec::new(),
+                });
             }
-            Event::Unit(line) => {
-                self.forms.reset();
-                self.current = line
-                    .arguments
-                    .first()
-                    .filter(|id| id.kind == TokenKind::Number)
-                    .map(|id| id.text.clone());
-                self.current_region = self
-                    .current
-                    .as_deref()
-                    .and_then(|id| self.regions.get(id))
-                    .map(|region| region.region_id.clone());
+            Step::Order { .. } => {
+                if let (Owner::Formed(index), Event::Order { line, .. }) =
+                    (self.forms.owner(), event)
+                {
+                    let index = *index;
+                    self.record_order(index, line.command, line.arguments, line.number);
+                }
             }
-            Event::Open {
-                line,
-                kind: walk::BlockKind::Form,
-                depth,
-            } if depth.turn == 0 => {
-                self.open_form(line.arguments, line.number);
-            }
-            Event::Open { .. } => {}
-            Event::Close {
-                kind: walk::BlockKind::Form,
-                depth,
-                ..
-            } if depth.turn == 0 => {
-                self.forms.close();
-            }
-            Event::Close { .. }
-            | Event::Stray { .. }
-            | Event::Abandoned(_)
-            | Event::Broken { .. } => {}
-            Event::Order { line, depth } if depth.turn == 0 => {
-                self.record_order(line.command, line.arguments, line.number);
-            }
-            Event::Order { .. } => {}
+            Step::Other => {}
         }
     }
 
-    /// The `FormedBlock` the next order belongs to, or `None` outside any valid `FORM`.
-    fn active(&self) -> Option<usize> {
-        match self.forms.owner() {
-            super::blocks::Owner::Formed(index) => Some(*index),
-            super::blocks::Owner::Block | super::blocks::Owner::Nobody => None,
-        }
-    }
-
-    /// The unit whose block the next `FORM` sits in: the innermost forming unit's synthetic id, or
-    /// the physically reported unit's own - `None` where neither is known, which swallows the
-    /// block exactly as a taken alias does.
-    fn parent_id(&self) -> Option<String> {
-        match self.forms.owner() {
-            super::blocks::Owner::Block => self.current.clone(),
-            super::blocks::Owner::Formed(index) => {
-                Some(format!("new-{}", self.results[*index].alias))
-            }
-            super::blocks::Owner::Nobody => None,
-        }
-    }
-
-    fn open_form(&mut self, arguments: &[Token], line_number: usize) {
-        // The alias has to be a number of at least 1 (`rules/form`): `GIVE NEW n` is the only way
-        // to reach the formed unit, and the grammar's `Arg::Unit` accepts `NEW 1` and never
-        // `NEW a` or `NEW 0`.
-        let alias = arguments.first().and_then(|token| forms::read_alias(token));
-        let (Some(alias), Some(formed_by), Some(region_id)) =
-            (alias, self.parent_id(), self.current_region.clone())
-        else {
-            // A FORM that cannot be read still opens a block, or its orders would fall through to
-            // whatever encloses it.
-            self.forms.open(None);
-            return;
-        };
-
-        let key = (region_id.clone(), alias.to_string());
-        if self.by_alias.contains_key(&key) {
-            // The alias is taken, so the server would refuse this FORM; its block is swallowed
-            // rather than applied to the unit the alias already names.
-            self.forms.open(None);
-            return;
-        }
-
-        let inherited_flag_changes = self.flag_changes_so_far();
-        let index = self.results.len();
-        self.by_alias.insert(key, index);
-        self.results.push(FormedBlock {
-            alias: alias.to_string(),
-            formed_by,
-            region_id,
-            block_line: line_number,
-            intents: Vec::new(),
-            unread: Vec::new(),
-            flag_changes: Vec::new(),
-            inherited_flag_changes,
-            destroys_structure: false,
-            promotes: Vec::new(),
-            refused_promotes: Vec::new(),
-            evicts: Vec::new(),
-        });
-        self.forms.open(Some(index));
-    }
-
-    /// The flag orders the unit whose block the next order sits in has written so far: a formed
-    /// unit's own block orders (what it inherited is already in its starting flags), a reported
-    /// unit's from `flag_changes_so_far`.
-    fn flag_changes_so_far(&self) -> Vec<FlagChange> {
-        match self.forms.owner() {
-            super::blocks::Owner::Block => self
-                .current
-                .as_ref()
-                .and_then(|id| self.flag_changes_so_far.get(id))
-                .cloned()
-                .unwrap_or_default(),
-            super::blocks::Owner::Formed(index) => self.results[*index].flag_changes.clone(),
-            super::blocks::Owner::Nobody => Vec::new(),
-        }
-    }
-
-    fn record_order(&mut self, command: &Token, arguments: &[Token], line_number: usize) {
-        if matches!(self.forms.owner(), super::blocks::Owner::Block) {
-            let change = super::effects::read_flag_line(command, arguments, self.ruleset);
-            if let (Some(change), Some(id)) = (change, self.current.as_ref()) {
-                self.flag_changes_so_far
-                    .entry(id.clone())
-                    .or_default()
-                    .push(change);
-            }
-        }
-        let Some(active) = self.active() else {
-            return;
-        };
+    fn record_order(
+        &mut self,
+        active: usize,
+        command: &Token,
+        arguments: &[Token],
+        line_number: usize,
+    ) {
         let block = &mut self.results[active];
-        if let Some(change) = super::effects::read_flag_line(command, arguments, self.ruleset) {
-            block.flag_changes.push(change);
-        }
         if let Some(intent) = read_order(command, arguments, self.ruleset) {
             block.intents.push(PlacedIntent {
                 intent,
@@ -2606,6 +2511,29 @@ mod tests {
         assert_eq!(formed.len(), 2, "one FORM in each hex: {formed:?}");
         assert_eq!(formed[0].region_id, "1:7,53");
         assert_eq!(formed[1].region_id, "1:8,54");
+    }
+
+    /// A nested `FORM`'s former is the outer formed unit, named as an order names it, and what it
+    /// inherits is the outer unit's own block orders - `FormBlocks` records both once (`ah-0vc6`).
+    #[test]
+    fn read_formed_takes_a_nested_former_from_the_record() {
+        let region = a_region("hex-1");
+        let regions = regions_with("1922", &region);
+        let source = "unit 1922\nSHARE 1\nFORM 1\nHOLD 1\nFORM 2\nBEHIND 1\nEND\nEND\n";
+        let formed = read_formed(source, &regions, None);
+
+        assert_eq!(formed.len(), 2, "{formed:?}");
+        assert_eq!(formed[0].formed_by, "1922");
+        assert_eq!(formed[1].formed_by, "new-1");
+        assert_eq!(formed[1].block_line, 5);
+        assert_eq!(formed[1].region_id, "hex-1");
+        let toggle = |setting: Setting, on: bool| FlagChange::Toggle { setting, on };
+        assert_eq!(
+            formed[1].inherited_flag_changes,
+            vec![toggle(Setting::Holding, true)]
+        );
+        assert_eq!(formed[1].flag_changes, vec![toggle(Setting::Behind, true)]);
+        assert_eq!(formed[0].flag_changes, vec![toggle(Setting::Holding, true)]);
     }
 
     #[test]
