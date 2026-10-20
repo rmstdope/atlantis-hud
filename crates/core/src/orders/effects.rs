@@ -4120,29 +4120,10 @@ impl Working {
     /// declare toward other factions, never theirs toward us, so a foreign target that passes both
     /// structural tests is still unknown - accept on doubt, and say so.
     fn transport_target(acceptance: super::transport::Acceptance) -> TransportTargetOutcome {
-        use super::transport::Acceptance;
-
-        match acceptance {
-            Acceptance::Eligible => TransportTargetOutcome::Eligible,
-            Acceptance::NotQuartermaster => {
-                TransportTargetOutcome::Refused(TransportTargetReason::NotQuartermaster)
-            }
-            Acceptance::NotCaravanseraiOwner => {
-                TransportTargetOutcome::Refused(TransportTargetReason::NotCaravanseraiOwner)
-            }
-            Acceptance::SenderOwnsNoCaravanserai => {
-                TransportTargetOutcome::Refused(TransportTargetReason::SenderOwnsNoCaravanserai)
-            }
-            Acceptance::SenderNotQuartermaster => {
-                TransportTargetOutcome::Refused(TransportTargetReason::SenderNotQuartermaster)
-            }
-            Acceptance::EligibilityUnknown => {
-                TransportTargetOutcome::Refused(TransportTargetReason::EligibilityUnknown)
-            }
-            Acceptance::AcceptanceUnknown => {
-                TransportTargetOutcome::Refused(TransportTargetReason::AcceptanceUnknown)
-            }
-        }
+        acceptance.refusal().map_or(
+            TransportTargetOutcome::Eligible,
+            TransportTargetOutcome::Refused,
+        )
     }
 
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
@@ -4308,51 +4289,6 @@ impl Working {
         }
     }
 
-    /// The wire reason for whose limit a refused shipment passed (`ah-nzb0`).
-    fn refusal_reason(range: super::transport::Range) -> TransportTargetReason {
-        match range {
-            super::transport::Range::Accepts => TransportTargetReason::TooFarToAccept,
-            super::transport::Range::Distributes => TransportTargetReason::TooFarToDistribute,
-            super::transport::Range::Ships => TransportTargetReason::TooFarToShip,
-        }
-    }
-
-    /// The reason and the reach a refusal's sentence names (`ah-7ale.2.1`, `ah-e07g`).
-    fn refusal(
-        refused: super::transport::OutOfReach,
-    ) -> (TransportTargetReason, Option<TransportReach>) {
-        match refused {
-            super::transport::OutOfReach::Distance { away, limit, range } => {
-                let reason = Self::refusal_reason(range);
-                (
-                    reason,
-                    Some(TransportReach {
-                        away: Some(i64::from(away)),
-                        limit: Some(i64::from(limit)),
-                        from_level: None,
-                        to_level: None,
-                    }),
-                )
-            }
-            super::transport::OutOfReach::DifferentLevel {
-                from_level,
-                to_level,
-                range,
-            } => {
-                let reason = Self::refusal_reason(range);
-                (
-                    reason,
-                    Some(TransportReach {
-                        away: None,
-                        limit: None,
-                        from_level: Some(from_level),
-                        to_level: Some(to_level),
-                    }),
-                )
-            }
-        }
-    }
-
     /// What a refusal's sentence may claim about the goods this order named.
     ///
     /// A single tag the game would carry has a claim to make about those goods; anything else - an
@@ -4470,7 +4406,7 @@ impl Working {
             // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
             let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
-                let (reason, reach_opt) = Self::refusal(refused);
+                let (reason, reach) = refused.refusal();
                 let (amount, tag) = self.goods_named(pending, &moving);
                 issues[pending.sender].push((
                     pending.sequence,
@@ -4480,7 +4416,7 @@ impl Working {
                         tag,
                         reason,
                         order_index: index,
-                        reach: reach_opt,
+                        reach: Some(reach),
                         to_unshown: pending.to_unshown,
                         unsettled: false,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,

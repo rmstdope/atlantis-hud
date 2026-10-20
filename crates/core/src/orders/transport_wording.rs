@@ -131,7 +131,7 @@ fn distribute_hint(issue: &TransportTargetIssue) -> Option<String> {
 
 fn refusal_sentence(issue: &TransportTargetIssue) -> String {
     let to = issue.to.as_str();
-    let goods = (!issue.tag.is_empty()).then(|| (issue.amount, issue.tag.as_str()));
+    let goods = (!issue.tag.is_empty()).then_some((issue.amount, issue.tag.as_str()));
     let goods_text = goods.map(|(amount, tag)| format!("{amount} {tag}"));
     // The word the line was written with, for a sentence that names the order (`ah-lis2`).
     let order_word = if issue.distribute {

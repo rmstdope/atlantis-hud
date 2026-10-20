@@ -26459,14 +26459,16 @@ fn check_transport_reach(
                     let mut sentence =
                         transport_target_sentence(&id, *order, refused, goods().as_ref());
                     // The same line as a DISTRIBUTE would deliver, so the refusal says so - in the
-                    // words `transportTargetSentence` appends in the hover (`ah-7j90`). DISTRIBUTE
+                    // words the hover appends (`transport_wording`, `ah-7j90`). DISTRIBUTE
                     // carries only what TRANSPORT does, whatever the amount form. A refusal that
                     // names no amount (`ALL`) gives "them" nothing to refer to, so that hint names
                     // the goods by the code the exact-amount refusal writes (`ah-q3bp`).
                     if judged.distribute_would_deliver {
                         if let Some(tag) = transportable() {
                             if goods().is_some() {
-                                sentence.push_str(" DISTRIBUTE would deliver them.");
+                                sentence.push(' ');
+                                sentence
+                                    .push_str(super::transport_wording::DISTRIBUTE_DELIVERS_THEM);
                             } else {
                                 sentence.push_str(&format!(
                                     " DISTRIBUTE would deliver the {}.",
@@ -27414,84 +27416,47 @@ fn unlent_silver_at(ledger: &Ledger<'_>, unit_id: &str, phase: StatePhase) -> i6
         + ledger.overcharged.get(unit_id).copied().unwrap_or_default()
 }
 
-/// The refusal sentence the agreed experience quotes, word for word.
-///
-/// The same three shapes `packages/shared/src/unitPreview.ts`'s `transportTargetSentence` produces
-/// for the unit preview (`ah-7ale.2.1`), so one refused shipment reads identically wherever it is
-/// shown. The two are separate strings in separate languages; the tests on both sides quote them in
-/// full so neither can drift unnoticed.
+/// A shipment the map proves too far, as the order's warning states it: the reach clause the
+/// unit preview's hover also reads (`transport_wording`, `ah-9lyr`), with this check's own goods.
 fn transport_reach_sentence(
     to: &str,
     order: super::transport::ShipmentOrder,
     refusal: super::transport::OutOfReach,
     goods: Option<&(i64, String)>,
 ) -> String {
-    // `ALL`, a whole class, or an item transport refuses anyway: the sentence speaks of the order
-    // alone, in the words the unit preview already uses for the same case.
-    let tail = match goods {
-        Some((moved, tag)) => {
-            let verb = if *moved == 1 { "stays" } else { "stay" };
-            format!("{moved} {tag} {verb} with this unit")
-        }
-        None => format!("this {} moves nothing", order.word()),
-    };
-
-    match refusal {
-        super::transport::OutOfReach::Distance {
-            away,
-            limit,
-            range,
-        } => match range {
-            super::transport::Range::Ships => format!(
-                "Unit {to} is {away} hexes away and this unit can ship {limit} hexes, so {tail}."
-            ),
-            super::transport::Range::Distributes => format!(
-                "Unit {to} is {away} hexes away and this unit distributes to units within {limit} hexes, so {tail}."
-            ),
-            super::transport::Range::Accepts => format!(
-                "Unit {to} is {away} hexes away and takes goods from {limit} hexes, so {tail}."
-            ),
-        },
-        super::transport::OutOfReach::DifferentLevel {
-            from_level,
-            to_level,
-            ..
-        } => {
-            let to_name = crate::report::level::level_name(to_level);
-            let from_name = crate::report::level::level_name(from_level);
-            format!("Unit {to} is in the {to_name} and this unit is on the {from_name}, so {tail}.")
-        }
-    }
+    let (reason, reach) = refusal.refusal();
+    format!(
+        "{}, so {}.",
+        super::transport_wording::reach_clause(to, reason, Some(&reach)),
+        super::transport_wording::tail(
+            order.word(),
+            goods.map(|(moved, tag)| (*moved, tag.as_str())),
+            true
+        )
+    )
 }
 
-/// The sentence for a target the report proves cannot receive a shipment (`ah-kjjv`): the same
-/// words `packages/shared/src/unitPreview.ts`'s `transportTargetSentence` gives the unit preview
-/// for the same two reasons, so the order and the hover read alike. The tests on both sides quote
-/// them in full so neither can drift unnoticed.
+/// A target the report proves cannot receive a shipment (`ah-kjjv`), as the order's warning
+/// states it: the refusal clause the unit preview's hover also reads (`transport_wording`,
+/// `ah-9lyr`), with this check's own goods.
 fn transport_target_sentence(
     to: &str,
     order: super::transport::ShipmentOrder,
     refused: super::transport::Acceptance,
     goods: Option<&(i64, String)>,
 ) -> String {
-    let who = match refused {
-        super::transport::Acceptance::NotQuartermaster => {
-            format!("Unit {to} is not a quartermaster")
-        }
-        // The sender's refusal, in its own words (`ah-1jl9`).
-        super::transport::Acceptance::SenderOwnsNoCaravanserai => {
-            "This unit owns no Caravanserai when the shipments run".to_string()
-        }
-        // A DISTRIBUTE asks its sender for the skill, never its target (`ah-lis2`).
-        super::transport::Acceptance::SenderNotQuartermaster => {
-            "This unit is not a quartermaster".to_string()
-        }
-        _ => format!("Unit {to} does not own a Caravanserai"),
-    };
-    match goods {
-        Some((moved, tag)) => format!("{who}, so {moved} {tag} stay with this unit."),
-        None => format!("{who}, so this {} moves nothing.", order.word()),
-    }
+    let who = refused
+        .refusal()
+        .and_then(|reason| super::transport_wording::refusal_clause(to, reason))
+        .unwrap_or_default();
+    format!(
+        "{who}, so {}.",
+        super::transport_wording::tail(
+            order.word(),
+            goods.map(|(moved, tag)| (*moved, tag.as_str())),
+            false
+        )
+    )
 }
 
 fn check_take_from_another_faction(
