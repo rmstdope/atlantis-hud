@@ -28,7 +28,9 @@ describe("rowsBelow", () => {
   });
 
   it("does not count a row whose start is visible though its end is hidden (ah-txyp)", () => {
-    // A 66px row in a 33px view: its first line shows, so it is not "more".
+    // A 66px row in a 33px view: its first line shows, so it is not "more". This pins the rule;
+    // that the caller passes row tops rather than bottoms is pinned by the smoke suite
+    // (orders-editor.spec.ts, the narrow-rail "4 more ↓" and single-row tests).
     expect(rowsBelow([0], 33, 66)).toBe(0);
     expect(rowsBelow([0, 66], 33, 132)).toBe(1);
   });

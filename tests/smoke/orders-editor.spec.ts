@@ -1448,6 +1448,26 @@ test("at the smallest panel a row of three lines or more shows two and scrolls, 
   expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
 });
 
+/**
+ * ah-txyp: a row whose start is on screen is not "more", however much of it wraps below the list's
+ * bottom - one partly shown row and nothing after it shows no count.
+ */
+test("a single problem row that wraps past the list's bottom shows no hidden-row count", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await narrowRightRail(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, "WROK");
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(1);
+  const list = page.getByTestId("orders-diagnostics");
+  // The row really is cut off, or this would prove nothing.
+  await expect
+    .poll(() => list.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(1);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveCount(0);
+});
+
 test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({
   page
 }) => {
