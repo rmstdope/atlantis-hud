@@ -10,7 +10,8 @@ import {
   onlyChecks,
   ordersInput,
   selectHex,
-  selectUnit
+  selectUnit,
+  waitForValidation
 } from "./gameSetup";
 
 /**
@@ -645,11 +646,10 @@ test("a problem with no offending word lands the cursor at the end of the orders
   // there is no wrong word in the orders to point at. The order that is *missing* is what the
   // player has to type, so the cursor belongs after what is already there.
   await fillOrders(page, "AVOID 1");
-  // Validation is debounced, so the walk has nothing to step until the count has landed.
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute(
-    "data-problems",
-    /^[1-9]/
-  );
+  // Validation is debounced, so the walk has nothing to step until it has landed - waiting on it is
+  // what stops a click racing an empty list.
+  await waitForValidation(page);
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /^[1-9]/);
 
   await selectHex(page, "1:26,52");
   await selectUnit(page, OTHER_OWN_UNIT);
@@ -682,12 +682,10 @@ test("the walk buttons step to the next problem and back, and wrap at the end", 
   // Writing this unit's orders is what puts an orders document there to validate at all.
   await fillOrders(page, "@work\nTAX");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
-  // Validation is debounced, so the walk has nothing to step until the count has landed - waiting
-  // on the chip is what stops a click racing an empty list.
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute(
-    "data-problems",
-    /^[1-9]/
-  );
+  // Validation is debounced, so the walk has nothing to step until it has landed - waiting on it is
+  // what stops a click racing an empty list.
+  await waitForValidation(page);
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /^[1-9]/);
 
   const next = page.getByTestId("walk-problem-next");
   const prev = page.getByTestId("walk-problem-prev");
@@ -726,10 +724,10 @@ test("the walk keeps its place when validation re-runs under it", async ({ page 
   await selectUnit(page, OWN_UNIT);
   await fillOrders(page, "@work\nTAX");
   await expect(page.getByTestId("orders-status")).toContainText("0 errors");
-  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute(
-    "data-problems",
-    /^[1-9]/
-  );
+  // Validation is debounced, so the walk has nothing to step until it has landed - waiting on it is
+  // what stops a click racing an empty list.
+  await waitForValidation(page);
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-problems", /^[1-9]/);
 
   const next = page.getByTestId("walk-problem-next");
   const position = page.getByTestId("walk-position");

@@ -17,6 +17,7 @@ import type {
   ShelterSeat,
   TradeRoute
 } from "@atlantis/core-client";
+import { validationMarker, type ValidationInputs } from "./validationInputs";
 import { splitTurnMessages, turnMessagesForUnit } from "../turnMessages";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -677,6 +678,8 @@ export function AppShell({
     faction: NO_FACTION_ORDERS,
     unclaimedSilverUse: null
   });
+  // The inputs the answer in `validated` was for (ah-119b); null until the first one lands.
+  const [validatedFor, setValidatedFor] = useState<ValidationInputs | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -3873,7 +3876,17 @@ export function AppShell({
   // there is no promise that they finish in order, so without this an older reply can land last and
   // leave the panel pointing at lines that moved several keystrokes ago.
   useEffect(() => {
+    const askedFor: ValidationInputs = {
+      ordersDocument,
+      rulesetText,
+      rawReport,
+      advisoryChecks,
+      mapJson,
+      passagesJson,
+      rememberedJson
+    };
     if (!ordersDocument) {
+      setValidatedFor(askedFor);
       setValidated({
         text: "",
         diagnostics: [],
@@ -3908,6 +3921,7 @@ export function AppShell({
         })
         .then((result) => {
           if (!cancelled) {
+            setValidatedFor(askedFor);
             setValidated({
               text: ordersDocument,
               diagnostics: result.diagnostics,
@@ -3941,6 +3955,17 @@ export function AppShell({
    * headings would read as two separate problems.
    */
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
+  // Read against this render's values, so the render that moves the document or a setting already
+  // says "pending" - no effect has to run first for the marker to stop claiming "current".
+  const validation = validationMarker(validatedFor, {
+    ordersDocument,
+    rulesetText,
+    rawReport,
+    advisoryChecks,
+    mapJson,
+    passagesJson,
+    rememberedJson
+  });
   // Derived from the loaded report and nothing else: that is what makes it follow a turn switch,
   // come back after a reload, and have nothing to dismiss permanently.
   const unreadable = useMemo<readonly UnreadableLine[]>(
@@ -5924,6 +5949,7 @@ export function AppShell({
         }
         status={status}
         counts={reportCounts}
+        validation={validation}
         reportPanel={
           reportCounts ? (
             <TurnReportPanel
