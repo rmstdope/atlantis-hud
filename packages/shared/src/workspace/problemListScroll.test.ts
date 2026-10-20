@@ -18,16 +18,27 @@ const problem = (
   }) as OrderDiagnostic;
 
 describe("rowsBelow", () => {
-  it("counts nothing when every row fits", () => {
-    expect(rowsBelow([16, 32, 48], 48)).toBe(0);
+  // Each row is given by its top, in the list's scrolled coordinates.
+  it("counts nothing when every row starts on screen", () => {
+    expect(rowsBelow([0, 16, 32], 48)).toBe(0);
   });
 
-  it("counts the rows whose bottom lies below the visible area, a partly shown one included", () => {
-    expect(rowsBelow([16, 32, 48, 64, 80], 40)).toBe(3);
+  it("counts the rows that start below the visible area", () => {
+    expect(rowsBelow([0, 16, 32, 48, 64], 40)).toBe(2);
   });
 
-  it("forgives sub-pixel rounding, so the count goes away at the end of the list", () => {
-    expect(rowsBelow([16.5, 33, 49.5], 49)).toBe(0);
+  it("does not count a row whose start is visible though its end is hidden (ah-txyp)", () => {
+    // A 66px row in a 33px view: its first line shows, so it is not "more".
+    expect(rowsBelow([0], 33, 66)).toBe(0);
+    expect(rowsBelow([0, 66], 33, 132)).toBe(1);
+  });
+
+  it("counts a row that starts exactly at the visible bottom", () => {
+    expect(rowsBelow([0, 16, 32], 16, 48)).toBe(2);
+  });
+
+  it("forgives sub-pixel rounding, so a row showing only a sliver still counts", () => {
+    expect(rowsBelow([0, 16.5, 33], 17, 49.5)).toBe(2);
   });
 
   it("counts nothing in an empty list", () => {
@@ -36,7 +47,7 @@ describe("rowsBelow", () => {
 
   it("counts nothing once the list is scrolled to its end, whatever the rows' rounding says", () => {
     // Whole-pixel offsets against a fractional scrollTop can drift further than the allowance.
-    expect(rowsBelow([17, 33, 50, 66, 85], 82.5, 83)).toBe(0);
+    expect(rowsBelow([0, 17, 33, 50, 84], 82.5, 83)).toBe(0);
   });
 });
 

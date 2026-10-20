@@ -1368,7 +1368,7 @@ test("at the narrowest right rail the hidden-row count never covers the visible 
   await shrinkOrders(page);
 
   await fillOrders(page, FIVE_WROK);
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
 
   const drawn = await textBesideCount(page);
   expect(drawn.text).toContain("unknown order command: WROK");
@@ -1392,7 +1392,7 @@ test("a quoted order word longer than the row wraps inside its chip, never under
   await shrinkOrders(page);
 
   await fillOrders(page, Array.from({ length: 5 }, () => `${word} 1`).join("\n"));
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
 
   const chip = await page
     .getByTestId("orders-diagnostic")
@@ -1424,8 +1424,9 @@ test("at the smallest panel a row of three lines or more shows two and scrolls, 
   await shrinkOrders(page);
 
   await fillOrders(page, FIVE_WROK);
-  // Four or five: a partly shown row counts as hidden (ah-nup4, `rowsBelow`).
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  // Four: the first row is partly shown, and a row whose start is on screen is not "more"
+  // (ah-txyp, `rowsBelow`).
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
   const list = page.getByTestId("orders-diagnostics");
   const shape = () =>
     list.evaluate((element) => ({
