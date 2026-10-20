@@ -21,27 +21,42 @@ mod common;
 
 /// The settled plain (1,1), where the longship lies, and the unsettled forest (2,2) SE of it,
 /// which grows no grain. Aboard: the captain (900) and a sailor (901), both on guard, a passenger
-/// founding a Palace with its own stone (902) and a farmer (903). They weigh 140 together, within
-/// the Longship's 150 (`newage trident data/LONG`): an overloaded fleet stays whatever its course
-/// (`rules/movement_sailing`, `ah-zbtx`), and these tests are about the course.
-const REPORT: &str = "Foo (1) Report\n\n\
-plain (1,1) in Shire, contains Inholm [city], 1000 peasants (humans), $5000.\n\
-------------------------------------------------------------\n\
-\x20\x20Products: 200 grain [GRAI].\n\n\
-Exits:\n\x20\x20Southeast : forest (2,2) in Shire.\n\n\
-+ Ship [329] : Longship; Load: 0/150; Sailors: 4/4; MaxSpeed: 4.\n\
-\x20\x20* Captain (900), on guard, Foo (1), 4 humans [HUMN]. Weight: 40. Capacity: 0/0/60/0. \
-Skills: sailing [SAIL] 2 (90).\n\
-\x20\x20* Sailor (901), on guard, Foo (1), 2 humans [HUMN], 1000 silver [SILV]. Weight: 30. Capacity: \
-0/0/30/0. Skills: sailing [SAIL] 2 (90).\n\
-\x20\x20* Founder (902), Foo (1), human [HUMN], stone [STON]. Weight: 60. Capacity: 0/0/5/0. \
-Skills: building [BUIL] 3 (180).\n\
-\x20\x20* Farmer (903), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/5/0. Skills: farming \
-[FARM] 1 (30).\n\n\
-forest (2,2) in Shire, 100 peasants (humans), $50.\n\
-------------------------------------------------------------\n\
-\x20\x20Products: 20 wood [WOOD].\n\n\
-Exits:\n\x20\x20Northwest : plain (1,1) in Shire.\n\n";
+/// founding a Palace with its own stone (902) and a farmer (903). The hull comes from
+/// `common::fleet_that_sails`, so its crew and load are ones the game lets sail
+/// (`rules/movement_sailing`, `ah-zbtx`, `ah-l20e`): these tests are about the course alone, and
+/// [`the_fleet_is_refused_for_its_course_alone`] holds them to that.
+fn report() -> String {
+    let fleet = common::fleet_that_sails(&common::trident_ruleset(), "329", "Longship")
+        .captain(
+            "Captain (900), on guard, Foo (1), 4 humans [HUMN]. Weight: 40. Capacity: 0/0/60/0.",
+            4,
+        )
+        .aboard(
+            "Sailor (901), on guard, Foo (1), 2 humans [HUMN], 1000 silver [SILV]. Weight: 30. \
+             Capacity: 0/0/30/0. Skills: sailing [SAIL] 2 (90).",
+        )
+        .aboard(
+            "Founder (902), Foo (1), human [HUMN], stone [STON]. Weight: 60. Capacity: 0/0/5/0. \
+             Skills: building [BUIL] 3 (180).",
+        )
+        .aboard(
+            "Farmer (903), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/5/0. Skills: farming \
+             [FARM] 1 (30).",
+        );
+    format!(
+        "Foo (1) Report\n\n\
+         plain (1,1) in Shire, contains Inholm [city], 1000 peasants (humans), $5000.\n\
+         ------------------------------------------------------------\n\
+         \x20\x20Products: 200 grain [GRAI].\n\n\
+         Exits:\n\x20\x20Southeast : forest (2,2) in Shire.\n\n\
+         {}\n\
+         forest (2,2) in Shire, 100 peasants (humans), $50.\n\
+         ------------------------------------------------------------\n\
+         \x20\x20Products: 20 wood [WOOD].\n\n\
+         Exits:\n\x20\x20Northwest : plain (1,1) in Shire.\n\n",
+        fleet.text()
+    )
+}
 
 const ORDERS: &str = "unit 900\nSAIL SE\n\
 unit 901\nSAIL SE\n\
@@ -49,7 +64,7 @@ unit 902\nBUILD Palace\n\
 unit 903\nPRODUCE grain\n";
 
 fn review() -> TurnReview {
-    review_of(REPORT)
+    review_of(&report())
 }
 
 fn review_of(report: &str) -> TurnReview {
@@ -67,6 +82,14 @@ fn codes(review: &TurnReview) -> Vec<&str> {
         .iter()
         .map(|finding| finding.code.as_str())
         .collect()
+}
+
+/// Neither the load nor the crew refuses the fleet, so the forest is the only reason it stays: a
+/// fixture that sailed an overloaded or undercrewed fleet would pass every test here on the wrong
+/// refusal (`docs/retrospectives/ah-zbtx.md`).
+#[test]
+fn the_fleet_is_refused_for_its_course_alone() {
+    common::assert_fleet_sails(&report(), ORDERS, &common::trident_ruleset());
 }
 
 #[test]
@@ -100,7 +123,7 @@ fn guard_dropped(report: &str) -> bool {
 fn the_captain_and_the_sailor_stay_to_guard_the_hex() {
     for unit in ["900", "901"] {
         assert!(
-            !guard_dropped(&guarded_by_only(REPORT, unit)),
+            !guard_dropped(&guarded_by_only(&report(), unit)),
             "{unit} stays on guard"
         );
     }
@@ -131,7 +154,7 @@ fn the_preview_moves_nobody() {
     let response = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
-        REPORT,
+        &report(),
         "[]",
         ORDERS,
     )
@@ -160,7 +183,7 @@ fn the_preview_moves_nobody() {
 /// something to say - which is what makes their silence over the forest mean the fleet stays.
 #[test]
 fn the_same_fleet_sailing_to_sea_carries_everybody_away() {
-    let at_sea = REPORT
+    let at_sea = report()
         .replace(
             "forest (2,2) in Shire, 100 peasants (humans), $50.",
             "ocean (2,2) in Sea.",
@@ -170,6 +193,7 @@ fn the_same_fleet_sailing_to_sea_carries_everybody_away() {
             "Southeast : ocean (2,2) in Sea.",
         )
         .replace("\x20\x20Products: 20 wood [WOOD].\n\n", "");
+    common::assert_fleet_sails(&at_sea, ORDERS, &common::trident_ruleset());
     let review = review_of(&at_sea);
     let codes = codes(&review);
 
