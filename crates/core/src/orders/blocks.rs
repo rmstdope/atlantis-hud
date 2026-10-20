@@ -6,11 +6,15 @@
 //! [`crate::movement::fleet::OrderedUnits`]. Each used to carry its own copy of the nesting rules,
 //! and they drifted five times. The rules live here once instead.
 //!
-//! [`FormStack`] is generic over the reader's own handle for a formed unit, because the three
-//! readers name one differently on purpose - per `(region, alias)` in the preview, by the line of its
-//! `FORM` in the movement reader. Passing `None` to [`FormStack::open`] is how a reader says "I could
-//! not take this `FORM` up", so both the unreadable-alias case and the taken-alias case stay each
-//! reader's own decision while the nesting rules stay here.
+//! What a `FORM` creates is decided here once too. [`FormBlocks`] rides each reader's walk and
+//! records every formed unit as a [`FormedUnit`]: its alias, its former, its hex, the flag orders
+//! it inherits and its NOCROSS. Each of the three readers used to build that record itself, and one
+//! rule about it had to be written and fixed in all three (`ah-e529`, `ah-78rd`, `ah-0vc6`). The
+//! readers take the record and the [`Owner`] of each order from it, and it is the one place they
+//! read a flag line.
+//!
+//! [`FormStack`] holds only the nesting: `None` is how [`FormBlocks`] says it could not take a
+//! `FORM` up.
 
 use super::walk::Event;
 use crate::movement::rules::Ruleset;
@@ -210,7 +214,12 @@ impl FormBlocks {
 
     /// Folds one event of [`super::walk::walk`] in. Call it for every event, before acting on the
     /// event yourself, so [`Self::owner`] answers for it.
-    pub fn visit(&mut self, event: &Event<'_>, ruleset: Option<&Ruleset>, hexes: Hexes<'_>) -> Step {
+    pub fn visit(
+        &mut self,
+        event: &Event<'_>,
+        ruleset: Option<&Ruleset>,
+        hexes: Hexes<'_>,
+    ) -> Step {
         use super::walk::BlockKind;
 
         match event {
@@ -241,8 +250,7 @@ impl FormBlocks {
                 Step::Other
             }
             Event::Order { line, depth } if depth.turn == 0 => {
-                let flag =
-                    super::effects::read_flag_line(line.command, line.arguments, ruleset);
+                let flag = super::effects::read_flag_line(line.command, line.arguments, ruleset);
                 if let Some(change) = flag {
                     match self.stack.owner() {
                         Owner::Block => {
@@ -404,7 +412,10 @@ mod tests {
     fn form_blocks_swallows_an_unreadable_alias() {
         let source = "unit 1\nFORM 0\nFORM 2\nEND\nEND\nFORM a\nEND\n";
         let units = formed(source, Hexes::Of(&two_hexes));
-        assert!(units.is_empty(), "a FORM nested in a refused one has no former: {units:?}");
+        assert!(
+            units.is_empty(),
+            "a FORM nested in a refused one has no former: {units:?}"
+        );
     }
 
     #[test]

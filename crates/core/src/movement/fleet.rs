@@ -90,6 +90,9 @@ struct FormedAtPromotion {
     former: String,
     /// The formed unit's own ENTER and LEAVE orders, in the order written.
     boardings: Vec<BoardingOrder>,
+    /// Its NOCROSS when its LEAVE runs, where this month's orders set it
+    /// ([`crate::orders::blocks::FormedUnit::nocross`]); `None` leaves the former's report flag.
+    nocross: Option<bool>,
 }
 
 /// This month's movement once it is settled: which route each unit walks or sails, whose `SAIL`
@@ -109,7 +112,7 @@ impl WrittenMovement {
     /// lexical rules.
     #[must_use]
     pub fn from_document(orders_document: &str, ruleset: Option<&Ruleset>) -> Self {
-        use crate::orders::walk::{walk, BlockKind, Event};
+        use crate::orders::walk::{walk, Event};
 
         let mut chains: BTreeMap<OrderedUnitKey, RouteChain> = BTreeMap::new();
         let mut promotes_by_unit: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -118,179 +121,160 @@ impl WrittenMovement {
         let mut boardings_by_unit: BTreeMap<String, Vec<BoardingOrder>> = BTreeMap::new();
         let mut nocross_by_unit: BTreeMap<String, bool> = BTreeMap::new();
         let mut sailers = BTreeSet::new();
-        let mut current: Option<String> = None;
-        // The `FORM` blocks currently open, innermost last, each holding the line of the `FORM`
-        // that opened it - or `None` for a FORM whose alias could not be read, which still opens a block
-        // so its orders do not fall through to the unit outside it. The nesting rules themselves
-        // live in `orders::blocks`, driven by this reader, `Working::visit` and
-        // `intents::FormReader` alike, so they cannot drift apart again (`ah-i33f`).
-        let mut forms: crate::orders::blocks::FormStack<usize> =
-            crate::orders::blocks::FormStack::new();
+        // What each `FORM` creates, whose block each order is in, and every flag order, read once
+        // for this reader, `effects::Working` and `intents::FormReader` alike (`ah-i33f`,
+        // `ah-0vc6`). This reader sees no report, so it knows no hexes and no alias is taken here.
+        let mut forms = crate::orders::blocks::FormBlocks::new();
 
-        walk(orders_document, ruleset, |event| match event {
-            Event::Unit(line) => {
-                current = line.arguments.first().map(|id| id.text.to_string());
-                forms.reset();
-            }
-            // A directive ends the block, as `effects::Working` and `intents::FormReader` read it.
-            Event::Directive(_) => {
-                current = None;
-                forms.reset();
-            }
-            Event::Open {
-                line,
-                kind: BlockKind::Form,
-                depth,
-            } if depth.turn == 0 => {
-                let alias = line
-                    .arguments
-                    .first()
-                    .and_then(crate::orders::forms::read_alias);
-                if let (Some(alias), Some(former)) = (alias, current.as_ref()) {
+        walk(orders_document, ruleset, |event| {
+            let step = forms.visit(&event, ruleset, crate::orders::blocks::Hexes::Unknown);
+            let current = forms.current().map(str::to_string);
+            let formed_at = |index: usize| forms.formed()[index].form_line;
+            match (step, event) {
+                (crate::orders::blocks::Step::Formed(index), Event::Open { .. }) => {
+                    let record = &forms.formed()[index];
                     formed.insert(
-                        line.number,
+                        record.form_line,
                         FormedAtPromotion {
-                            unit_id: format!("new-{alias}"),
-                            former: former.clone(),
+                            unit_id: record.unit_id(),
+                            former: record.block_unit.clone(),
                             boardings: Vec::new(),
+                            nocross: None,
                         },
                     );
                 }
-                forms.open(alias.map(|_| line.number));
-            }
-            Event::Close {
-                kind: BlockKind::Form,
-                depth,
-                ..
-            } if depth.turn == 0 => {
-                forms.close();
-            }
-            // `depth.turn == 0` rather than `depth == Depth::default()`: a `TURN` block holds next
-            // month's orders and says nothing about this one, but a `FORM` block's own MOVE is the
-            // formed unit's and must be read (`ah-4hux`). `Depth` counts the two separately.
-            Event::Order { line, depth } if depth.turn == 0 => {
-                // Read through `orders::intents::read_order`, which is the same function
-                // `orders::semantics` reads a line with - so the map and the preview cannot read
-                // one line two ways. Before `ah-i33f` this walk read the raw token slice and
-                // refused an `ENTER 5 junk` the validator and the preview both accept, so one
-                // document put a unit ashore in the pane and left it aboard on the map.
-                // `PROMOTE` is no `Intent` - nothing consumes it as a phase - so it is read from
-                // the line before the intent guard below throws the line away. Only a block's own
-                // orders count: a `FORM` block's orders are the formed unit's.
-                if let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
-                    (forms.owner(), current.as_ref())
-                {
-                    if let Some(target) =
-                        crate::orders::intents::promoted_unit(line.command, line.arguments, ruleset)
+                // `depth.turn == 0` rather than `depth == Depth::default()`: a `TURN` block holds next
+                // month's orders and says nothing about this one, but a `FORM` block's own MOVE is the
+                // formed unit's and must be read (`ah-4hux`). `Depth` counts the two separately.
+                (crate::orders::blocks::Step::Order { flag }, Event::Order { line, .. }) => {
+                    // Read through `orders::intents::read_order`, which is the same function
+                    // `orders::semantics` reads a line with - so the map and the preview cannot read
+                    // one line two ways. Before `ah-i33f` this walk read the raw token slice and
+                    // refused an `ENTER 5 junk` the validator and the preview both accept, so one
+                    // document put a unit ashore in the pane and left it aboard on the map.
+                    // `PROMOTE` is no `Intent` - nothing consumes it as a phase - so it is read from
+                    // the line before the intent guard below throws the line away. Only a block's own
+                    // orders count: a `FORM` block's orders are the formed unit's.
+                    if let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
+                        (forms.owner(), current.as_ref())
                     {
-                        promotes_by_unit
-                            .entry(unit_id.clone())
-                            .or_default()
-                            .push(target);
-                    }
-                    let evicted = crate::orders::intents::evicted_units(
-                        line.command,
-                        line.arguments,
-                        ruleset,
-                    );
-                    if !evicted.is_empty() {
-                        evicts_by_unit
-                            .entry(unit_id.clone())
-                            .or_default()
-                            .extend(evicted);
-                    }
-                    if let Some(crate::report::flags::FlagChange::Toggle {
-                        setting: crate::report::flags::Setting::NoCross,
-                        on,
-                    }) = crate::orders::effects::read_flag_line(
-                        line.command,
-                        line.arguments,
-                        ruleset,
-                    ) {
-                        nocross_by_unit.insert(unit_id.clone(), on);
-                    }
-                }
-                let Some(intent) =
-                    crate::orders::intents::read_order(line.command, line.arguments, ruleset)
-                else {
-                    return;
-                };
-                let owner = forms.owner();
-                // Movement moves with the formed unit; SAIL participation and the boardings stay
-                // with the block's own unit, because `Working` already applies a formed unit's
-                // boardings to its own `structure_id` and `structure_of` reads both - recording
-                // them here as well would apply one order twice (`ah-4hux`).
-                //
-                // `Owner::Nobody` - a FORM whose alias could not be read - moves nobody, rather
-                // than falling the order through to the block's own unit. `Working::active`
-                // answers `None` there too, and these two readers must agree or the parent draws a
-                // line for a MOVE it did not write (`ah-4hux`).
-
-                // A `FORM` block's route is keyed by the line of its `FORM`, not by `new-<alias>`:
-                // that id is unique only inside its hex (`rules/form`) and this reader sees no
-                // regions (`ah-5nqc`). `effects::Working` resolves aliases by `(region, alias)` and
-                // asks for the line of each `FORM` it took up (`ah-xmqo`).
-                //
-                // Every readable order goes in, not only movement: a month-long order between two
-                // movement lines breaks their chain (`movement::chain::RouteChain`).
-                match &owner {
-                    crate::orders::blocks::Owner::Block => {
-                        if let Some(unit_id) = current.clone() {
-                            chains
-                                .entry(OrderedUnitKey::Shown(unit_id))
+                        if let Some(target) = crate::orders::intents::promoted_unit(
+                            line.command,
+                            line.arguments,
+                            ruleset,
+                        ) {
+                            promotes_by_unit
+                                .entry(unit_id.clone())
                                 .or_default()
-                                .push(&line.command.text, &intent);
+                                .push(target);
+                        }
+                        let evicted = crate::orders::intents::evicted_units(
+                            line.command,
+                            line.arguments,
+                            ruleset,
+                        );
+                        if !evicted.is_empty() {
+                            evicts_by_unit
+                                .entry(unit_id.clone())
+                                .or_default()
+                                .extend(evicted);
+                        }
+                        if let Some(crate::report::flags::FlagChange::Toggle {
+                            setting: crate::report::flags::Setting::NoCross,
+                            on,
+                        }) = flag
+                        {
+                            nocross_by_unit.insert(unit_id.clone(), on);
                         }
                     }
-                    crate::orders::blocks::Owner::Formed(form_line) => chains
-                        .entry(OrderedUnitKey::Formed(**form_line))
-                        .or_default()
-                        .push(&line.command.text, &intent),
-                    crate::orders::blocks::Owner::Nobody => {}
-                }
-                // Skipped inside a FORM block for the reason above: those orders are applied by
-                // `Working` to the formed unit's own row already. Kept apart for who stands in an
-                // object when the PROMOTEs run, which `Working` cannot answer this early
-                // (`ah-vweq`).
-                let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
-                    (&owner, current.as_ref())
-                else {
-                    if let crate::orders::blocks::Owner::Formed(form_line) = owner {
-                        if let Some(formed) = formed.get_mut(form_line) {
-                            match intent {
-                                Intent::Enter { structure } => {
-                                    formed.boardings.push(BoardingOrder::Enter(structure));
-                                }
-                                Intent::Leave => formed.boardings.push(BoardingOrder::Leave),
-                                _ => {}
+                    let Some(intent) =
+                        crate::orders::intents::read_order(line.command, line.arguments, ruleset)
+                    else {
+                        return;
+                    };
+                    let owner = forms.owner();
+                    // Movement moves with the formed unit; SAIL participation and the boardings stay
+                    // with the block's own unit, because `Working` already applies a formed unit's
+                    // boardings to its own `structure_id` and `structure_of` reads both - recording
+                    // them here as well would apply one order twice (`ah-4hux`).
+                    //
+                    // `Owner::Nobody` - a FORM whose alias could not be read - moves nobody, rather
+                    // than falling the order through to the block's own unit. `Working::active`
+                    // answers `None` there too, and these two readers must agree or the parent draws a
+                    // line for a MOVE it did not write (`ah-4hux`).
+
+                    // A `FORM` block's route is keyed by the line of its `FORM`, not by `new-<alias>`:
+                    // that id is unique only inside its hex (`rules/form`) and this reader sees no
+                    // regions (`ah-5nqc`). `effects::Working` resolves aliases by `(region, alias)` and
+                    // asks for the line of each `FORM` it took up (`ah-xmqo`).
+                    //
+                    // Every readable order goes in, not only movement: a month-long order between two
+                    // movement lines breaks their chain (`movement::chain::RouteChain`).
+                    match &owner {
+                        crate::orders::blocks::Owner::Block => {
+                            if let Some(unit_id) = current.clone() {
+                                chains
+                                    .entry(OrderedUnitKey::Shown(unit_id))
+                                    .or_default()
+                                    .push(&line.command.text, &intent);
                             }
                         }
+                        crate::orders::blocks::Owner::Formed(index) => chains
+                            .entry(OrderedUnitKey::Formed(formed_at(**index)))
+                            .or_default()
+                            .push(&line.command.text, &intent),
+                        crate::orders::blocks::Owner::Nobody => {}
                     }
-                    return;
-                };
-                match intent {
-                    // A bare SAIL participates; one with a route departs. `In`, `Out` and a
-                    // structure number are not a departure, which is why this is not simply "has
-                    // steps".
-                    Intent::Sail { ref steps }
-                        if steps.is_empty()
-                            || steps.iter().any(|step| matches!(step, MoveStep::Go(_))) =>
-                    {
-                        sailers.insert(OrderedUnitKey::shown(unit_id));
+                    // Skipped inside a FORM block for the reason above: those orders are applied by
+                    // `Working` to the formed unit's own row already. Kept apart for who stands in an
+                    // object when the PROMOTEs run, which `Working` cannot answer this early
+                    // (`ah-vweq`).
+                    let (crate::orders::blocks::Owner::Block, Some(unit_id)) =
+                        (&owner, current.as_ref())
+                    else {
+                        if let crate::orders::blocks::Owner::Formed(index) = owner {
+                            if let Some(formed) = formed.get_mut(&formed_at(*index)) {
+                                match intent {
+                                    Intent::Enter { structure } => {
+                                        formed.boardings.push(BoardingOrder::Enter(structure));
+                                    }
+                                    Intent::Leave => formed.boardings.push(BoardingOrder::Leave),
+                                    _ => {}
+                                }
+                            }
+                        }
+                        return;
+                    };
+                    match intent {
+                        // A bare SAIL participates; one with a route departs. `In`, `Out` and a
+                        // structure number are not a departure, which is why this is not simply "has
+                        // steps".
+                        Intent::Sail { ref steps }
+                            if steps.is_empty()
+                                || steps.iter().any(|step| matches!(step, MoveStep::Go(_))) =>
+                        {
+                            sailers.insert(OrderedUnitKey::shown(unit_id));
+                        }
+                        Intent::Enter { structure } => boardings_by_unit
+                            .entry(unit_id.clone())
+                            .or_default()
+                            .push(BoardingOrder::Enter(structure)),
+                        Intent::Leave => boardings_by_unit
+                            .entry(unit_id.clone())
+                            .or_default()
+                            .push(BoardingOrder::Leave),
+                        _ => {}
                     }
-                    Intent::Enter { structure } => boardings_by_unit
-                        .entry(unit_id.clone())
-                        .or_default()
-                        .push(BoardingOrder::Enter(structure)),
-                    Intent::Leave => boardings_by_unit
-                        .entry(unit_id.clone())
-                        .or_default()
-                        .push(BoardingOrder::Leave),
-                    _ => {}
                 }
+                _ => {}
             }
-            _ => {}
         });
+        // Its own NOCROSS orders are only all read once the walk has passed its block.
+        for record in forms.formed() {
+            if let Some(formed) = formed.get_mut(&record.form_line) {
+                formed.nocross = record.nocross();
+            }
+        }
 
         // A SAIL a later month-long order replaced will not run, so it lends no hands to the
         // hull's course either (`ah-osny`).
@@ -549,8 +533,9 @@ impl OrderedUnits {
     /// structure, then through its own ENTER and LEAVE. Every one of them, given men or not - the
     /// engine deletes an empty unit only after GIVE and BUY (`Game::DeleteEmptyUnits`), which is
     /// why [`crate::orders::effects`]' formed crews, settled for the movement phase, are not these.
-    /// A formed unit's LEAVE at sea is read with its former's NOCROSS flag, which `rules/form`
-    /// does not list among the flags it inherits but which no formed unit can need at sea, having
+    /// A formed unit's LEAVE at sea is read with the NOCROSS it holds then: what it was formed with
+    /// (`Unit::CopyFlags` copies its former's flags whole) and its own NOCROSS orders
+    /// ([`crate::orders::blocks::FormedUnit::nocross`]). No formed unit can need it at sea, having
     /// no stated movement of its own: one that can neither swim nor fly is refused either way.
     #[must_use]
     pub fn formed_at_promotion(&self, region: &ReportRegion) -> Vec<FormedCrew> {
@@ -578,7 +563,12 @@ impl OrderedUnits {
                     former.structure_id.as_deref(),
                     formed.boardings.iter().map(BoardingOrder::as_boarding),
                     Leaver {
-                        wont_cross_water: self.wont_cross_water(former),
+                        wont_cross_water: formed.nocross.unwrap_or_else(|| {
+                            crate::report::flags::holds(
+                                &former.flags,
+                                crate::report::flags::Setting::NoCross,
+                            )
+                        }),
                         movement: None,
                     },
                 );
@@ -2188,6 +2178,15 @@ mod tests {
 
         let unreadable = OrderedUnits::unreported("unit 900\nFORM 0\nMOVE S\nEND\n", None);
         assert_eq!(unreadable.route(&OrderedUnitKey::Formed(2)), None);
+    }
+
+    /// A `FORM` nested in one whose alias could not be read has no former, so it forms nobody and
+    /// its MOVE draws no line - the preview and the intent reader already said so, and
+    /// `FormBlocks` now says it for all three (`ah-0vc6`).
+    #[test]
+    fn a_form_nested_in_an_unreadable_one_forms_nobody_on_the_map() {
+        let nested = OrderedUnits::unreported("unit 900\nFORM 0\nFORM 2\nMOVE S\nEND\nEND\n", None);
+        assert_eq!(nested.route(&OrderedUnitKey::Formed(3)), None);
     }
 
     /// `ah-r3rv`: a FORM block whose movement a TEACH closed waits on the settlement; one whose

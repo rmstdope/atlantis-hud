@@ -540,11 +540,9 @@ impl FormedBlock {
 
 /// Every unit this document's `FORM` blocks create this month, in document order.
 ///
-/// Mirrors [`super::effects::Working`]'s own walk exactly, so the table's rows and the Silver
-/// column's figures never disagree about which units a document forms: a `FORM` inside a `TURN`
-/// block forms nothing, an alias that is not a number of at least one forms nothing, an alias
-/// already taken in the same hex is swallowed, and a nested `FORM`'s orders belong to the
-/// innermost forming unit rather than the outer one. `regions` is where the report shows each existing unit - only a unit's
+/// Which units a document forms is [`super::blocks::FormBlocks`]'s answer, the same one
+/// [`super::effects::Working`] takes, so the table's rows and the Silver column's figures never
+/// disagree about it. `regions` is where the report shows each existing unit - only a unit's
 /// `region_id` is read from it, to key an alias to its hex without this module reaching into the
 /// report itself.
 ///
@@ -562,7 +560,9 @@ pub fn read_formed(
         results: Vec::new(),
     };
     walk::walk(source, ruleset, |event| reader.visit(&event, &hex_of));
-    let FormReader { forms, mut results, .. } = reader;
+    let FormReader {
+        forms, mut results, ..
+    } = reader;
     // The record holds each block's own flag orders; it is the one place they are read.
     for (block, formed) in results.iter_mut().zip(forms.into_formed()) {
         block.flag_changes = formed.flag_changes;
@@ -584,10 +584,7 @@ impl FormReader<'_> {
     fn visit(&mut self, event: &Event<'_>, hex_of: &dyn Fn(&str) -> Option<String>) {
         use super::blocks::{Hexes, Owner, Step};
 
-        match self
-            .forms
-            .visit(event, self.ruleset, Hexes::Of(hex_of))
-        {
+        match self.forms.visit(event, self.ruleset, Hexes::Of(hex_of)) {
             Step::Formed(index) => {
                 let formed = &self.forms.formed()[index];
                 let formed_by = match &formed.former {
