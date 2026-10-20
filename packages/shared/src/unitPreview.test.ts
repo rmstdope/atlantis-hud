@@ -1982,6 +1982,26 @@ describe("formatItems and itemsTooltip", () => {
   });
 });
 
+// `ah-9lyr`: core words every refusal (`crates/core/src/orders/transport_wording.rs`, whose tests
+// pin each sentence); the hover states what core sent and words nothing itself.
+describe("a transport refusal's sentence", () => {
+  it("is the one core rendered", () => {
+    expect(
+      transportTargetSentence({
+        to: "7001",
+        amount: 5,
+        tag: "STON",
+        reason: "notQuartermaster",
+        orderIndex: 0,
+        toUnshown: false,
+        unsettled: false,
+        reach: null,
+        sentence: "Whatever core said about unit 7001."
+      })
+    ).toBe("Whatever core said about unit 7001.");
+  });
+});
+
 // `ah-64wm`. The sentences themselves are core's (`transport_wording.rs` pins each one, `ah-9lyr`);
 // what is pinned here is which refusals mark the row uncertain, and that the hover and the
 // transport block state the sentence core sent, in document order.
