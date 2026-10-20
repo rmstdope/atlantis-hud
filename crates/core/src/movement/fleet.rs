@@ -69,9 +69,9 @@ pub struct WrittenMovement {
 }
 
 /// A unit a `FORM` block creates, and the structure it stands in when `Game::RunPromoteOrders`
-/// runs (`ah-vweq`). Where in the object's list it stands is [`occupants_after_boarding`]'s: one
-/// that stays where it was formed ahead of every entrant, since the engine appends it as the
-/// `FORM` is read, before any ENTER runs (`ah-7ful`).
+/// runs (`ah-vweq`). Where in the object's list it stands is
+/// [`standing::occupants_after_promotes`]'s: one that stays where it was formed ahead of every
+/// entrant, since the engine appends it as the `FORM` is read, before any ENTER runs (`ah-7ful`).
 ///
 /// `rules/form`: the new unit is "in the same structure if any" as the unit that formed it -
 /// `../Atlantis parseorders.cpp` moves it into its former's object as the `FORM` is read
@@ -541,15 +541,16 @@ impl OrderedUnits {
     pub fn formed_at_promotion(&self, region: &ReportRegion) -> Vec<FormedCrew> {
         self.formed_placed(region)
             .into_iter()
-            .map(|(crew, _)| crew)
+            .map(|placed| placed.crew)
             .collect()
     }
 
-    /// [`Self::formed_at_promotion`], each with whether it stands where it was formed (`ah-7ful`):
-    /// in its former's reported structure, which no ENTER of its own named. Such a unit joined the
-    /// object as its `FORM` was parsed, ahead of every entrant; one whose ENTER is refused stays
-    /// there too. Any other formed unit standing in a structure boarded it when ENTER ran.
-    fn formed_placed(&self, region: &ReportRegion) -> Vec<(FormedCrew, bool)> {
+    /// [`Self::formed_at_promotion`], each with what [`standing::occupants_after_promotes`] orders
+    /// it by (`ah-7ful`): whether the structure it ends in is its former's reported one, and
+    /// whether an ENTER of its own named it. One in its former's structure that no ENTER of its own
+    /// named joined the object as its `FORM` was parsed, ahead of every entrant; one whose ENTER is
+    /// refused stays there too.
+    fn formed_placed(&self, region: &ReportRegion) -> Vec<FormedPlaced> {
         let hex = self.0.hexes.of_region(&region.region_id);
         self.0
             .formed
@@ -572,20 +573,21 @@ impl OrderedUnits {
                         movement: None,
                     },
                 );
-                let in_place = structure_id.is_some()
-                    && structure_id == former.structure_id.as_deref()
-                    && !formed.boardings.iter().any(|boarding| {
-                        structure_id.is_some_and(|id| boarding.as_boarding() == Boarding::Enter(id))
-                    });
-                Some((
-                    FormedCrew {
+                let stood_in_it =
+                    structure_id.is_some() && structure_id == former.structure_id.as_deref();
+                let enters_it = formed.boardings.iter().any(|boarding| {
+                    structure_id.is_some_and(|id| boarding.as_boarding() == Boarding::Enter(id))
+                });
+                Some(FormedPlaced {
+                    crew: FormedCrew {
                         unit_id: formed.unit_id.clone(),
                         region_id: region.region_id.clone(),
                         key: OrderedUnitKey::Formed(*form_line),
                         structure_id: structure_id.map(str::to_string),
                     },
-                    in_place,
-                ))
+                    stood_in_it,
+                    enters_it,
+                })
             })
             .collect()
     }
@@ -659,21 +661,20 @@ pub struct FormedCrew {
     pub structure_id: Option<String>,
 }
 
-/// Who owns a hull once this month's boardings and `PROMOTE`s have run, as a unit id.
-///
-/// The engine's owner is the first unit in the object's list (`Object::GetOwner`), and LEAVE and
-/// ENTER run in one pass before PROMOTE and movement (`Game::RunEnterOrders`;
-/// `rules/sequenceofevents`). A unit that leaves is taken off the list and one that enters is
-/// appended to its end (`Unit::MoveUnit`), so the list the fleet moves with is: the report's
-/// occupants who stayed, in report order ("the first unit listed under the object",
-/// `rules/world_structures`), then everyone who boarded. A reported occupant whose last boarding
-/// order re-enters the hull it stands in is moved to the end like any other entrant. A unit
-/// formed aboard stands between the two (`ah-7ful`): the engine appends a formed unit to its
-/// former's object as the `FORM` is parsed (../Atlantis `parseorders.cpp`
-/// `temp->MoveUnit(former->object)`), before `Game::RunEnterOrders`, so behind the occupants who
-/// stayed and ahead of every entrant. One that boards by its own ENTER is an entrant itself, and
-/// stands behind the reported ones ([`occupants_after_boarding`]). Nobody aboard at all is no
-/// owner (`ah-877p`).
+/// A [`FormedCrew`] with the two facts [`standing::Occupant`] orders it by in the structure it
+/// ends in.
+struct FormedPlaced {
+    crew: FormedCrew,
+    /// That structure is its former's reported one.
+    stood_in_it: bool,
+    /// An ENTER of its own names that structure.
+    enters_it: bool,
+}
+
+/// Who owns a hull once this month's boardings and `PROMOTE`s have run, as a unit id: the head of
+/// [`occupants_after_promotes`]. The rule - who stands where in the object's list and which
+/// `PROMOTE` runs (`ah-c1p2`, `ah-nhgo`, `ah-7ful`) - is stated once, in
+/// [`standing::occupants_after_promotes`]; this reads it out of an orders document.
 ///
 /// A LEAVE at sea by a unit that can neither swim nor fly is refused and moves nobody
 /// (`rules/leave`: "If a unit is capable of swimming or flying then this order is usable to leave a
@@ -684,17 +685,8 @@ pub struct FormedCrew {
 /// month-long phase by `orders::semantics::walk_after_boarding`, whose known gaps (PROMOTE and
 /// EVICT reordering, refused ENTERs) this walk shares.
 ///
-/// Then the owner's `PROMOTE`, when it names a unit aboard the same hull - a reported unit, or one
-/// in `formed`. Among several `PROMOTE`s from one owner only the **last written** is kept
-/// (`ah-nhgo`): `ProcessPromoteOrder` (../Atlantis `parseorders.cpp`) overwrites `u->promote`. One
-/// naming a unit that is not aboard promotes nobody (`Do1PromoteOrder`: "PROMOTE: Can't find
-/// target."), and an earlier one does not run in its place; `rules/promote` does not settle
-/// either question. Only that owner's `PROMOTE` runs (`ah-c1p2`): `Game::RunPromoteOrders`
-/// (../Atlantis `runorders.cpp`) runs one per object, written by its owner once ENTER and LEAVE
-/// have run (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner" - so the
-/// unit it promotes does not hand the hull on again that month. A formed owner's own `PROMOTE` is
-/// not followed: `promotes_of` records only a reported unit's block. `None` when no unit can be
-/// named at all.
+/// A formed owner's own `PROMOTE` is not followed: `promotes_of` records only a reported unit's
+/// block. `None` when nobody is aboard (`ah-877p`).
 #[must_use]
 pub fn fleet_owner(
     region: &ReportRegion,
@@ -707,11 +699,12 @@ pub fn fleet_owner(
         .next()
 }
 
-/// Everyone standing in a structure once this month's boardings and `PROMOTE`s have run, owner
-/// first, as unit ids - the object's list [`fleet_owner`] reads its first entry from, by the rules
-/// stated there. A structure of any kind, not only a hull: the engine keeps one list per object
-/// (`Object::GetOwner`), and `CheckTransportOrders` asks it about a Caravanserai long after the
-/// movement phase has taken more units off it (`ah-1jl9`).
+/// Everyone standing in a structure once this month's boardings, `PROMOTE`s and `EVICT`s have
+/// run, owner first, as unit ids - the object's list [`fleet_owner`] reads its first entry from,
+/// ordered by [`standing::occupants_after_promotes`] and then thinned by the EVICTs. A structure
+/// of any kind, not only a hull: the engine keeps one list per object (`Object::GetOwner`), and
+/// `CheckTransportOrders` asks it about a Caravanserai long after the movement phase has taken
+/// more units off it (`ah-1jl9`).
 ///
 /// Every unit this month's `FORM`s put in the structure stands in the list while PROMOTE and
 /// EVICT run, men or none ([`OrderedUnits::formed_at_promotion`]; `ah-vweq`, `ah-7ful`), but only
@@ -727,24 +720,31 @@ pub fn occupants_after_promotes(
     structure_id: &str,
 ) -> Vec<String> {
     let placed = ordered.formed_placed(region);
-    let mut occupants = occupants_after_boarding(region, ordered, &placed, structure_id);
-    // One `PROMOTE` per object, its owner's (`Game::RunPromoteOrders`): the unit it promotes does
-    // not run its own that month (`ah-c1p2`).
-    let Some(owner) = occupants.first().cloned() else {
-        return occupants;
-    };
-    // Only the last `PROMOTE` the owner wrote is kept (`ProcessPromoteOrder` overwrites
-    // `u->promote`), and one naming a unit not in the object promotes nobody (`Do1PromoteOrder`:
-    // "PROMOTE: Can't find target.") - `ah-nhgo`. A unit formed aboard is in the object too.
-    let promoted = ordered
-        .promotes_of(&owner)
-        .last()
-        .filter(|target| occupants.contains(target));
-    if let Some(next) = promoted.cloned() {
-        // `Do1PromoteOrder`: the target is taken off the object's list and put back at its head.
-        occupants.retain(|unit| unit != &next);
-        occupants.insert(0, next);
-    }
+    let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
+    let reported = region
+        .units
+        .iter()
+        .filter(|unit| ordered.structure_after_boarding(unit) == Some(structure_id))
+        .map(|unit| standing::Occupant {
+            unit_id: &unit.unit_id,
+            formed: false,
+            stood_in_it: listed_under(unit),
+            enters_it: ordered.enters(unit, structure_id),
+        });
+    let formed_here = placed
+        .iter()
+        .filter(|placed| placed.crew.structure_id.as_deref() == Some(structure_id))
+        .map(|placed| standing::Occupant {
+            unit_id: &placed.crew.unit_id,
+            formed: true,
+            stood_in_it: placed.stood_in_it,
+            enters_it: placed.enters_it,
+        });
+    // The owner's `PROMOTE` only: a formed owner's is not followed, `promotes_of` recording only a
+    // reported unit's block.
+    let mut occupants = standing::occupants_after_promotes(reported.chain(formed_here), |owner| {
+        ordered.promotes_of(owner)
+    });
     // Then the EVICTs (`ah-0ace`): whoever they put outside is no longer in the object's list.
     let hex = ordered.0.hexes.of_region(&region.region_id);
     occupants.retain(|unit| hex.evicted_by(unit).is_none());
@@ -752,60 +752,14 @@ pub fn occupants_after_promotes(
     occupants.retain(|unit| {
         placed
             .iter()
-            .find(|(crew, _)| &crew.unit_id == unit)
-            .is_none_or(|(crew, _)| {
+            .find(|placed| &placed.crew.unit_id == unit)
+            .is_none_or(|placed| {
                 formed
                     .iter()
-                    .any(|kept| kept.region_id == region.region_id && kept.key == crew.key)
+                    .any(|kept| kept.region_id == region.region_id && kept.key == placed.crew.key)
             })
     });
     occupants
-}
-
-/// Everyone standing in a structure once this month's ENTER and LEAVE have run and before any
-/// `PROMOTE`, owner first, as unit ids - the list `Game::RunPromoteOrders` asks for its owner, by
-/// the rules [`fleet_owner`] states. Its first entry is the one unit whose `PROMOTE` runs
-/// (`ah-c1p2`). `orders::semantics::owner_when_promotions_run` reads the same rule from a hex's
-/// own units.
-///
-/// The order is the engine's (`ah-7ful`): the report's occupants who stayed; then the units
-/// formed where they stand, which joined as their `FORM`s were parsed; then the reported units
-/// that boarded, as `Game::RunEnterOrders` appends them; then the formed units that boarded by
-/// their own ENTER. Which of the last two the engine appends first turns on the order it walks
-/// the region's objects in, which the report does not show.
-#[must_use]
-fn occupants_after_boarding(
-    region: &ReportRegion,
-    ordered: &OrderedUnits,
-    placed: &[(FormedCrew, bool)],
-    structure_id: &str,
-) -> Vec<String> {
-    let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
-    let aboard = |unit: &&ReportUnit| ordered.structure_after_boarding(unit) == Some(structure_id);
-    let stayed = region
-        .units
-        .iter()
-        .filter(aboard)
-        .filter(|unit| listed_under(unit) && !ordered.enters(unit, structure_id));
-    let boarded = region
-        .units
-        .iter()
-        .filter(aboard)
-        .filter(|unit| !listed_under(unit) || ordered.enters(unit, structure_id));
-    let formed_aboard = |in_place: bool| {
-        placed
-            .iter()
-            .filter(move |(crew, stays)| {
-                *stays == in_place && crew.structure_id.as_deref() == Some(structure_id)
-            })
-            .map(|(crew, _)| crew.unit_id.clone())
-    };
-    stayed
-        .map(|unit| unit.unit_id.clone())
-        .chain(formed_aboard(true))
-        .chain(boarded.map(|unit| unit.unit_id.clone()))
-        .chain(formed_aboard(false))
-        .collect()
 }
 
 /// Who owns a hull, and the course that owner set.

@@ -12898,87 +12898,70 @@ fn per_skill_destroy(
 }
 
 /// The owner that can execute `DESTROY` after this turn's `PROMOTE` orders, when ownership is
-/// knowable from the report. Only [`owner_when_promotions_run`] can transfer it:
-/// `Game::RunPromoteOrders` (../Atlantis `runorders.cpp`) runs one `PROMOTE` per object, its
-/// owner's (`Object::GetOwner`), and errors every other unit's "PROMOTE: Must be owner", so the
-/// unit it promotes hands nothing on again (`ah-c1p2`). Of that owner's `PROMOTE`s only the last
-/// written is kept (`ProcessPromoteOrder` overwrites `u->promote`), and it promotes nobody when it
-/// names a unit not in the structure (`Do1PromoteOrder`: "PROMOTE: Can't find target.") - the
-/// rule `movement::fleet::fleet_owner` follows (`ah-nhgo`).
+/// knowable from the report: the head of [`standing::occupants_after_promotes`], which states
+/// which `PROMOTE` runs (`ah-c1p2`, `ah-nhgo`) and is the rule `movement::fleet::fleet_owner`
+/// reads too, fed this hex's [`occupants_view`]. The owner's `PROMOTE`s are its block's, a formed
+/// owner's included.
 fn structure_owner_after_promotes(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
-    let owner = owner_when_promotions_run(hex, structure_id)?;
-    let promoted = hex
-        .units
-        .iter()
-        .find(|promoter| promoter.unit.unit_id == owner)
-        .and_then(|promoter| {
-            promoter
-                .promotes
-                .last()
-                .map(|promote| &promote.target)
-                .filter(|target| {
-                    *target != &owner && unit_is_in_structure(hex, target, structure_id)
-                })
-        });
-    Some(promoted.cloned().unwrap_or(owner))
+    standing::occupants_after_promotes(occupants_view(hex, structure_id), |owner| {
+        hex.units
+            .iter()
+            .find(|promoter| promoter.unit.unit_id == owner)
+            .into_iter()
+            .flat_map(|promoter| promoter.promotes.iter().map(|promote| &promote.target))
+    })
+    .into_iter()
+    .next()
 }
 
 /// Who owns a structure when this month's `PROMOTE`s run: the first unit in the object's list
-/// once ENTER and LEAVE have run (`Object::GetOwner`; `rules/sequenceofevents`). The rule
-/// [`crate::movement::fleet::fleet_owner`] states, read from this hex's units (`ah-c1p2`): the
-/// report's occupants who stayed, in report order; then the units formed in place - still in
-/// their former's structure once ENTER and LEAVE have run, and named by no ENTER of their own
-/// (the engine adds one to its former's object as the `FORM` is parsed, before any ENTER runs -
-/// `ah-7ful`); then the reported units that boarded - a reported occupant that ENTERs the
-/// structure it stands in boards again; then the formed units that boarded. A
-/// formed unit counts men or none: `Game::DeleteEmptyUnits` runs only after PROMOTE, EVICT and
-/// DESTROY (`Game::RunOrders`). A unit of another faction stays where the report shows it. `None`
-/// when nobody stands in it.
+/// once ENTER and LEAVE have run (`Object::GetOwner`; `rules/sequenceofevents`) - the list
+/// [`standing::occupants_after_promotes`] orders, with no `PROMOTE` followed. `None` when nobody
+/// stands in it.
 fn owner_when_promotions_run(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
-    let enters = |unit_id: &str| {
-        hex.units.iter().any(|ordered| {
-            ordered.formed.is_none()
-                && ordered.unit.unit_id == unit_id
-                && ordered.intents.iter().any(|placed| {
-                    matches!(&placed.intent, Intent::Enter { structure } if structure == structure_id)
-                })
-        })
+    standing::occupants_after_promotes(occupants_view(hex, structure_id), |_| None::<&str>)
+        .into_iter()
+        .next()
+}
+
+/// Everyone standing in a structure once this month's ENTER and LEAVE have run, as
+/// [`standing::occupants_after_promotes`] orders them: the report's units in report order, then
+/// the units formed here. A formed unit counts men or none: `Game::DeleteEmptyUnits` runs only
+/// after PROMOTE, EVICT and DESTROY (`Game::RunOrders`); it stood in the structure when its former
+/// is listed under it (`ah-7ful`). A unit of another faction stays where the report shows it.
+fn occupants_view<'h>(hex: &'h Hex<'_>, structure_id: &str) -> Vec<standing::Occupant<'h>> {
+    let enters = |ordered: &Ordered<'_>| {
+        ordered.intents.iter().any(
+            |placed| matches!(&placed.intent, Intent::Enter { structure } if structure == structure_id),
+        )
     };
-    let aboard: Vec<&ReportUnit> = hex
+    let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
+    let reported = hex
         .region
         .units
         .iter()
         .filter(|unit| unit_is_in_structure(hex, &unit.unit_id, structure_id))
-        .collect();
-    let listed_under = |unit: &ReportUnit| unit.structure_id.as_deref() == Some(structure_id);
-    let stayed = aboard
+        .map(|unit| standing::Occupant {
+            unit_id: &unit.unit_id,
+            formed: false,
+            stood_in_it: listed_under(unit),
+            enters_it: hex.units.iter().any(|ordered| {
+                ordered.formed.is_none() && ordered.unit.unit_id == unit.unit_id && enters(ordered)
+            }),
+        });
+    let formed = hex
+        .units
         .iter()
-        .find(|unit| listed_under(unit) && !enters(&unit.unit_id));
-    let boarded = || {
-        aboard
-            .iter()
-            .find(|unit| !listed_under(unit) || enters(&unit.unit_id))
-    };
-    // A formed unit joins its former's object as the FORM is parsed, before any ENTER runs
-    // (`ah-7ful`): one still there - no ENTER of its own named it, and one that was refused moved
-    // nobody - stands between the occupants who stayed and the entrants, and one that boarded by
-    // its own ENTER is an entrant itself.
-    let formed = |boards: bool| {
-        hex.units.iter().find(|ordered| {
-            let stays = listed_under(ordered.unit)
-                && !ordered.intents.iter().any(|placed| {
-                    matches!(&placed.intent, Intent::Enter { structure } if structure == structure_id)
-                });
-            ordered.formed.is_some()
-                && structure_after_boarding(ordered) == Some(structure_id)
-                && stays != boards
+        .filter(|ordered| {
+            ordered.formed.is_some() && structure_after_boarding(ordered) == Some(structure_id)
         })
-    };
-    stayed
-        .map(|unit| unit.unit_id.clone())
-        .or_else(|| formed(false).map(|ordered| ordered.unit.unit_id.clone()))
-        .or_else(|| boarded().map(|unit| unit.unit_id.clone()))
-        .or_else(|| formed(true).map(|ordered| ordered.unit.unit_id.clone()))
+        .map(|ordered| standing::Occupant {
+            unit_id: &ordered.unit.unit_id,
+            formed: true,
+            stood_in_it: listed_under(ordered.unit),
+            enters_it: enters(ordered),
+        });
+    reported.chain(formed).collect()
 }
 
 /// Every unit of ours a structure's owner EVICTs this month, with that owner (`ah-0ace`).
