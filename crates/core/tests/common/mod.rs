@@ -6,7 +6,9 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::orders::effects::{ItemChangeCause, OrdersPreviewResponse, UnitPreview};
 use atlantis_hud_core::orders::intents::{read_intents, spends_the_month};
+use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::report::model::Coordinate;
+use atlantis_hud_core::report::{classify_units, parse_report_full};
 
 /// A map coordinate on the plane most fixtures live on.
 pub fn at(x: i32, y: i32) -> Coordinate {
@@ -110,4 +112,152 @@ pub fn expect_preview_row<'a>(
             "unit {unit_id} is an own unit of the report but has no preview row: the orders change nothing the preview shows about it"
         )
     })
+}
+
+/// A fleet the rules let sail, written as the report block that shows it (`ah-l20e`).
+///
+/// `rules/movement_sailing`: *"A fleet can only move if the total weight of everything aboard does
+/// not exceed the fleet's capacity ... Also, there must be enough sailors aboard (using the SAIL
+/// order), to sail the fleet, or it will not go anywhere."* A departure test that writes its hull
+/// line by hand can break either without noticing, and seven did until the check was enforced on
+/// every surface (`ah-zbtx`, `docs/retrospectives/ah-zbtx.md`). This one reads the hull's capacity,
+/// crew requirement and speed from the ruleset, gives the captain that requirement on its own, and
+/// refuses a load over capacity. **Start every new sailing test from it**, and pair it with
+/// [`assert_fleet_sails`] once the orders are written: a test that wants a refused fleet writes the
+/// refusal on purpose, by editing what this returns.
+pub struct FleetThatSails {
+    structure_id: String,
+    hull: String,
+    capacity: i64,
+    requirement: i64,
+    speed: u32,
+    captain: Option<String>,
+    aboard: Vec<String>,
+}
+
+/// A `hull` with id `[structure_id]`, sized from `ruleset`'s own entry for it - the catalogue
+/// figures `movement::mode::cargo_capacity` and `sailing_requirement` fall back to. Panics when the
+/// ruleset does not price the hull, so a typo fails here rather than as a fleet nobody can judge.
+pub fn fleet_that_sails(ruleset: &Ruleset, structure_id: &str, hull: &str) -> FleetThatSails {
+    let item = ruleset
+        .find_item(hull)
+        .unwrap_or_else(|| panic!("the ruleset has no {hull}"));
+    FleetThatSails {
+        structure_id: structure_id.to_string(),
+        hull: hull.to_string(),
+        capacity: item
+            .cargo_capacity
+            .unwrap_or_else(|| panic!("the ruleset states no capacity for {hull}")),
+        requirement: item
+            .sailing_skill
+            .unwrap_or_else(|| panic!("the ruleset states no sailing requirement for {hull}")),
+        speed: item.moves,
+        captain: None,
+        aboard: Vec::new(),
+    }
+}
+
+impl FleetThatSails {
+    /// The weight the hull carries, from its catalogue entry.
+    pub fn capacity(&self) -> i64 {
+        self.capacity
+    }
+
+    /// The sailing levels its crew must hold between them, from its catalogue entry.
+    pub fn sailing_requirement(&self) -> i64 {
+        self.requirement
+    }
+
+    /// The hull's captain: `unit` is its report line up to where its skills would start, e.g.
+    /// `"Captain (900), Foo (1), human [HUMN]. Weight: 10. Capacity: 0/0/15/0."`, and `men` its
+    /// headcount. Each man is given the sailing level that lets the captain alone meet the hull's
+    /// requirement - a level is held by every man of a unit ("the sailing skill increases the
+    /// usefulness of a unit proportionally", `rules/movement_sailing`) - so four men sail a
+    /// Longship at level 1 and three need level 2. The days beside the level are a month of
+    /// training's 30 for each of the 1 + 2 + ... + level months it takes (`rules/skills_studying`).
+    pub fn captain(mut self, unit: &str, men: i64) -> Self {
+        assert!(men > 0, "a captain has men");
+        let level = (self.requirement + men - 1) / men;
+        let days = 30 * level * (level + 1) / 2;
+        self.captain = Some(format!("{unit} Skills: sailing [SAIL] {level} ({days})."));
+        self
+    }
+
+    /// Any other unit standing in the hull, its report line as written (without the `  * `).
+    pub fn aboard(mut self, line: &str) -> Self {
+        self.aboard.push(line.to_string());
+        self
+    }
+
+    /// The hull line and every unit in it, as a report prints them. Its `Load:` is the sum of the
+    /// units' stated weights - how the server computes it (`orders::semantics`'s `judge_sailing`,
+    /// checked against two committed reports). Panics when there is no captain, a unit states no
+    /// weight, or the load is over the capacity.
+    pub fn text(&self) -> String {
+        let captain = self
+            .captain
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} [{}] has no captain", self.hull, self.structure_id));
+        let units: Vec<&String> = std::iter::once(captain).chain(&self.aboard).collect();
+        let load: i64 = units.iter().map(|line| stated_weight(line)).sum();
+        assert!(
+            load <= self.capacity,
+            "{} [{}] carries {load}, over its capacity of {}, so it will not sail",
+            self.hull,
+            self.structure_id,
+            self.capacity
+        );
+
+        let mut text = format!(
+            "+ Ship [{}] : {}; Load: {load}/{}; Sailors: {}/{}; MaxSpeed: {}.\n",
+            self.structure_id,
+            self.hull,
+            self.capacity,
+            self.requirement,
+            self.requirement,
+            self.speed
+        );
+        for line in units {
+            text.push_str(&format!("  * {line}\n"));
+        }
+        text
+    }
+}
+
+/// The `N` of a unit line's `Weight: N.`
+fn stated_weight(line: &str) -> i64 {
+    line.split("Weight: ")
+        .nth(1)
+        .and_then(|rest| {
+            rest.split(|c: char| !c.is_ascii_digit())
+                .next()
+                .and_then(|digits| digits.parse().ok())
+        })
+        .unwrap_or_else(|| panic!("{line:?} states no weight, so the load cannot be summed"))
+}
+
+/// Panics, naming each finding, when the sailing check refuses a fleet of `report` under `orders`:
+/// `review_turn` raises `fleet-overloaded` or `fleet-undercrewed` (`rules/movement_sailing`). The
+/// report is parsed and classified the way the application reads it.
+///
+/// For a departure test's own fixture, so that one which sails a fleet the rules keep in port fails
+/// as a broken fixture rather than passing on a departure the game would never make (`ah-zbtx`).
+pub fn assert_fleet_sails(report: &str, orders: &str, ruleset: &Ruleset) {
+    let mut parsed = parse_report_full(report);
+    classify_units(&mut parsed, ruleset);
+    let refused: Vec<String> = review_turn(&parsed, orders, Some(ruleset), CheckOptions::default())
+        .findings
+        .into_iter()
+        .filter(|finding| {
+            matches!(
+                finding.code.as_str(),
+                "fleet-overloaded" | "fleet-undercrewed"
+            )
+        })
+        .map(|finding| format!("{}: {}", finding.code.as_str(), finding.message))
+        .collect();
+    assert!(
+        refused.is_empty(),
+        "the fixture's fleet will not sail, so the test is not about a fleet that does: {refused:#?}"
+    );
 }
