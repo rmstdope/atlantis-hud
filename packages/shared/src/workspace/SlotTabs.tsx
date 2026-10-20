@@ -102,18 +102,18 @@ export function SlotTabs({
           <span aria-hidden className="ml-1 text-brass">
             •
           </span>
-        ) : null}
+        ) : (
+          // The dot's room, kept while there is no dot: the header chooses between one line and
+          // two against its widest state, so a route arriving must not change the strip's width
+          // (ah-14xq). Same place, same `ml-1`, same tab tracking as the dot, so the two cannot
+          // measure differently; the glyph is drawn, not written, so the tab's text is unchanged.
+          <span
+            aria-hidden
+            data-testid="slot-route-dot-room"
+            className="invisible ml-1 before:content-['•']"
+          />
+        )}
       </button>
-      {hasRoute ? null : (
-        // The dot's room, kept while there is no dot: the header chooses between one line and two
-        // against its widest state, so a route arriving must not change the strip's width (ah-14xq).
-        // The strip's gap stands in for the dot's `ml-1`; the glyph is drawn, not written.
-        <span
-          aria-hidden
-          data-testid="slot-route-dot-room"
-          className="invisible text-pane-sm before:content-['•']"
-        />
-      )}
     </div>
   );
 }

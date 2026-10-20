@@ -15,6 +15,11 @@ import { Absent, Field, Row, Section } from "./primitives";
  * reservation that holds their widest wording, so the two cannot measure differently. Never wraps:
  * "Pla / move" is what the narrow rail used to show (ah-14xq).
  */
+/** The title-line buttons' words: one copy, read by the buttons and by the room reserved for them. */
+const PLAN_MOVE = "Plan move";
+const PICK_A_HEX = "Pick a hex…";
+const CLEAR = "Clear";
+
 const ACTION_BUTTON =
   "whitespace-nowrap rounded border border-edge bg-ground px-1.5 py-0.5 text-pane text-ink";
 
@@ -56,8 +61,8 @@ export function PlannerActions({
         data-testid="planner-actions-room"
         className="invisible col-start-1 row-start-1 flex gap-1"
       >
-        <span data-label="Pick a hex…" className={`${ACTION_BUTTON} before:content-[attr(data-label)]`} />
-        <span data-label="Clear" className={`${ACTION_BUTTON} before:content-[attr(data-label)]`} />
+        <span data-label={PICK_A_HEX} className={`${ACTION_BUTTON} before:content-[attr(data-label)]`} />
+        <span data-label={CLEAR} className={`${ACTION_BUTTON} before:content-[attr(data-label)]`} />
       </div>
       <div className="col-start-1 row-start-1 flex gap-1 justify-self-end">
         <button
@@ -67,7 +72,7 @@ export function PlannerActions({
           onClick={onArm}
           className={`${ACTION_BUTTON} enabled:hover:border-select disabled:opacity-40`}
         >
-          {armed ? "Pick a hex…" : "Plan move"}
+          {armed ? PICK_A_HEX : PLAN_MOVE}
         </button>
         <button
           type="button"
@@ -76,7 +81,7 @@ export function PlannerActions({
           onClick={onClear}
           className={`${ACTION_BUTTON} enabled:hover:border-select disabled:opacity-40`}
         >
-          Clear
+          {CLEAR}
         </button>
       </div>
     </div>

@@ -3006,7 +3006,7 @@ function expectInsidePanel(header: SlotHeader) {
     expect(control.x).toBeGreaterThanOrEqual(header.panel.x);
     expect(control.x + control.width).toBeLessThanOrEqual(right + 0.5);
   }
-  // A one-line button is about 20px high; "Pla / move" was twice that.
+  // A one-line button is 26px high; "Pla / move" wrapped to about 45px.
   expect(header.arm.height).toBeLessThan(28);
   expect(header.clear.height).toBeLessThan(28);
 }
@@ -3024,6 +3024,9 @@ function expectButtonRow(header: SlotHeader) {
   expect(header.arm.y).toBeGreaterThanOrEqual(header.tabs.y + header.tabs.height - 0.5);
   expect(header.clear.y).toBeGreaterThanOrEqual(header.tabs.y + header.tabs.height - 0.5);
   expect(header.fold.y + header.fold.height).toBeLessThanOrEqual(header.arm.y + 0.5);
+  // Right-aligned: Clear ends where it would on the one-line header, one 4px gap before the fold.
+  expect(Math.abs(header.clear.x + header.clear.width - (header.fold.x - 4))).toBeLessThanOrEqual(1);
+  expect(header.arm.x + header.arm.width).toBeLessThanOrEqual(header.clear.x);
 }
 
 /** Narrows the right rail by whole rem steps from its 21rem default, the way the keyboard does. */
@@ -3043,8 +3046,19 @@ async function rightRailAt(page: Page, rem: number) {
 test("the planner buttons fit the title line at the default width, even in its widest state", async ({
   page
 }) => {
-  await planOneStep(page);
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  // The strip keeps the route dot's room, so a route arriving changes nothing's width - not even
+  // by the fraction of a pixel a rail dragged to a fractional width would wrap on.
+  const tabsWithout = (await slotHeader(page)).tabs.width;
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+
   let header = await slotHeader(page);
+  expect(header.tabs.width).toBe(tabsWithout);
   expectOneLine(header);
   expectInsidePanel(header);
   expect(header.header.height).toBeLessThanOrEqual(STRIP_HEIGHT);
@@ -3104,6 +3118,14 @@ test("at the narrowest right rail the planner buttons drop below the tabs and st
   const planned = await slotHeader(page);
   expectButtonRow(planned);
   expectInsidePanel(planned);
+
+  // With a route standing Clear is enabled, so the keyboard meets every control in turn.
+  const fold = page.getByTestId("panel-unit").getByRole("button", { name: "Collapse Unit", exact: true });
+  await page.getByTestId("slot-tab-movement").focus();
+  for (const next of [page.getByTestId("planner-arm"), page.getByTestId("planner-clear"), fold]) {
+    await page.keyboard.press("Tab");
+    await expect(next).toBeFocused();
+  }
 
   await page.getByTestId("planner-arm").click();
   await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");

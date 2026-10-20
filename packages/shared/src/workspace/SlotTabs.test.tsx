@@ -58,7 +58,7 @@ describe("the shared slot's tab strip", () => {
     const without = draw("unit", false);
     const withRoute = draw("unit", true);
 
-    expect(without).toMatch(/<span aria-hidden="true" data-testid="slot-route-dot-room"[^>]*invisible/);
+    expect(without).toMatch(/id="slot-tab-movement"[^]*<span aria-hidden="true" data-testid="slot-route-dot-room"[^>]*invisible ml-1[^]*<\/button>/);
     expect(withRoute).not.toContain("slot-route-dot-room");
     expect(without.replace(/<[^>]+>/g, "")).toBe("UnitMovement");
   });
