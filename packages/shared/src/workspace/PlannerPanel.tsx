@@ -11,6 +11,19 @@ import { abbreviateDirection } from "../hexMapModel";
 import { Absent, Field, Row, Section } from "./primitives";
 
 /**
+ * How a title-line button looks, and so how much room it takes: shared by the buttons and the
+ * reservation that holds their widest wording, so the two cannot measure differently. Never wraps:
+ * "Pla / move" is what the narrow rail used to show (ah-14xq).
+ */
+/** The title-line buttons' words: one copy, read by the buttons and by the room reserved for them. */
+const PLAN_MOVE = "Plan move";
+const PICK_A_HEX = "Pick a hex…";
+const CLEAR = "Clear";
+
+const ACTION_BUTTON =
+  "whitespace-nowrap rounded border border-edge bg-ground px-1.5 py-0.5 text-pane text-ink";
+
+/**
  * The Plan move / Clear pair, for the shared Unit/Movement slot's title bar.
  *
  * Split out of the panel this file used to be when Unit and Movement came to share one slot
@@ -34,26 +47,43 @@ export function PlannerActions({
 }) {
   const canPlan = Boolean(unit?.own);
 
+  // One grid cell holding two rows: the buttons, right-aligned, over an invisible reservation of the
+  // widest pair they ever show. The group is therefore as wide as "Pick a hex…" and Clear whatever it
+  // says now, so whether it shares the title line or drops to a row of its own (`CollapsiblePanel`)
+  // is decided by the panel's width alone - pressing Plan move never moves the header (ah-14xq).
+  // The reservation's words are drawn from `data-label` rather than written, so no locator, reader
+  // or copy finds a second "Clear". The group is the title line's height, so a row of its own is
+  // exactly as tall as the line above it.
   return (
-    <div className="flex gap-1.5">
-      <button
-        type="button"
-        data-testid="planner-arm"
-        disabled={!canPlan || busy}
-        onClick={onArm}
-        className="rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink enabled:hover:border-select disabled:opacity-40"
+    <div className="ml-auto grid h-[calc(1.75rem-1px)] flex-none items-center">
+      <div
+        aria-hidden
+        data-testid="planner-actions-room"
+        className="invisible col-start-1 row-start-1 flex gap-1"
       >
-        {armed ? "Pick a hex…" : "Plan move"}
-      </button>
-      <button
-        type="button"
-        data-testid="planner-clear"
-        disabled={!hasAnswer && !armed}
-        onClick={onClear}
-        className="rounded border border-edge bg-ground px-2 py-0.5 text-pane text-ink enabled:hover:border-select disabled:opacity-40"
-      >
-        Clear
-      </button>
+        <span data-label={PICK_A_HEX} className={`${ACTION_BUTTON} before:content-[attr(data-label)]`} />
+        <span data-label={CLEAR} className={`${ACTION_BUTTON} before:content-[attr(data-label)]`} />
+      </div>
+      <div className="col-start-1 row-start-1 flex gap-1 justify-self-end">
+        <button
+          type="button"
+          data-testid="planner-arm"
+          disabled={!canPlan || busy}
+          onClick={onArm}
+          className={`${ACTION_BUTTON} enabled:hover:border-select disabled:opacity-40`}
+        >
+          {armed ? PICK_A_HEX : PLAN_MOVE}
+        </button>
+        <button
+          type="button"
+          data-testid="planner-clear"
+          disabled={!hasAnswer && !armed}
+          onClick={onClear}
+          className={`${ACTION_BUTTON} enabled:hover:border-select disabled:opacity-40`}
+        >
+          {CLEAR}
+        </button>
+      </div>
     </div>
   );
 }

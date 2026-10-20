@@ -2979,6 +2979,229 @@ test("planning again takes the tab back from the unit", async ({ page }) => {
   await expect(page.getByTestId("slot-tab-movement")).toHaveAttribute("aria-selected", "true");
 });
 
+/** The Unit/Movement slot's title-line controls and the panel around them, as the player sees them. */
+async function slotHeader(page: Page) {
+  const panel = page.getByTestId("panel-unit");
+  const box = async (locator: Locator) => {
+    const found = await locator.boundingBox();
+    expect(found).not.toBeNull();
+    return found!;
+  };
+  return {
+    panel: await box(panel),
+    header: await box(panel.locator("header")),
+    tabs: await box(page.getByTestId("slot-tabs")),
+    arm: await box(page.getByTestId("planner-arm")),
+    clear: await box(page.getByTestId("planner-clear")),
+    fold: await box(panel.getByRole("button", { name: "Collapse Unit", exact: true }))
+  };
+}
+
+type SlotHeader = Awaited<ReturnType<typeof slotHeader>>;
+
+/** Nothing on the title line or the button row sticks out past the panel, and no label wraps. */
+function expectInsidePanel(header: SlotHeader) {
+  const right = header.panel.x + header.panel.width;
+  for (const control of [header.tabs, header.arm, header.clear, header.fold]) {
+    expect(control.x).toBeGreaterThanOrEqual(header.panel.x);
+    expect(control.x + control.width).toBeLessThanOrEqual(right + 0.5);
+  }
+  // A one-line button is 26px high; "Pla / move" wrapped to about 45px.
+  expect(header.arm.height).toBeLessThan(28);
+  expect(header.clear.height).toBeLessThan(28);
+}
+
+/** The buttons sit on the title line, beside the tabs. */
+function expectOneLine(header: SlotHeader) {
+  const middle = header.arm.y + header.arm.height / 2;
+  expect(middle).toBeGreaterThan(header.tabs.y);
+  expect(middle).toBeLessThan(header.tabs.y + header.tabs.height);
+  expect(header.fold.y).toBeLessThan(header.tabs.y + header.tabs.height);
+}
+
+/** The buttons sit on a row of their own under the title line, which keeps the tabs and the fold. */
+function expectButtonRow(header: SlotHeader) {
+  expect(header.arm.y).toBeGreaterThanOrEqual(header.tabs.y + header.tabs.height - 0.5);
+  expect(header.clear.y).toBeGreaterThanOrEqual(header.tabs.y + header.tabs.height - 0.5);
+  expect(header.fold.y + header.fold.height).toBeLessThanOrEqual(header.arm.y + 0.5);
+  // Right-aligned: Clear ends where it would on the one-line header, one 4px gap before the fold.
+  expect(Math.abs(header.clear.x + header.clear.width - (header.fold.x - 4))).toBeLessThanOrEqual(1);
+  expect(header.arm.x + header.arm.width).toBeLessThanOrEqual(header.clear.x);
+}
+
+/** Narrows the right rail by whole rem steps from its 21rem default, the way the keyboard does. */
+async function rightRailAt(page: Page, rem: number) {
+  const grip = page.getByTestId("rail-splitter-right");
+  await grip.focus();
+  for (let step = 21; step > rem; step -= 1) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(grip).toHaveAttribute("aria-valuenow", String(rem));
+}
+
+/**
+ * ah-14xq: at the default width the title line holds the tabs, both buttons and the fold arrow on
+ * one line in every state, the widest included - "Pick a hex…" while a route stands.
+ */
+test("the planner buttons fit the title line at the default width, even in its widest state", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  // The strip keeps the route dot's room, so a route arriving changes nothing's width - not even
+  // by the fraction of a pixel a rail dragged to a fractional width would wrap on.
+  const tabsWithout = (await slotHeader(page)).tabs.width;
+  await page.getByTestId("planner-arm").click();
+  await selectHex(page, "1:7,51");
+  await expect(page.getByTestId("planner-order")).toHaveText("MOVE N");
+
+  let header = await slotHeader(page);
+  expect(header.tabs.width).toBe(tabsWithout);
+  expectOneLine(header);
+  expectInsidePanel(header);
+  expect(header.header.height).toBeLessThanOrEqual(STRIP_HEIGHT);
+
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  await expect(page.getByTestId("slot-tab-movement")).toHaveAccessibleName(
+    "Movement, a route is planned"
+  );
+  header = await slotHeader(page);
+  expectOneLine(header);
+  expectInsidePanel(header);
+  expect(header.header.height).toBeLessThanOrEqual(STRIP_HEIGHT);
+});
+
+/**
+ * The panel width the title line needs to hold its widest state on one line: the frame, the
+ * header's padding, the tab strip (which keeps the route dot's room) and the buttons' reserved room.
+ * Measured rather than written down, since it is a matter of the platform's monospace font: CI's
+ * Linux font fits the widest state at 20rem where macOS's does not.
+ */
+async function widestTitleLine(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="panel-unit"]') as HTMLElement;
+    const header = panel.querySelector("header") as HTMLElement;
+    const width = (selector: string) =>
+      (panel.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+    const style = getComputedStyle(header);
+    const frame = panel.getBoundingClientRect().width - header.getBoundingClientRect().width;
+    return (
+      frame +
+      Number.parseFloat(style.paddingLeft) +
+      width('[data-testid="slot-tabs"]') +
+      Number.parseFloat(style.columnGap) +
+      width('[data-testid="planner-actions-room"]') +
+      Number.parseFloat(style.paddingRight)
+    );
+  });
+}
+
+/** Drags the right rail until the unit panel is `width` pixels wide. */
+async function unitPanelAt(page: Page, width: number) {
+  const panel = page.getByTestId("panel-unit");
+  const grip = (await page.getByTestId("rail-splitter-right").boundingBox())!;
+  const start = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+  const by = (await panel.boundingBox())!.width - width;
+  // The right rail shrinks when the pointer moves away from the map, i.e. to the right.
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + by, start.y, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBeCloseTo(width, 0);
+}
+
+/**
+ * ah-14xq: when to drop the buttons to their own row is judged against the widest state, never the
+ * one showing, so just below the width the widest state needs the header is already two rows before
+ * Plan move is pressed - although "Plan move" itself would still fit - and pressing it, or Clear,
+ * moves nothing.
+ */
+test("just below the default width the planner buttons sit on their own row, and pressing Plan move moves nothing", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  const widest = await widestTitleLine(page);
+  await unitPanelAt(page, Math.floor(widest) - 3);
+
+  const idle = await slotHeader(page);
+  // In the band the rule is about: what the header shows now would fit on one line.
+  const showing =
+    idle.panel.width -
+    idle.header.width +
+    (idle.tabs.x - idle.header.x) +
+    idle.tabs.width +
+    4 +
+    (idle.clear.x + idle.clear.width - idle.arm.x) +
+    (idle.header.x + idle.header.width - (idle.clear.x + idle.clear.width));
+  expect(showing).toBeLessThan(idle.panel.width);
+  expectButtonRow(idle);
+  expectInsidePanel(idle);
+
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  const armed = await slotHeader(page);
+  expectButtonRow(armed);
+  expectInsidePanel(armed);
+  expect(armed.header.height).toBe(idle.header.height);
+
+  await page.getByTestId("planner-clear").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Plan move");
+  expect((await slotHeader(page)).header.height).toBe(idle.header.height);
+});
+
+/**
+ * ah-14xq: at the rail's 12rem floor "Plan move" used to run past the rail's edge, wrapping as
+ * "Pla / move". The buttons now drop to a slim row under the tabs, inside the panel; folding keeps
+ * that row, and the keyboard still walks tabs, Plan move, Clear, then the fold arrow.
+ */
+test("at the narrowest right rail the planner buttons drop below the tabs and stay inside", async ({
+  page
+}) => {
+  await planOneStep(page);
+  await rightRailAt(page, 12);
+
+  const planned = await slotHeader(page);
+  expectButtonRow(planned);
+  expectInsidePanel(planned);
+
+  // With a route standing Clear is enabled, so the keyboard meets every control in turn.
+  const fold = page.getByTestId("panel-unit").getByRole("button", { name: "Collapse Unit", exact: true });
+  await page.getByTestId("slot-tab-movement").focus();
+  for (const next of [page.getByTestId("planner-arm"), page.getByTestId("planner-clear"), fold]) {
+    await page.keyboard.press("Tab");
+    await expect(next).toBeFocused();
+  }
+
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  const armed = await slotHeader(page);
+  expectButtonRow(armed);
+  expectInsidePanel(armed);
+  expect(armed.header.height).toBe(planned.header.height);
+  await page.getByTestId("planner-clear").click();
+
+  await page.getByTestId("slot-tab-unit").click();
+  await page.getByTestId("slot-tab-unit").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("planner-arm")).toBeFocused();
+  // Clear is disabled with nothing to clear, so the next stop is the fold arrow.
+  await expect(page.getByTestId("planner-clear")).toBeDisabled();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("panel-unit").getByRole("button", { name: "Collapse Unit", exact: true })).toBeFocused();
+
+  await foldPanel(page, "unit");
+  const folded = await slotHeader(page);
+  expectButtonRow(folded);
+  expectInsidePanel(folded);
+  await expect(page.getByTestId("planner-arm")).toBeVisible();
+});
+
 /**
  * The keyboard half of the tab strip, which no test in `packages/shared` can reach: a roving
  * `tabIndex` re-renders but moves nothing, so a strip that only selected would leave the caret on

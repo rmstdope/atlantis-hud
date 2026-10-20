@@ -24,6 +24,25 @@ type CollapsiblePanelProps = {
 };
 
 /**
+ * The header of a tabbed panel: tabs, then the actions, then the fold, on one line while they fit.
+ *
+ * When they do not, the actions wrap onto a slim row of their own, right-aligned, and the tabs and
+ * the fold keep the title line (ah-14xq, docs/ui/ah-14xq-header-wrap.html). Plain flex-wrap decides
+ * it: the actions reserve their widest wording and the tabs the route dot's room, so the decision
+ * follows the panel's width and never what the buttons happen to say.
+ *
+ * - The spacing is the tightened one agreed for the default 21rem rail (gaps 4px, edges 6px;
+ *   docs/ui/ah-14xq-default-width.html), so the widest state still fits on one line there.
+ * - `pr-[1.125rem]` is the fold's column: 6px edge + its 8px + one 4px gap.
+ * - The line between the two rows is a 1px background stripe at the title line's bottom. With one
+ *   row it lies under the header's own bottom border and cannot be seen; CSS has no other way to
+ *   draw something only when a flex line has wrapped.
+ */
+const TABBED_HEADER =
+  "relative flex min-h-7 flex-none flex-wrap items-center gap-x-1 border-b border-edge pl-1.5 pr-[1.125rem] " +
+  "bg-[linear-gradient(var(--color-edge),var(--color-edge))] bg-[length:100%_1px] bg-[position:0_calc(1.75rem-1px)] bg-no-repeat";
+
+/**
  * A panel that folds to its title bar so the map underneath can be opened up.
  *
  * Collapsed it leaves the strip behind rather than disappearing, so the user can always see what
@@ -77,18 +96,22 @@ export function CollapsiblePanel({
       // property stamped on the root, so the slider re-paints every pane without a re-render.
       className={`pointer-events-auto flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-edge bg-pane shadow-lg backdrop-blur ${collapsed ? "" : "h-full"} ${className}`}
     >
-      <header className="flex h-7 flex-none items-center gap-2 border-b border-edge px-2.5">
+      <header className={tabs ? TABBED_HEADER : "flex h-7 flex-none items-center gap-2 border-b border-edge px-2.5"}>
         {tabs ? (
           <>
             {tabs}
-            <span className="flex-1" />
             {actions}
+            {/*
+              Last in the DOM, so the keyboard still meets it after the actions, but pinned to the
+              title line's right end: when the actions drop to their own row the fold stays up here
+              with the tabs. Its fixed width is what the header's right padding keeps free for it.
+            */}
             <button
               type="button"
               onClick={() => togglePanel(panel)}
               aria-expanded={!collapsed}
               aria-label={`Collapse ${title}`}
-              className="text-pane-sm text-ink-dim focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+              className="absolute right-1.5 top-0 flex h-[calc(1.75rem-1px)] w-2 items-center justify-center text-pane-sm text-ink-dim focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
             >
               <span aria-hidden>{collapsed ? "▸" : "▾"}</span>
             </button>
