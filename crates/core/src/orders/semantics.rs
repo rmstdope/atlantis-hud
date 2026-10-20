@@ -18399,10 +18399,10 @@ struct LoanSide {
 /// passengers first as the agreed wording reads (`ah-kjq5`, `ah-myko`, `ah-mqbu`). The one
 /// booker of every loan line (`ah-be36`).
 fn book_loan(cause: SilverChangeCause, loan: &LoanSide) -> Vec<SilverChange> {
-    let sign = if cause == SilverChangeCause::Lent {
-        -1
-    } else {
-        1
+    let sign = match cause {
+        SilverChangeCause::Lent => -1,
+        SilverChangeCause::WasLent => 1,
+        other => unreachable!("book_loan books loan lines only, not {other:?}"),
     };
     let mut lines = split_loan(loan.total, &loan.in_hex, &loan.across, Clone::clone);
     if loan.lands.is_some() {
@@ -18459,13 +18459,13 @@ fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
 }
 
 #[cfg(test)]
-mod book_loan {
+mod book_loan_tests {
     use super::*;
 
     type Line = (Option<String>, Option<String>, Option<String>, i64);
 
     fn lines(cause: SilverChangeCause, loan: &LoanSide) -> Vec<Line> {
-        super::book_loan(cause, loan)
+        book_loan(cause, loan)
             .into_iter()
             .map(|change| {
                 assert_eq!(change.cause, cause);
