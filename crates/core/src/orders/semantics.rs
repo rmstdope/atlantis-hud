@@ -667,7 +667,8 @@ fn food_uncertain_after_gifts(ordered: &Ordered<'_>, ruleset: Option<&Ruleset>) 
 /// own units have never heard of. `read_formed` returns blocks in document order and an outer
 /// block is always recorded before the inner one nested in it (`blocks::FormBlocks`), so the
 /// fallback map below always has the parent by the time a nested block asks for it - mirroring
-/// `effects::Working::open_form`, which resolves a nested parent's row for the same reason. Without this, a nested `FORM`'s unit is silently dropped.
+/// `effects::Working::open_form`, which resolves a nested parent's row for the same reason.
+/// Without this, a nested `FORM`'s unit is silently dropped.
 ///
 /// `None` reads under the New Origins lexical rules.
 fn formed_units(
