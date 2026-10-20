@@ -3590,30 +3590,29 @@ fn forecast_hex(
                 // own borrowers only as far as `shared_silver_for_orders` is clamped, so any cap
                 // comes from the in-hex side (`ah-kjq5` review, finding 5).
                 let students = &ledger.relief().walking.arriving_students;
-                let across: Vec<(&ArrivingStudent, i64)> = purse_for_orders.lent_to_each_arriving
-                    [index]
+                let across = purse_for_orders.lent_to_each_arriving[index]
                     .iter()
-                    .filter_map(|&(student, amount)| Some((students.get(student)?, amount)))
+                    .filter_map(|&(student, amount)| {
+                        let student = students.get(student)?;
+                        Some(((student.label.clone(), student.from.clone()), amount))
+                    })
                     .collect();
                 // Whom it lent inside the hex, named as the upkeep line names them (`ah-myko`).
-                let in_hex: Vec<(String, i64)> = purse_for_orders.lent_to_each_in_hex[index]
+                let in_hex = purse_for_orders.lent_to_each_in_hex[index]
                     .iter()
                     .map(|&(borrower, amount)| {
                         (unit_label(hex, &hex.units[borrower].unit.unit_id), amount)
                     })
                     .collect();
-                for (other, place, amount) in split_loan(lent, &in_hex, &across, |student| {
-                    (student.label.clone(), student.from.clone())
-                }) {
-                    forecast.changes.push(SilverChange {
-                        amount: -amount,
-                        cause: SilverChangeCause::Lent,
-                        line: None,
-                        other,
-                        place,
-                        lands: None,
-                    });
-                }
+                let loan = LoanSide {
+                    total: lent,
+                    in_hex,
+                    across,
+                    lands: None,
+                };
+                forecast
+                    .changes
+                    .extend(book_loan(SilverChangeCause::Lent, &loan));
             }
         }
         // What the hex's own sharers could not cover, a sharer arriving from elsewhere did - on its
@@ -3665,7 +3664,15 @@ fn forecast_hex(
                 // One that sailed in lent all of it where its fleet lands, this hex, and its line
                 // names that hex once rather than the hex each passenger sails from (`ah-mqbu`).
                 let lands = arrival.sails.then(|| place_label(hex.region));
-                lent_across.push((arrival.unit.clone(), lent_to, across, lent, lands));
+                lent_across.push(LentAcross {
+                    unit: arrival.unit.clone(),
+                    loan: LoanSide {
+                        total: lent,
+                        in_hex: lent_to,
+                        across,
+                        lands,
+                    },
+                });
             }
         }
     }
@@ -3725,8 +3732,13 @@ fn forecast_hex(
         // (`ah-kjq5`); the rest was lent in this hex.
         let elsewhere =
             landing_study(ledger, &forecast.unit_id).and_then(LandingStudy::lent_across);
-        let across: Vec<(&(String, i64), i64)> = elsewhere
-            .map(|(lent_by, _)| lent_by.iter().map(|lender| (lender, lender.1)).collect())
+        let across: Vec<((String, String), i64)> = elsewhere
+            .map(|(lent_by, lands)| {
+                lent_by
+                    .iter()
+                    .map(|(label, amount)| ((label.clone(), lands.to_string()), *amount))
+                    .collect()
+            })
             .unwrap_or_default();
         // Who lent it inside the hex: a unit of it, or a sharer arriving from another (`ah-myko`).
         let arrivals = ledger.relief().walking.arrivals_at(LendingMoment::MonthEnd);
@@ -3744,29 +3756,21 @@ fn forecast_hex(
                 (label, amount)
             })
             .collect();
-        let lines = split_loan(borrowed, &in_hex, &across, |(label, _)| {
-            (
-                label.clone(),
-                elsewhere
-                    .map(|(_, lands)| lands.to_string())
-                    .unwrap_or_default(),
-            )
-        });
-        forecast.borrowed_where_fleet_lands = lines.iter().find_map(|(_, place, _)| place.clone());
+        let lines = book_loan(
+            SilverChangeCause::WasLent,
+            &LoanSide {
+                total: borrowed,
+                in_hex,
+                across,
+                lands: None,
+            },
+        );
+        forecast.borrowed_where_fleet_lands = lines.iter().find_map(|line| line.place.clone());
         // The same guard the `Lent` pass makes, and for the same reason: a doubted unit's list is
         // emptied on the way out (`ah-rgkk.4.4`), so a row pushed onto it would be the only entry
         // under a figure that is not a number.
         if forecast.doubt.is_none() {
-            for (other, place, amount) in lines {
-                forecast.changes.push(SilverChange {
-                    amount,
-                    cause: SilverChangeCause::WasLent,
-                    line: None,
-                    other,
-                    place,
-                    lands: None,
-                });
-            }
+            forecast.changes.extend(lines);
         }
     }
 
@@ -18371,51 +18375,251 @@ fn split_loan<T>(
     lines
 }
 
+/// One unit's side of a `SHARE` loan as the purse settled it, whatever kind of unit it is - a
+/// sharer that stays, one that walks away, one walking or sailing in, or the borrower - so
+/// [`book_loan`] is the one place its lines are worded (`ah-be36`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct LoanSide {
+    /// What the loan moved in all; the lines always add up to it.
+    total: i64,
+    /// The other parties standing in the hex where the loan is made, as `(label, amount)`
+    /// (`ah-myko`).
+    in_hex: Vec<(String, i64)>,
+    /// The other parties across a fleet's move, as `((label, the hex each is named with),
+    /// amount)` (`ah-kjq5`).
+    across: Vec<((String, String), i64)>,
+    /// The hex this unit's own fleet lands in, when it sailed in and lent there: every party it
+    /// paid is named with that hex instead (`ah-mqbu`).
+    lands: Option<String>,
+}
+
+/// The `cause` lines for one side of a loan - `Lent`, out of the unit, or `WasLent`, into it -
+/// naming the other party and the hex the two meet in: each party across a fleet's move with its
+/// own hex, or, where this unit's fleet landed and lent, everyone it paid with that hex, the
+/// passengers first as the agreed wording reads (`ah-kjq5`, `ah-myko`, `ah-mqbu`). The one
+/// booker of every loan line (`ah-be36`).
+fn book_loan(cause: SilverChangeCause, loan: &LoanSide) -> Vec<SilverChange> {
+    let sign = if cause == SilverChangeCause::Lent {
+        -1
+    } else {
+        1
+    };
+    let mut lines = split_loan(loan.total, &loan.in_hex, &loan.across, Clone::clone);
+    if loan.lands.is_some() {
+        lines.sort_by_key(|(_, place, _)| place.is_none());
+    }
+    lines
+        .into_iter()
+        .map(|(other, place, amount)| {
+            // A part nobody is named for keeps "a faction-mate's orders in this hex".
+            let lands = loan.lands.clone().filter(|_| other.is_some());
+            SilverChange {
+                amount: sign * amount,
+                cause,
+                line: None,
+                other,
+                place: if lands.is_some() { None } else { place },
+                lands,
+            }
+        })
+        .collect()
+}
+
+/// What one sharer arriving from another hex lent where its month ends: its own row's key, and
+/// its side of the loan - whom it lent there (`ah-myko`), which passengers sailing in it lent with
+/// the hex each sails from (`ah-qffa`), how much in all, and, for one that sailed in, the hex its
+/// fleet lands in (`ah-mqbu`).
+struct LentAcross {
+    unit: UnitKey,
+    loan: LoanSide,
+}
+
 /// Debits what each arriving sharer lent in the hex its month ends in from its own row, which
 /// sits in the hex the report lists it in - so a sharer that lends 50 spends 50 wherever it lent
 /// it, as `forecast_hex` does for a sharer that stays (`ah-moq3`, `ah-wyj8`).
-/// What one sharer arriving from another hex lent where its month ends: its own row's key, whom
-/// it lent there as `(label, amount)` (`ah-myko`), which passengers sailing in it lent as
-/// `((label, the hex each sails from), amount)` (`ah-qffa`), how much in all, and - for one that
-/// sailed in - the hex its fleet lands in, where every unit it paid is named (`ah-mqbu`).
-type LentAcross = (
-    UnitKey,
-    Vec<(String, i64)>,
-    Vec<((String, String), i64)>,
-    i64,
-    Option<String>,
-);
-
 fn lend_across_hexes(silver: &mut [UnitSilver], lent_across: &[LentAcross]) {
-    for (unit, lent_to, across, lent, lands) in lent_across {
+    for LentAcross { unit, loan } in lent_across {
         let Some(forecast) = silver.iter_mut().find(|forecast| {
             forecast.region_id == unit.region_id && forecast.unit_id == unit.unit_id
         }) else {
             continue;
         };
-        forecast.expense = forecast.expense.map(|spent| spent.saturating_add(*lent));
-        forecast.at_month_end = forecast.at_month_end.map(|end| end.saturating_sub(*lent));
+        forecast.expense = forecast
+            .expense
+            .map(|spent| spent.saturating_add(loan.total));
+        forecast.at_month_end = forecast
+            .at_month_end
+            .map(|end| end.saturating_sub(loan.total));
         if forecast.doubt.is_none() {
-            let mut lines = split_loan(*lent, lent_to, across, Clone::clone);
-            if lands.is_some() {
-                // Lent where its fleet lands: the passengers it sailed in with first, as the agreed
-                // wording reads, then the units standing there (`ah-mqbu`).
-                lines.sort_by_key(|(_, place, _)| place.is_none());
-            }
-            for (other, place, amount) in lines {
-                // A unit it paid where its fleet lands is named with that hex; a part nobody is
-                // named for keeps "a faction-mate's orders in this hex".
-                let lands = lands.clone().filter(|_| other.is_some());
-                forecast.changes.push(SilverChange {
-                    amount: -amount,
-                    cause: SilverChangeCause::Lent,
-                    line: None,
-                    other,
-                    place: if lands.is_some() { None } else { place },
-                    lands,
-                });
-            }
+            forecast
+                .changes
+                .extend(book_loan(SilverChangeCause::Lent, loan));
         }
+    }
+}
+
+#[cfg(test)]
+mod book_loan {
+    use super::*;
+
+    type Line = (Option<String>, Option<String>, Option<String>, i64);
+
+    fn lines(cause: SilverChangeCause, loan: &LoanSide) -> Vec<Line> {
+        super::book_loan(cause, loan)
+            .into_iter()
+            .map(|change| {
+                assert_eq!(change.cause, cause);
+                (change.other, change.place, change.lands, change.amount)
+            })
+            .collect()
+    }
+
+    fn some(text: &str) -> Option<String> {
+        Some(text.to_string())
+    }
+
+    fn named(label: &str, amount: i64) -> (String, i64) {
+        (label.to_string(), amount)
+    }
+
+    fn across(label: &str, place: &str, amount: i64) -> ((String, String), i64) {
+        ((label.to_string(), place.to_string()), amount)
+    }
+
+    /// One booker names both sides for every kind of lender (`ah-be36`): the lender's `Lent`
+    /// lines name each borrower and the hex they meet in, and the borrower's `WasLent` lines,
+    /// booked through the same function, name the lender back with that hex. Each row's loan is
+    /// what that kind's own pass hands the booker.
+    #[test]
+    fn names_both_sides_for_every_lender_kind() {
+        struct Row {
+            kind: &'static str,
+            lent: LoanSide,
+            lent_lines: Vec<Line>,
+            was_lent: LoanSide,
+            was_lent_lines: Vec<Line>,
+        }
+        let rows = [
+            // A resident that stays: the hex's own borrower, an unnamed remainder, and a passenger
+            // sailing in with the hex it sails from (`ah-myko`, `ah-kjq5`).
+            Row {
+                kind: "resident",
+                lent: LoanSide {
+                    total: 130,
+                    in_hex: vec![named("Drones (2)", 50)],
+                    across: vec![across("Drones (3)", "Lonthax (36,44)", 70)],
+                    lands: None,
+                },
+                lent_lines: vec![
+                    (some("Drones (2)"), None, None, -50),
+                    (None, None, None, -10),
+                    (some("Drones (3)"), some("Lonthax (36,44)"), None, -70),
+                ],
+                was_lent: LoanSide {
+                    total: 70,
+                    in_hex: vec![],
+                    across: vec![across("Drones (1)", "ocean (38,44)", 70)],
+                    lands: None,
+                },
+                was_lent_lines: vec![(some("Drones (1)"), some("ocean (38,44)"), None, 70)],
+            },
+            // A resident that walks away lends where it stands before it goes: the same hex.
+            Row {
+                kind: "resident walking away",
+                lent: LoanSide {
+                    total: 40,
+                    in_hex: vec![named("Drones (2)", 40)],
+                    across: vec![],
+                    lands: None,
+                },
+                lent_lines: vec![(some("Drones (2)"), None, None, -40)],
+                was_lent: LoanSide {
+                    total: 40,
+                    in_hex: vec![named("Drones (1)", 40)],
+                    across: vec![],
+                    lands: None,
+                },
+                was_lent_lines: vec![(some("Drones (1)"), None, None, 40)],
+            },
+            // A sharer walking in names the hex's borrowers and a passenger sailing in, with the
+            // hex it sails from (`ah-qffa`).
+            Row {
+                kind: "walking arrival",
+                lent: LoanSide {
+                    total: 90,
+                    in_hex: vec![named("Drones (2)", 30)],
+                    across: vec![across("Drones (3)", "Lonthax (36,44)", 60)],
+                    lands: None,
+                },
+                lent_lines: vec![
+                    (some("Drones (2)"), None, None, -30),
+                    (some("Drones (3)"), some("Lonthax (36,44)"), None, -60),
+                ],
+                was_lent: LoanSide {
+                    total: 30,
+                    in_hex: vec![named("Drones (1)", 30)],
+                    across: vec![],
+                    lands: None,
+                },
+                was_lent_lines: vec![(some("Drones (1)"), None, None, 30)],
+            },
+            // A sharer sailing in lends where its fleet lands: everyone it paid is named with that
+            // hex, its passengers first; an unnamed part keeps no hex (`ah-mqbu`).
+            Row {
+                kind: "sailing arrival",
+                lent: LoanSide {
+                    total: 280,
+                    in_hex: vec![named("Drones (9508)", 50)],
+                    across: vec![across("Drones (10594)", "Lonthax (36,44)", 200)],
+                    lands: some("ocean (38,44)"),
+                },
+                lent_lines: vec![
+                    (some("Drones (10594)"), None, some("ocean (38,44)"), -200),
+                    (some("Drones (9508)"), None, some("ocean (38,44)"), -50),
+                    (None, None, None, -30),
+                ],
+                was_lent: LoanSide {
+                    total: 200,
+                    in_hex: vec![],
+                    across: vec![across("Drones (10575)", "ocean (38,44)", 200)],
+                    lands: None,
+                },
+                was_lent_lines: vec![(some("Drones (10575)"), some("ocean (38,44)"), None, 200)],
+            },
+        ];
+        for row in rows {
+            assert_eq!(
+                lines(SilverChangeCause::Lent, &row.lent),
+                row.lent_lines,
+                "{}: the lender's lines",
+                row.kind
+            );
+            assert_eq!(
+                lines(SilverChangeCause::WasLent, &row.was_lent),
+                row.was_lent_lines,
+                "{}: the borrower's lines",
+                row.kind
+            );
+        }
+    }
+
+    /// A purse that nets lending against borrowing can book less than was drawn: the cap comes
+    /// off the in-hex side, and the lines still add up to the total (`ah-kjq5` review, finding 5).
+    #[test]
+    fn a_capped_loan_shrinks_the_in_hex_side() {
+        let loan = LoanSide {
+            total: 80,
+            in_hex: vec![named("Drones (2)", 50)],
+            across: vec![across("Drones (3)", "Lonthax (36,44)", 70)],
+            lands: None,
+        };
+        assert_eq!(
+            lines(SilverChangeCause::Lent, &loan),
+            vec![
+                (some("Drones (2)"), None, None, -10),
+                (some("Drones (3)"), some("Lonthax (36,44)"), None, -70),
+            ]
+        );
     }
 }
 
@@ -18442,7 +18646,9 @@ fn name_landing_lenders(silver: &mut [UnitSilver], lent_landing: &[LentLanding])
         let Some(at) = forecast.changes.iter().position(across) else {
             continue;
         };
-        let place = forecast.changes[at].place.clone();
+        let Some(place) = forecast.changes[at].place.clone() else {
+            continue;
+        };
         let total: i64 = forecast
             .changes
             .iter()
@@ -18454,18 +18660,20 @@ fn name_landing_lenders(silver: &mut [UnitSilver], lent_landing: &[LentLanding])
         if lenders.iter().map(|(_, amount)| amount).sum::<i64>() != total {
             continue;
         }
-        let lines: Vec<SilverChange> = lenders
+        let paid: Vec<((String, String), i64)> = lenders
             .iter()
             .filter(|(_, amount)| *amount > 0)
-            .map(|(other, amount)| SilverChange {
-                amount: *amount,
-                cause: SilverChangeCause::WasLent,
-                line: None,
-                other: Some(other.clone()),
-                place: place.clone(),
-                lands: None,
-            })
+            .map(|(other, amount)| ((other.clone(), place.clone()), *amount))
             .collect();
+        let lines = book_loan(
+            SilverChangeCause::WasLent,
+            &LoanSide {
+                total: paid.iter().map(|(_, amount)| amount).sum(),
+                in_hex: Vec::new(),
+                across: paid,
+                lands: None,
+            },
+        );
         forecast.changes.retain(|change| !across(change));
         forecast.changes.splice(at..at, lines);
     }
