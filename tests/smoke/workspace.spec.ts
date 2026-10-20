@@ -2979,6 +2979,156 @@ test("planning again takes the tab back from the unit", async ({ page }) => {
   await expect(page.getByTestId("slot-tab-movement")).toHaveAttribute("aria-selected", "true");
 });
 
+/** The Unit/Movement slot's title-line controls and the panel around them, as the player sees them. */
+async function slotHeader(page: Page) {
+  const panel = page.getByTestId("panel-unit");
+  const box = async (locator: Locator) => {
+    const found = await locator.boundingBox();
+    expect(found).not.toBeNull();
+    return found!;
+  };
+  return {
+    panel: await box(panel),
+    header: await box(panel.locator("header")),
+    tabs: await box(page.getByTestId("slot-tabs")),
+    arm: await box(page.getByTestId("planner-arm")),
+    clear: await box(page.getByTestId("planner-clear")),
+    fold: await box(panel.getByRole("button", { name: "Collapse Unit", exact: true }))
+  };
+}
+
+type SlotHeader = Awaited<ReturnType<typeof slotHeader>>;
+
+/** Nothing on the title line or the button row sticks out past the panel, and no label wraps. */
+function expectInsidePanel(header: SlotHeader) {
+  const right = header.panel.x + header.panel.width;
+  for (const control of [header.tabs, header.arm, header.clear, header.fold]) {
+    expect(control.x).toBeGreaterThanOrEqual(header.panel.x);
+    expect(control.x + control.width).toBeLessThanOrEqual(right + 0.5);
+  }
+  // A one-line button is about 20px high; "Pla / move" was twice that.
+  expect(header.arm.height).toBeLessThan(28);
+  expect(header.clear.height).toBeLessThan(28);
+}
+
+/** The buttons sit on the title line, beside the tabs. */
+function expectOneLine(header: SlotHeader) {
+  const middle = header.arm.y + header.arm.height / 2;
+  expect(middle).toBeGreaterThan(header.tabs.y);
+  expect(middle).toBeLessThan(header.tabs.y + header.tabs.height);
+  expect(header.fold.y).toBeLessThan(header.tabs.y + header.tabs.height);
+}
+
+/** The buttons sit on a row of their own under the title line, which keeps the tabs and the fold. */
+function expectButtonRow(header: SlotHeader) {
+  expect(header.arm.y).toBeGreaterThanOrEqual(header.tabs.y + header.tabs.height - 0.5);
+  expect(header.clear.y).toBeGreaterThanOrEqual(header.tabs.y + header.tabs.height - 0.5);
+  expect(header.fold.y + header.fold.height).toBeLessThanOrEqual(header.arm.y + 0.5);
+}
+
+/** Narrows the right rail by whole rem steps from its 21rem default, the way the keyboard does. */
+async function rightRailAt(page: Page, rem: number) {
+  const grip = page.getByTestId("rail-splitter-right");
+  await grip.focus();
+  for (let step = 21; step > rem; step -= 1) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(grip).toHaveAttribute("aria-valuenow", String(rem));
+}
+
+/**
+ * ah-14xq: at the default width the title line holds the tabs, both buttons and the fold arrow on
+ * one line in every state, the widest included - "Pick a hex…" while a route stands.
+ */
+test("the planner buttons fit the title line at the default width, even in its widest state", async ({
+  page
+}) => {
+  await planOneStep(page);
+  let header = await slotHeader(page);
+  expectOneLine(header);
+  expectInsidePanel(header);
+  expect(header.header.height).toBeLessThanOrEqual(STRIP_HEIGHT);
+
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  await expect(page.getByTestId("slot-tab-movement")).toHaveAccessibleName(
+    "Movement, a route is planned"
+  );
+  header = await slotHeader(page);
+  expectOneLine(header);
+  expectInsidePanel(header);
+  expect(header.header.height).toBeLessThanOrEqual(STRIP_HEIGHT);
+});
+
+/**
+ * ah-14xq: when to drop the buttons to their own row is judged against the widest state, never the
+ * one showing, so just below the default width the header is already two rows before Plan move is
+ * pressed - and pressing it, or Clear, moves nothing.
+ */
+test("just below the default width the planner buttons sit on their own row, and pressing Plan move moves nothing", async ({
+  page
+}) => {
+  await loadReport(page);
+  await enableMovementPlanner(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+  await rightRailAt(page, 20);
+
+  const idle = await slotHeader(page);
+  expectButtonRow(idle);
+  expectInsidePanel(idle);
+
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  const armed = await slotHeader(page);
+  expectButtonRow(armed);
+  expectInsidePanel(armed);
+  expect(armed.header.height).toBe(idle.header.height);
+
+  await page.getByTestId("planner-clear").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Plan move");
+  expect((await slotHeader(page)).header.height).toBe(idle.header.height);
+});
+
+/**
+ * ah-14xq: at the rail's 12rem floor "Plan move" used to run past the rail's edge, wrapping as
+ * "Pla / move". The buttons now drop to a slim row under the tabs, inside the panel; folding keeps
+ * that row, and the keyboard still walks tabs, Plan move, Clear, then the fold arrow.
+ */
+test("at the narrowest right rail the planner buttons drop below the tabs and stay inside", async ({
+  page
+}) => {
+  await planOneStep(page);
+  await rightRailAt(page, 12);
+
+  const planned = await slotHeader(page);
+  expectButtonRow(planned);
+  expectInsidePanel(planned);
+
+  await page.getByTestId("planner-arm").click();
+  await expect(page.getByTestId("planner-arm")).toHaveText("Pick a hex…");
+  const armed = await slotHeader(page);
+  expectButtonRow(armed);
+  expectInsidePanel(armed);
+  expect(armed.header.height).toBe(planned.header.height);
+  await page.getByTestId("planner-clear").click();
+
+  await page.getByTestId("slot-tab-unit").click();
+  await page.getByTestId("slot-tab-unit").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("planner-arm")).toBeFocused();
+  // Clear is disabled with nothing to clear, so the next stop is the fold arrow.
+  await expect(page.getByTestId("planner-clear")).toBeDisabled();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("panel-unit").getByRole("button", { name: "Collapse Unit", exact: true })).toBeFocused();
+
+  await foldPanel(page, "unit");
+  const folded = await slotHeader(page);
+  expectButtonRow(folded);
+  expectInsidePanel(folded);
+  await expect(page.getByTestId("planner-arm")).toBeVisible();
+});
+
 /**
  * The keyboard half of the tab strip, which no test in `packages/shared` can reach: a roving
  * `tabIndex` re-renders but moves nothing, so a strip that only selected would leave the caret on

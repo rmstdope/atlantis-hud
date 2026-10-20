@@ -67,7 +67,9 @@ export function SlotTabs({
           .querySelector<HTMLButtonElement>(`[data-testid="slot-tab-${next}"]`)
           ?.focus();
       }}
-      className="flex items-center gap-1"
+      // The title line's own height (the header's 28px less its border), so the line keeps it when
+      // the buttons have dropped to a row beneath (ah-14xq).
+      className="flex h-[calc(1.75rem-1px)] flex-none items-center gap-1"
     >
       <button
         type="button"
@@ -102,6 +104,16 @@ export function SlotTabs({
           </span>
         ) : null}
       </button>
+      {hasRoute ? null : (
+        // The dot's room, kept while there is no dot: the header chooses between one line and two
+        // against its widest state, so a route arriving must not change the strip's width (ah-14xq).
+        // The strip's gap stands in for the dot's `ml-1`; the glyph is drawn, not written.
+        <span
+          aria-hidden
+          data-testid="slot-route-dot-room"
+          className="invisible text-pane-sm before:content-['•']"
+        />
+      )}
     </div>
   );
 }

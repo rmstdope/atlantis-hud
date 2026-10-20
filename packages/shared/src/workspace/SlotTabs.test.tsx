@@ -52,6 +52,17 @@ describe("the shared slot's tab strip", () => {
     expect(markup).toContain('aria-label="Movement, a route is planned"');
   });
 
+  it("keeps the dot's room without a route, so a route arriving never re-flows the header", () => {
+    // ah-14xq: the header decides between one line and two against its widest state, and the dot
+    // is part of that width. The room is a pseudo-element: no text a locator or reader would find.
+    const without = draw("unit", false);
+    const withRoute = draw("unit", true);
+
+    expect(without).toMatch(/<span aria-hidden="true" data-testid="slot-route-dot-room"[^>]*invisible/);
+    expect(withRoute).not.toContain("slot-route-dot-room");
+    expect(without.replace(/<[^>]+>/g, "")).toBe("UnitMovement");
+  });
+
   it("says nothing extra when no route is standing", () => {
     const markup = draw("unit", false);
 
