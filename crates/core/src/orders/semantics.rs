@@ -18242,7 +18242,8 @@ struct WalkingSilver {
     arriving_students: Vec<ArrivingStudent>,
     /// This hex's own passengers whose STUDY is judged by the purse of the hex their fleet
     /// arrives in ([`WalkingSilver::arriving_students`] there): the one record of how it went,
-    /// which every surface reads through [`landing_study`] (`ah-3qw8`).
+    /// which every surface reads through [`LandingStudies::of`], or [`landing_study()`] from a ledger
+    /// (`ah-3qw8`).
     studies_elsewhere: LandingStudies,
 }
 
