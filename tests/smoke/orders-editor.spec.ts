@@ -1258,6 +1258,14 @@ test("the line just typed stays visible when its warning list appears", async ({
   await expect.poll(() => within(typed, scroller)).toBe(true);
 });
 
+/**
+ * The count at the default rail and the smallest panel, out of five rows. The list holds two lines:
+ * where a row wraps onto two (macOS's fonts) one row fills it and four are below; where it stays on
+ * one (CI's Linux fonts) the second row starts on screen, and a row whose start is on screen is not
+ * "more" (ah-txyp), so three are. The narrow-rail tests below pin the rule exactly.
+ */
+const DEFAULT_RAIL_MORE = /^[34] more ↓$/;
+
 test("a problem list with more rows than fit says how many are below, until scrolled to the end", async ({
   page
 }) => {
@@ -1267,7 +1275,7 @@ test("a problem list with more rows than fit says how many are below, until scro
 
   await fillOrders(page, FIVE_PROBLEMS);
   const more = page.getByTestId("orders-diagnostics-more");
-  await expect(more).toHaveText("4 more ↓");
+  await expect(more).toHaveText(DEFAULT_RAIL_MORE);
 
   await page.getByTestId("orders-diagnostics").evaluate((list) => {
     list.scrollTop = list.scrollHeight;
@@ -1308,7 +1316,7 @@ test("the hidden-row count never covers the visible row's text", async ({ page }
   await shrinkOrders(page);
 
   await fillOrders(page, FIVE_WROK);
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(DEFAULT_RAIL_MORE);
   const first = page.getByTestId("orders-diagnostic").first();
   await expect(first).toContainText("line 1");
   await expect(first).toContainText("unknown order command: WROK");
@@ -1324,7 +1332,7 @@ test("the problem rows do not re-wrap when the hidden-row count disappears", asy
 
   await fillOrders(page, FIVE_WROK);
   const more = page.getByTestId("orders-diagnostics-more");
-  await expect(more).toHaveText("4 more ↓");
+  await expect(more).toHaveText(DEFAULT_RAIL_MORE);
   const rowHeights = () =>
     page
       .getByTestId("orders-diagnostic")
