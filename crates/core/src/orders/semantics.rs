@@ -27448,7 +27448,7 @@ fn transport_target_sentence(
     let who = refused
         .refusal()
         .and_then(|reason| super::transport_wording::refusal_clause(to, reason))
-        .unwrap_or_default();
+        .expect("every refusal this check words has a clause in transport_wording");
     format!(
         "{who}, so {}.",
         super::transport_wording::tail(

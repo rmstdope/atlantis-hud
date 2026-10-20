@@ -15276,6 +15276,41 @@ mod tests {
         assert_eq!(sender.unit.capacity, reported.capacity);
     }
 
+    /// `ah-9lyr` (review, finding 1): the reach path of "worded once" - the hover's sentence and
+    /// the order's `transport-out-of-reach` warning read alike for the same refused shipment.
+    #[test]
+    fn a_reach_refusal_reads_the_same_in_the_hover_and_the_problem() {
+        let report = reach_report((0, 0), (0, 6), (0, 1));
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let hover: Vec<String> = reach_unit(&reach_preview(&report, orders, FLAT_MAP), "900")
+            .transport_target_issues
+            .iter()
+            .map(|issue| issue.sentence.clone())
+            .collect();
+
+        let parsed = ReportCache::new().classified(&report, RULESET);
+        let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+        let options = super::super::semantics::CheckOptions {
+            geometry: crate::movement::graph::geometry_from_json(FLAT_MAP).expect("the map reads"),
+            ..super::super::semantics::CheckOptions::default()
+        };
+        let problems: Vec<String> =
+            super::super::semantics::check_turn(&parsed, orders, Some(&ruleset), options)
+                .into_iter()
+                .filter(|finding| {
+                    finding.code == super::super::semantics::codes::TRANSPORT_OUT_OF_REACH
+                })
+                .map(|finding| finding.message)
+                .collect();
+
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
+                .to_string()]
+        );
+        assert_eq!(hover, problems);
+    }
+
     /// `ah-7ale.5`: with no map shape five hexes is only an upper bound, which the two-hex reach
     /// can neither accept nor refuse - so the goods stay listed and the list is marked.
     #[test]
