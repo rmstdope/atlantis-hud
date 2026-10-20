@@ -371,6 +371,11 @@ pub struct TransportTargetIssue {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(as = "Option<bool>", optional))]
     pub distribute_delivers: bool,
+    /// The issue as the unit preview's hover states it, rendered from the fields above by
+    /// `transport_wording::issue_sentence` when the transport walk hands its issues over. Core
+    /// words every refusal, so the hover and the order's warning cannot disagree (`ah-9lyr`).
+    #[serde(default)]
+    pub sentence: String,
 }
 
 /// Why men joined a unit this month, in `rules/sequenceofevents` order (`ah-rgkk.2.1`).
@@ -4115,29 +4120,10 @@ impl Working {
     /// declare toward other factions, never theirs toward us, so a foreign target that passes both
     /// structural tests is still unknown - accept on doubt, and say so.
     fn transport_target(acceptance: super::transport::Acceptance) -> TransportTargetOutcome {
-        use super::transport::Acceptance;
-
-        match acceptance {
-            Acceptance::Eligible => TransportTargetOutcome::Eligible,
-            Acceptance::NotQuartermaster => {
-                TransportTargetOutcome::Refused(TransportTargetReason::NotQuartermaster)
-            }
-            Acceptance::NotCaravanseraiOwner => {
-                TransportTargetOutcome::Refused(TransportTargetReason::NotCaravanseraiOwner)
-            }
-            Acceptance::SenderOwnsNoCaravanserai => {
-                TransportTargetOutcome::Refused(TransportTargetReason::SenderOwnsNoCaravanserai)
-            }
-            Acceptance::SenderNotQuartermaster => {
-                TransportTargetOutcome::Refused(TransportTargetReason::SenderNotQuartermaster)
-            }
-            Acceptance::EligibilityUnknown => {
-                TransportTargetOutcome::Refused(TransportTargetReason::EligibilityUnknown)
-            }
-            Acceptance::AcceptanceUnknown => {
-                TransportTargetOutcome::Refused(TransportTargetReason::AcceptanceUnknown)
-            }
-        }
+        acceptance.refusal().map_or(
+            TransportTargetOutcome::Eligible,
+            TransportTargetOutcome::Refused,
+        )
     }
 
     /// Applies every queued `TRANSPORT`/`DISTRIBUTE`, last of all: `rules/sequenceofevents` runs
@@ -4230,7 +4216,13 @@ impl Working {
             working.transport_received = theirs.into_iter().map(|(_, value)| value).collect();
             let mut theirs = std::mem::take(&mut issues[index]);
             theirs.sort_by_key(|(sequence, _)| *sequence);
-            working.transport_target_issues = theirs.into_iter().map(|(_, value)| value).collect();
+            working.transport_target_issues = theirs
+                .into_iter()
+                .map(|(_, mut value)| {
+                    value.sentence = super::transport_wording::issue_sentence(&value);
+                    value
+                })
+                .collect();
         }
     }
 
@@ -4294,51 +4286,6 @@ impl Working {
                 Arrival::Certain
             }
             settled => settled,
-        }
-    }
-
-    /// The wire reason for whose limit a refused shipment passed (`ah-nzb0`).
-    fn refusal_reason(range: super::transport::Range) -> TransportTargetReason {
-        match range {
-            super::transport::Range::Accepts => TransportTargetReason::TooFarToAccept,
-            super::transport::Range::Distributes => TransportTargetReason::TooFarToDistribute,
-            super::transport::Range::Ships => TransportTargetReason::TooFarToShip,
-        }
-    }
-
-    /// The reason and the reach a refusal's sentence names (`ah-7ale.2.1`, `ah-e07g`).
-    fn refusal(
-        refused: super::transport::OutOfReach,
-    ) -> (TransportTargetReason, Option<TransportReach>) {
-        match refused {
-            super::transport::OutOfReach::Distance { away, limit, range } => {
-                let reason = Self::refusal_reason(range);
-                (
-                    reason,
-                    Some(TransportReach {
-                        away: Some(i64::from(away)),
-                        limit: Some(i64::from(limit)),
-                        from_level: None,
-                        to_level: None,
-                    }),
-                )
-            }
-            super::transport::OutOfReach::DifferentLevel {
-                from_level,
-                to_level,
-                range,
-            } => {
-                let reason = Self::refusal_reason(range);
-                (
-                    reason,
-                    Some(TransportReach {
-                        away: None,
-                        limit: None,
-                        from_level: Some(from_level),
-                        to_level: Some(to_level),
-                    }),
-                )
-            }
         }
     }
 
@@ -4450,6 +4397,7 @@ impl Working {
                         unsettled: verdict.unsettled,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,
                         distribute_delivers,
+                        sentence: String::new(),
                     },
                 ));
                 continue;
@@ -4458,7 +4406,7 @@ impl Working {
             // moves nothing, so they and their weight stay with the sender (`ah-7ale.2.1`).
             let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
-                let (reason, reach_opt) = Self::refusal(refused);
+                let (reason, reach) = refused.refusal();
                 let (amount, tag) = self.goods_named(pending, &moving);
                 issues[pending.sender].push((
                     pending.sequence,
@@ -4468,11 +4416,12 @@ impl Working {
                         tag,
                         reason,
                         order_index: index,
-                        reach: reach_opt,
+                        reach: Some(reach),
                         to_unshown: pending.to_unshown,
                         unsettled: false,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,
                         distribute_delivers: false,
+                        sentence: String::new(),
                     },
                 ));
                 continue;
@@ -4504,6 +4453,7 @@ impl Working {
                             distribute: pending.order
                                 == super::transport::ShipmentOrder::Distribute,
                             distribute_delivers: false,
+                            sentence: String::new(),
                         },
                     ));
                 }
@@ -12267,6 +12217,9 @@ mod tests {
                     unsettled: false,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence:
+                        "Unit 5532 does not own a Caravanserai, so 5 STON stay with this unit."
+                            .to_string(),
                 }
             );
         }
@@ -12331,6 +12284,7 @@ mod tests {
                     unsettled: false,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence: "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target.".to_string(),
                 }
             );
         }
@@ -12375,6 +12329,7 @@ mod tests {
                     unsettled: false,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence: "Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours.".to_string(),
                 }
             );
         }
@@ -12457,6 +12412,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence: "Could not count 5 STON for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }
             );
             // No row of ours gains anything: 7001 is not our unit.
@@ -12543,6 +12499,8 @@ mod tests {
                     unsettled: false,
                     distribute: true,
                     distribute_delivers: false,
+                    sentence: "This unit is not a quartermaster, so 5 STON stay with this unit."
+                        .to_string(),
                 }
             );
         }
@@ -12573,6 +12531,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence: "Could not count this TRANSPORT for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }
             );
         }
@@ -12617,6 +12576,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence: "Could not count 5 FUR for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }]
             );
         }
@@ -12642,6 +12602,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    sentence: "Could not count 5 FUR for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }]
             );
             assert_eq!(
@@ -15297,6 +15258,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                sentence: "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string(),
             }]
         );
         // The agreed record: "the forecast keeps the goods *and their weight*", so what the sender
@@ -15312,6 +15274,41 @@ mod tests {
             .clone();
         assert_eq!(sender.unit.weight, reported.weight, "the weight stayed too");
         assert_eq!(sender.unit.capacity, reported.capacity);
+    }
+
+    /// `ah-9lyr` (review, finding 1): the reach path of "worded once" - the hover's sentence and
+    /// the order's `transport-out-of-reach` warning read alike for the same refused shipment.
+    #[test]
+    fn a_reach_refusal_reads_the_same_in_the_hover_and_the_problem() {
+        let report = reach_report((0, 0), (0, 6), (0, 1));
+        let orders = "unit 900\nTRANSPORT 901 5 STON\n";
+        let hover: Vec<String> = reach_unit(&reach_preview(&report, orders, FLAT_MAP), "900")
+            .transport_target_issues
+            .iter()
+            .map(|issue| issue.sentence.clone())
+            .collect();
+
+        let parsed = ReportCache::new().classified(&report, RULESET);
+        let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+        let options = super::super::semantics::CheckOptions {
+            geometry: crate::movement::graph::geometry_from_json(FLAT_MAP).expect("the map reads"),
+            ..super::super::semantics::CheckOptions::default()
+        };
+        let problems: Vec<String> =
+            super::super::semantics::check_turn(&parsed, orders, Some(&ruleset), options)
+                .into_iter()
+                .filter(|finding| {
+                    finding.code == super::super::semantics::codes::TRANSPORT_OUT_OF_REACH
+                })
+                .map(|finding| finding.message)
+                .collect();
+
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
+                .to_string()]
+        );
+        assert_eq!(hover, problems);
     }
 
     /// `ah-7ale.5`: with no map shape five hexes is only an upper bound, which the two-hex reach
@@ -15344,6 +15341,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                sentence: "Could not count 5 STON for unit 901 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it.".to_string(),
             }]
         );
 
@@ -15626,6 +15624,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                sentence: "Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.".to_string(),
             }]
         );
 
@@ -15738,6 +15737,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                sentence: "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string(),
             }]
         );
     }
@@ -15769,6 +15769,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                sentence: "Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.".to_string(),
             }]
         );
         assert_eq!(reach_held(&response, "900", "FUR"), 9);

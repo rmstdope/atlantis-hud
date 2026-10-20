@@ -67,4 +67,10 @@ distribute?: boolean,
  * `NotCaravanseraiOwner` refusal of a TRANSPORT; with `unsettled`, the latter is always
  * another faction's unit. Absent otherwise.
  */
-distributeDelivers?: boolean, };
+distributeDelivers?: boolean, 
+/**
+ * The issue as the unit preview's hover states it, rendered from the fields above by
+ * `transport_wording::issue_sentence` when the transport walk hands its issues over. Core
+ * words every refusal, so the hover and the order's warning cannot disagree (`ah-9lyr`).
+ */
+sentence: string, };

@@ -1,5 +1,6 @@
 //! How far a shipment may travel, and what it costs by weight.
 
+use super::effects::{TransportReach, TransportTargetReason};
 use crate::movement::rules::OrderLanguage;
 
 /// Where each unit the report shows ends this month, for the units whose month-end hex differs from
@@ -694,6 +695,58 @@ pub(crate) enum Range {
     Distributes,
     /// Quartermaster to quartermaster, as far as the *sender's* own skill reaches.
     Ships,
+}
+
+impl Acceptance {
+    /// The wire reason a refusal crosses as, or `None` for an eligible target: the one mapping the
+    /// forecast and the order check both read (`ah-9lyr`).
+    pub(crate) fn refusal(self) -> Option<TransportTargetReason> {
+        match self {
+            Self::Eligible => None,
+            Self::NotQuartermaster => Some(TransportTargetReason::NotQuartermaster),
+            Self::NotCaravanseraiOwner => Some(TransportTargetReason::NotCaravanseraiOwner),
+            Self::SenderOwnsNoCaravanserai => Some(TransportTargetReason::SenderOwnsNoCaravanserai),
+            Self::SenderNotQuartermaster => Some(TransportTargetReason::SenderNotQuartermaster),
+            Self::EligibilityUnknown => Some(TransportTargetReason::EligibilityUnknown),
+            Self::AcceptanceUnknown => Some(TransportTargetReason::AcceptanceUnknown),
+        }
+    }
+}
+
+impl OutOfReach {
+    /// The wire reason for whose limit was passed (`ah-nzb0`), and the reach its sentence names
+    /// (`ah-7ale.2.1`, `ah-e07g`): the one mapping the forecast and the order check both read.
+    pub(crate) fn refusal(self) -> (TransportTargetReason, TransportReach) {
+        let reason = |range: Range| match range {
+            Range::Accepts => TransportTargetReason::TooFarToAccept,
+            Range::Distributes => TransportTargetReason::TooFarToDistribute,
+            Range::Ships => TransportTargetReason::TooFarToShip,
+        };
+        match self {
+            Self::Distance { away, limit, range } => (
+                reason(range),
+                TransportReach {
+                    away: Some(i64::from(away)),
+                    limit: Some(i64::from(limit)),
+                    from_level: None,
+                    to_level: None,
+                },
+            ),
+            Self::DifferentLevel {
+                from_level,
+                to_level,
+                range,
+            } => (
+                reason(range),
+                TransportReach {
+                    away: None,
+                    limit: None,
+                    from_level: Some(from_level),
+                    to_level: Some(to_level),
+                },
+            ),
+        }
+    }
 }
 
 impl Arrival {

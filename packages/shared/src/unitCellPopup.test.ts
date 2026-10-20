@@ -5075,6 +5075,7 @@ describe("silver moved by TRANSPORT", () => {
     reach: null,
     toUnshown: true,
     unsettled: false,
+    sentence: "",
     ...overrides
   });
   const silverPopup = (sender: PreviewedUnit, silver: Parameters<typeof aUnitSilver>[0]) =>
@@ -5309,8 +5310,21 @@ describe("silver moved by TRANSPORT", () => {
       unit({
         own: true,
         transportTargetIssues: [
-          issue({ to: "1162", amount: 100, reason: "notQuartermaster", toUnshown: false }),
-          issue({ to: "1163", amount: 5, reason: "notCaravanseraiOwner", toUnshown: false, orderIndex: 1 })
+          issue({
+            to: "1162",
+            amount: 100,
+            reason: "notQuartermaster",
+            toUnshown: false,
+            sentence: "Unit 1162 is not a quartermaster, so 100 SILV stay with this unit."
+          }),
+          issue({
+            to: "1163",
+            amount: 5,
+            reason: "notCaravanseraiOwner",
+            toUnshown: false,
+            orderIndex: 1,
+            sentence: "Unit 1163 does not own a Caravanserai, so 5 SILV stay with this unit."
+          })
         ]
       }),
       { held: 500, atMonthEnd: 500 }
@@ -5330,7 +5344,8 @@ describe("silver moved by TRANSPORT", () => {
             amount: 100,
             reason: "tooFarToAccept",
             toUnshown: false,
-            reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
+            reach: { away: 3, limit: 2, fromLevel: null, toLevel: null },
+            sentence: "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 100 SILV stay with this unit."
           })
         ]
       }),
@@ -5545,7 +5560,8 @@ describe("the month each column popup states", () => {
           reach: null,
           toUnshown: false,
           unsettled: false,
-          distribute: true
+          distribute: true,
+          sentence: "This unit owns no Caravanserai when the shipments run, so 500 SILV stay with this unit."
         }
       ]
     });
@@ -5572,7 +5588,9 @@ describe("the month each column popup states", () => {
           reach: null,
           toUnshown: false,
           unsettled: true,
-          distribute: true
+          distribute: true,
+          sentence:
+            "Could not count 500 SILV for unit 1162 because this unit owns no Caravanserai now, but this month's orders may change that before the shipments run."
         }
       ]
     });
