@@ -1982,176 +1982,16 @@ describe("formatItems and itemsTooltip", () => {
   });
 });
 
-// `ah-64wm`. Every sentence below is the navigator's own wording, chosen against
-// `docs/ui/ah-64wm-transport-targets.html`; nothing here is left for the test to word differently.
+// `ah-64wm`. The sentences themselves are core's (`transport_wording.rs` pins each one, `ah-9lyr`);
+// what is pinned here is which refusals mark the row uncertain, and that the hover and the
+// transport block state the sentence core sent, in document order.
 describe("a transport target the report cannot show receiving", () => {
   const previewedUnit = (overrides: Partial<PreviewedUnit>): PreviewedUnit =>
     ({ ...unit({}), previewChanges: [], uncounted: [], takenUnshown: [], ...overrides }) as PreviewedUnit;
 
   const stone = [{ amount: 40, name: "stone", tag: "STON" }];
 
-  it("says an own target is no quartermaster and the goods stay", () => {
-    expect(
-      transportTargetSentence({ to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe("Unit 7001 is not a quartermaster, so 5 STON stay with this unit.");
-  });
-
-  it("says a target owns no Caravanserai and the goods stay", () => {
-    expect(
-      transportTargetSentence({
-        to: "7002",
-        amount: 5,
-        tag: "STON",
-        reason: "notCaravanseraiOwner",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: null
-      })
-    ).toBe("Unit 7002 does not own a Caravanserai, so 5 STON stay with this unit.");
-  });
-
-  // `ah-1jl9`: a quartermaster that owns no Caravanserai when the shipments run is itself why a
-  // DISTRIBUTE, or a TRANSPORT past the flat reach, is refused - in the words the order check uses.
-  it("says the sender owns no Caravanserai and the goods stay", () => {
-    expect(
-      transportTargetSentence({ to: "1162", amount: 500, tag: "SILV", reason: "senderOwnsNoCaravanserai", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe("This unit owns no Caravanserai when the shipments run, so 500 SILV stay with this unit.");
-    expect(
-      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "senderOwnsNoCaravanserai", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe("This unit owns no Caravanserai when the shipments run, so this TRANSPORT moves nothing.");
-  });
-
-  // `ah-lis2`: `CheckTransportOrders` refuses a DISTRIBUTE from a unit that is not a quartermaster
-  // with "DISTRIBUTE: Unit is not a quartermaster" - the sender's fault, whoever the target is -
-  // and a sentence with no amount names the order the line was written with.
-  it("says the sender of a DISTRIBUTE is not a quartermaster, and calls the order a DISTRIBUTE", () => {
-    expect(
-      transportTargetSentence({ to: "1162", amount: 100, tag: "SILV", reason: "senderNotQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, distribute: true })
-    ).toBe("This unit is not a quartermaster, so 100 SILV stay with this unit.");
-    expect(
-      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "senderNotQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, distribute: true })
-    ).toBe("This unit is not a quartermaster, so this DISTRIBUTE moves nothing.");
-    expect(
-      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "senderOwnsNoCaravanserai", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, distribute: true })
-    ).toBe("This unit owns no Caravanserai when the shipments run, so this DISTRIBUTE moves nothing.");
-    expect(
-      transportTargetSentence({ to: "1162", amount: 0, tag: "", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null, distribute: true })
-    ).toBe(
-      "Could not count this DISTRIBUTE for unit 1162 because your report does not show whether it is an eligible transport target."
-    );
-  });
-
-  it("says the report cannot show whether an unseen target is eligible", () => {
-    expect(
-      transportTargetSentence({ to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null })
-    ).toBe(
-      "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target."
-    );
-  });
-
-  it("says the report cannot show whether a foreign faction accepts transports", () => {
-    expect(
-      transportTargetSentence({ to: "7003", amount: 5, tag: "STON", reason: "acceptanceUnknown", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe(
-      "Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours."
-    );
-  });
-
-  // The order named goods the game would not carry anyway, so there is no per-tag claim to make:
-  // the target gate is what stopped the order, and the sentence says only that.
-  it("speaks of the order alone when it has no per-tag claim to make", () => {
-    expect(
-      transportTargetSentence({ to: "7001", amount: 0, tag: "", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe("Unit 7001 is not a quartermaster, so this TRANSPORT moves nothing.");
-    expect(
-      transportTargetSentence({ to: "7002", amount: 0, tag: "", reason: "notCaravanseraiOwner", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe("Unit 7002 does not own a Caravanserai, so this TRANSPORT moves nothing.");
-    expect(
-      transportTargetSentence({ to: "99999", amount: 0, tag: "", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null })
-    ).toBe(
-      "Could not count this TRANSPORT for unit 99999 because your report does not show whether it is an eligible transport target."
-    );
-  });
-
-  // `ah-7ale.2.1`. Both sentences are the agreed record's own wording, quoted character for
-  // character; `rules/economy_transport` and `data/quartermaster` are where the two limits come
-  // from, and neither sentence ever names a skill.
-  it("a shipment too far for the quartermaster to accept says so", () => {
-    expect(
-      transportTargetSentence({
-        to: "901",
-        amount: 5,
-        tag: "STON",
-        reason: "tooFarToAccept",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
-      })
-    ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.");
-  });
-
-  // `ah-nzb0`. A quartermaster may DISTRIBUTE to any unit within 2 hexes (`CheckTransportOrders`
-  // gives a DISTRIBUTE `LOCAL_TRANSPORT`, `ah-1d3i`) - the range is the distributing
-  // quartermaster's, not the recipient's.
-  it("a quartermaster distributing too far names its own distribution range", () => {
-    expect(
-      transportTargetSentence({
-        to: "2420",
-        amount: 100,
-        tag: "SILV",
-        reason: "tooFarToDistribute",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
-      })
-    ).toBe("Unit 2420 is 3 hexes away and this unit distributes to units within 2 hexes, so 100 SILV stay with this unit.");
-  });
-
-  it("a shipment a quartermaster cannot reach names its own limit", () => {
-    expect(
-      transportTargetSentence({
-        to: "901",
-        amount: 1,
-        tag: "IRON",
-        reason: "tooFarToShip",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: { away: 4, limit: 3, fromLevel: null, toLevel: null }
-      })
-    ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.");
-  });
-
-  it("a shipment across levels is refused and names the levels", () => {
-    expect(
-      transportTargetSentence({
-        to: "901",
-        amount: 9,
-        tag: "FUR",
-        reason: "tooFarToAccept",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: { away: null, limit: null, fromLevel: 1, toLevel: 2 }
-      })
-    ).toBe("Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.");
-  });
-
-  it("a refused shipment of goods the game would not carry names no goods", () => {
-    expect(
-      transportTargetSentence({
-        to: "901",
-        amount: 0,
-        tag: "",
-        reason: "tooFarToAccept",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
-      })
-    ).toBe("Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.");
-    expect(
-      transportTargetSentence({
-        to: "901",
-        amount: 0,
-        tag: "",
-        reason: "tooFarToShip",
-        orderIndex: 0, toUnshown: false, unsettled: false,
-        reach: { away: 4, limit: 3, fromLevel: null, toLevel: null }
-      })
-    ).toBe("Unit 901 is 4 hexes away and this unit can ship 3 hexes, so this TRANSPORT moves nothing.");
-  });
+  const unseen = "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target.";
 
   // A distance the report settles is a fact, not a gap: the ` + ?` mark must stay off. The two
   // "could not count" sentences for an unmeasurable distance are `ah-7ale.5`.
@@ -2162,7 +2002,8 @@ describe("a transport target the report cannot show receiving", () => {
       tag: "STON",
       reason,
       orderIndex: 0, toUnshown: false, unsettled: false,
-      reach: { away: 3, limit: 2, fromLevel: null, toLevel: null }
+      reach: { away: 3, limit: 2, fromLevel: null, toLevel: null },
+      sentence: "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit."
     });
 
     expect(transportTargetUncertain(far("tooFarToAccept"))).toBe(false);
@@ -2179,7 +2020,8 @@ describe("a transport target the report cannot show receiving", () => {
       tag: "STON",
       reason,
       orderIndex: 0, toUnshown: false, unsettled: false,
-      reach: null
+      reach: null,
+      sentence: ""
     });
 
     expect(transportTargetUncertain(issue("eligibilityUnknown"))).toBe(true);
@@ -2189,21 +2031,14 @@ describe("a transport target the report cannot show receiving", () => {
   });
 
   it("marks a row uncertain only when one of its transports could not be settled", () => {
+    const refused = { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null, sentence: "Unit 7001 is not a quartermaster, so 5 STON stay with this unit." } as const;
+    expect(hasUncertainTransport(previewedUnit({ transportTargetIssues: [refused] }))).toBe(false);
     expect(
       hasUncertainTransport(
         previewedUnit({
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null }
-          ]
-        })
-      )
-    ).toBe(false);
-    expect(
-      hasUncertainTransport(
-        previewedUnit({
-          transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null },
-            { to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }
+            refused,
+            { to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null, sentence: "" }
           ]
         })
       )
@@ -2212,20 +2047,15 @@ describe("a transport target the report cannot show receiving", () => {
     expect(hasUncertainTransport(undefined)).toBe(false);
   });
 
-  it("a_distance_that_cannot_be_measured_says_so_and_marks_the_list", () => {
-    expect(
-      transportTargetSentence({ to: "902", amount: 9, tag: "FUR", reason: "distanceUnmeasured", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe(
-      "Could not count 9 FUR for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it."
-    );
-    expect(
-      transportTargetSentence({ to: "902", amount: 0, tag: "", reason: "distanceUnmeasured", orderIndex: 0, toUnshown: false, unsettled: false, reach: null })
-    ).toBe(
-      "Could not count this TRANSPORT for unit 902 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it."
-    );
+  it("a_distance_that_cannot_be_measured_marks_the_list", () => {
     // The mark reads the flag, which the Transport warning never silences.
     expect(hasUncertainTransport(previewedUnit({ transportTargetIssues: [], shipmentUnmeasured: true }))).toBe(true);
     expect(hasUncertainTransport(previewedUnit({}))).toBe(false);
+  });
+
+  const notQuartermaster = (orderIndex: number): TransportTargetIssue => ({
+    to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex, toUnshown: false, unsettled: false, reach: null,
+    sentence: "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit."
   });
 
   // The mockup's mixed card: the block reads in the order it was written.
@@ -2233,7 +2063,7 @@ describe("a transport target the report cannot show receiving", () => {
     expect(
       transportSentences(
         [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 0 }],
-        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 1, toUnshown: false, unsettled: false, reach: null }]
+        [notQuartermaster(1)]
       )
     ).toEqual([
       "The game will not transport HORS, so they stay with this unit.",
@@ -2247,7 +2077,7 @@ describe("a transport target the report cannot show receiving", () => {
     expect(
       transportSentences(
         [{ amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 1 }],
-        [{ to: "7001", amount: 5, tag: "FUR", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null }]
+        [notQuartermaster(0)]
       )
     ).toEqual([
       "Unit 7001 is not a quartermaster, so 5 FUR stay with this unit.",
@@ -2264,7 +2094,7 @@ describe("a transport target the report cannot show receiving", () => {
           { amount: 30, tag: "STON", to: "6857", toUnshown: false, refused: false, orderIndex: 1 },
           { amount: 0, tag: "HORS", to: "", toUnshown: false, refused: true, orderIndex: 1 }
         ],
-        [{ to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }]
+        [{ to: "99999", amount: 5, tag: "FUR", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null, sentence: "Could not count 5 FUR for unit 99999 because your report does not show whether it is an eligible transport target." }]
       )
     ).toEqual([
       "Could not count 5 FUR for unit 99999 because your report does not show whether it is an eligible transport target.",
@@ -2279,11 +2109,11 @@ describe("a transport target the report cannot show receiving", () => {
     const row = previewedUnit({
       items: stone,
       transportTargetIssues: [
-        { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }
+        { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null, sentence: unseen }
       ]
     });
 
-    expect(itemsTooltip(row)).toBe("Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target.");
+    expect(itemsTooltip(row)).toBe(unseen);
   });
 
   it("says nothing about a row with no target issue", () => {
@@ -2291,41 +2121,27 @@ describe("a transport target the report cannot show receiving", () => {
   });
 
   // ah-nsz8: rules/sequenceofevents runs LEAVE, ENTER, PROMOTE, MOVE, STUDY and BUILD before
-  // TRANSPORT, so a refusal the core marks `unsettled` is one the month may undo. The hover does
-  // not state it as certain, and the ITEMS cell carries the ` ?` mark (the navigator's answer of
-  // 2026-10-17).
+  // TRANSPORT, so a refusal the core marks `unsettled` is one the month may undo, and the ITEMS
+  // cell carries the ` ?` mark (the navigator's answer of 2026-10-17).
   describe("a refusal this month's orders may undo", () => {
-    const unsettled = (reason: TransportTargetIssue["reason"], tag = "SILV", amount = 100): TransportTargetIssue => ({
-      to: "901", amount, tag, reason, orderIndex: 0, toUnshown: false, unsettled: true, reach: null
-    });
-
-    it("is not stated as a certain refusal", () => {
-      expect(transportTargetSentence(unsettled("notQuartermaster"))).toBe(
-        "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
-      );
-      expect(transportTargetSentence(unsettled("notCaravanseraiOwner"))).toBe(
-        "Could not count 100 SILV for unit 901 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs."
-      );
-      expect(transportTargetSentence(unsettled("senderOwnsNoCaravanserai"))).toBe(
-        "Could not count 100 SILV for unit 901 because this unit owns no Caravanserai now, but this month's orders may change that before the shipments run."
-      );
-      expect(transportTargetSentence(unsettled("notQuartermaster", "", 0))).toBe(
-        "Could not count this TRANSPORT for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
-      );
-    });
+    const mayUndo =
+      "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs.";
+    const unsettled: TransportTargetIssue = {
+      to: "901", amount: 100, tag: "SILV", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: true, reach: null, sentence: mayUndo
+    };
 
     it("marks the ITEMS figure as partly counted", () => {
-      const row = previewedUnit({ items: stone, transportTargetIssues: [unsettled("notQuartermaster")] });
+      const row = previewedUnit({ items: stone, transportTargetIssues: [unsettled] });
       expect(hasUncertainTransport(row)).toBe(true);
-      expect(itemsTooltip(row)).toBe(
-        "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
-      );
+      expect(itemsTooltip(row)).toBe(mayUndo);
     });
 
     it("leaves a settled refusal certain", () => {
       const row = previewedUnit({
         items: stone,
-        transportTargetIssues: [{ ...unsettled("notQuartermaster"), unsettled: false }]
+        transportTargetIssues: [
+          { ...unsettled, unsettled: false, sentence: "Unit 901 is not a quartermaster, so 100 SILV stay with this unit." }
+        ]
       });
       expect(hasUncertainTransport(row)).toBe(false);
       expect(itemsTooltip(row)).toBe("Unit 901 is not a quartermaster, so 100 SILV stay with this unit.");
@@ -2361,51 +2177,5 @@ describe("the study forecast", () => {
     const rows = mergePreview([unit({})], preview([previewedRow({})]));
 
     expect(rows[0].study).toBeNull();
-  });
-});
-
-// `ah-7j90`. Each sentence is quoted from the bead's agreed acceptance, against
-// `docs/ui/ah-7j90-distribute-hint.html` and `docs/ui/ah-7j90-distribute-hint-uncertain.html`.
-describe("a refused TRANSPORT a DISTRIBUTE would deliver", () => {
-  const refused = (overrides: Partial<TransportTargetIssue>): TransportTargetIssue => ({
-    to: "901",
-    amount: 100,
-    tag: "SILV",
-    reason: "notQuartermaster",
-    orderIndex: 0,
-    toUnshown: false,
-    unsettled: false,
-    reach: null,
-    distributeDelivers: true,
-    ...overrides
-  });
-
-  it("adds the hint to a certain refusal", () => {
-    expect(transportTargetSentence(refused({}))).toBe(
-      "Unit 901 is not a quartermaster, so 100 SILV stay with this unit. DISTRIBUTE would deliver them."
-    );
-  });
-
-  it("adds 'either way' to an own target whose month may make it a quartermaster", () => {
-    expect(transportTargetSentence(refused({ unsettled: true }))).toBe(
-      "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs. DISTRIBUTE would deliver them either way."
-    );
-  });
-
-  it("names the faction's attitude for another faction's unit", () => {
-    expect(
-      transportTargetSentence(refused({ to: "7100", reason: "notCaravanseraiOwner", unsettled: true }))
-    ).toBe(
-      "Could not count 100 SILV for unit 7100 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs. DISTRIBUTE would deliver them either way, if unit 7100's faction accepts transports from yours."
-    );
-  });
-
-  it("leaves every sentence as it was without the flag", () => {
-    expect(transportTargetSentence(refused({ distributeDelivers: undefined }))).toBe(
-      "Unit 901 is not a quartermaster, so 100 SILV stay with this unit."
-    );
-    expect(transportTargetSentence(refused({ distributeDelivers: undefined, unsettled: true }))).toBe(
-      "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs."
-    );
   });
 });

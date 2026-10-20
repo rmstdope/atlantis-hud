@@ -1249,7 +1249,8 @@ describe("the items column", () => {
         { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
         {
           transportTargetIssues: [
-            { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null }
+            { to: "99999", amount: 5, tag: "STON", reason: "eligibilityUnknown", orderIndex: 0, toUnshown: true, unsettled: false, reach: null,
+              sentence: "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target." }
           ]
         }
       )
@@ -1273,7 +1274,8 @@ describe("the items column", () => {
         { unitId: "1", items: [{ amount: 40, name: "stone", tag: "STON" }] },
         {
           transportTargetIssues: [
-            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null }
+            { to: "7001", amount: 5, tag: "STON", reason: "notQuartermaster", orderIndex: 0, toUnshown: false, unsettled: false, reach: null,
+              sentence: "Unit 7001 is not a quartermaster, so 5 STON stay with this unit." }
           ]
         }
       )
