@@ -1258,6 +1258,14 @@ test("the line just typed stays visible when its warning list appears", async ({
   await expect.poll(() => within(typed, scroller)).toBe(true);
 });
 
+/**
+ * The count at the default rail and the smallest panel, out of five rows. The list holds two lines:
+ * where a row wraps onto two (macOS's fonts) one row fills it and four are below; where it stays on
+ * one (CI's Linux fonts) the second row starts on screen, and a row whose start is on screen is not
+ * "more" (ah-txyp), so three are. The narrow-rail tests below pin the rule exactly.
+ */
+const DEFAULT_RAIL_MORE = /^[34] more ↓$/;
+
 test("a problem list with more rows than fit says how many are below, until scrolled to the end", async ({
   page
 }) => {
@@ -1267,7 +1275,7 @@ test("a problem list with more rows than fit says how many are below, until scro
 
   await fillOrders(page, FIVE_PROBLEMS);
   const more = page.getByTestId("orders-diagnostics-more");
-  await expect(more).toHaveText("4 more ↓");
+  await expect(more).toHaveText(DEFAULT_RAIL_MORE);
 
   await page.getByTestId("orders-diagnostics").evaluate((list) => {
     list.scrollTop = list.scrollHeight;
@@ -1308,7 +1316,7 @@ test("the hidden-row count never covers the visible row's text", async ({ page }
   await shrinkOrders(page);
 
   await fillOrders(page, FIVE_WROK);
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(DEFAULT_RAIL_MORE);
   const first = page.getByTestId("orders-diagnostic").first();
   await expect(first).toContainText("line 1");
   await expect(first).toContainText("unknown order command: WROK");
@@ -1324,7 +1332,7 @@ test("the problem rows do not re-wrap when the hidden-row count disappears", asy
 
   await fillOrders(page, FIVE_WROK);
   const more = page.getByTestId("orders-diagnostics-more");
-  await expect(more).toHaveText("4 more ↓");
+  await expect(more).toHaveText(DEFAULT_RAIL_MORE);
   const rowHeights = () =>
     page
       .getByTestId("orders-diagnostic")
@@ -1368,7 +1376,7 @@ test("at the narrowest right rail the hidden-row count never covers the visible 
   await shrinkOrders(page);
 
   await fillOrders(page, FIVE_WROK);
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
 
   const drawn = await textBesideCount(page);
   expect(drawn.text).toContain("unknown order command: WROK");
@@ -1392,7 +1400,7 @@ test("a quoted order word longer than the row wraps inside its chip, never under
   await shrinkOrders(page);
 
   await fillOrders(page, Array.from({ length: 5 }, () => `${word} 1`).join("\n"));
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
 
   const chip = await page
     .getByTestId("orders-diagnostic")
@@ -1424,8 +1432,9 @@ test("at the smallest panel a row of three lines or more shows two and scrolls, 
   await shrinkOrders(page);
 
   await fillOrders(page, FIVE_WROK);
-  // Four or five: a partly shown row counts as hidden (ah-nup4, `rowsBelow`).
-  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText(/^[45] more ↓$/);
+  // Four: the first row is partly shown, and a row whose start is on screen is not "more"
+  // (ah-txyp, `rowsBelow`).
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveText("4 more ↓");
   const list = page.getByTestId("orders-diagnostics");
   const shape = () =>
     list.evaluate((element) => ({
@@ -1445,6 +1454,26 @@ test("at the smallest panel a row of three lines or more shows two and scrolls, 
   const room = await ordersRoom(page);
   expect(room.editorLines).toBeGreaterThanOrEqual(2.98);
   expect(room.bodyOverflow, "the panel body itself must not scroll").toBeLessThanOrEqual(0);
+});
+
+/**
+ * ah-txyp: a row whose start is on screen is not "more", however much of it wraps below the list's
+ * bottom - one partly shown row and nothing after it shows no count.
+ */
+test("a single problem row that wraps past the list's bottom shows no hidden-row count", async ({ page }) => {
+  await onlyChecks(page, []);
+  await openEditor(page);
+  await narrowRightRail(page);
+  await shrinkOrders(page);
+
+  await fillOrders(page, "WROK");
+  await expect(page.getByTestId("orders-diagnostic")).toHaveCount(1);
+  const list = page.getByTestId("orders-diagnostics");
+  // The row really is cut off, or this would prove nothing.
+  await expect
+    .poll(() => list.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(1);
+  await expect(page.getByTestId("orders-diagnostics-more")).toHaveCount(0);
 });
 
 test("in a tall orders panel a long problem list is capped and the editor keeps the rest", async ({

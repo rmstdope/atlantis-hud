@@ -12,22 +12,24 @@ import type { OrderDiagnostic } from "@atlantis/core-client";
 const ROUNDING_PX = 1;
 
 /**
- * How many rows end below the list's visible bottom - a partly shown row counts as hidden.
+ * How many rows have not started on screen yet - a partly shown row is visible, not "more"
+ * (ah-txyp; the navigator's answer to ah-nup4's open question).
  *
- * `rowBottoms` and `visibleBottom` are in the list's own scrolled coordinates (a row's
- * `offsetTop + offsetHeight`; the list's `scrollTop + clientHeight`). `contentBottom` is the
- * list's `scrollHeight`: a list scrolled to its end hides nothing, whatever the rows' whole-pixel
- * offsets add up to against a fractional `scrollTop`.
+ * `rowTops` and `visibleBottom` are in the list's own scrolled coordinates (a row's `offsetTop`;
+ * the list's `scrollTop + clientHeight`). A row counts when no more than the rounding allowance of
+ * it shows above the bottom. `contentBottom` is the list's `scrollHeight`: a list scrolled to its
+ * end hides nothing, whatever the rows' whole-pixel offsets add up to against a fractional
+ * `scrollTop`.
  */
 export function rowsBelow(
-  rowBottoms: readonly number[],
+  rowTops: readonly number[],
   visibleBottom: number,
   contentBottom = Infinity
 ): number {
   if (visibleBottom >= contentBottom - ROUNDING_PX) {
     return 0;
   }
-  return rowBottoms.filter((bottom) => bottom > visibleBottom + ROUNDING_PX).length;
+  return rowTops.filter((top) => top >= visibleBottom - ROUNDING_PX).length;
 }
 
 /**

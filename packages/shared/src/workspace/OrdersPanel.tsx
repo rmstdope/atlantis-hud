@@ -404,7 +404,7 @@ function ProblemList({
       const rows = Array.from(element.children) as HTMLElement[];
       setHidden(
         rowsBelow(
-          rows.map((row) => row.offsetTop + row.offsetHeight),
+          rows.map((row) => row.offsetTop),
           element.scrollTop + element.clientHeight,
           element.scrollHeight
         )
