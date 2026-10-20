@@ -2852,9 +2852,11 @@ struct Working {
     by_alias: BTreeMap<(String, String), usize>,
     /// The unit whose block the walker is inside.
     current: Option<usize>,
-    /// Formed units being described, innermost last. `None` marks a FORM that could not be read,
-    /// so its orders are swallowed rather than applied to whoever came before.
-    forms: super::blocks::FormStack<usize>,
+    /// What each `FORM` creates and who each order belongs to, decided once for every reader of the
+    /// document ([`super::blocks::FormBlocks`], `ah-0vc6`).
+    forms: super::blocks::FormBlocks,
+    /// The row of each unit `forms` records, at the same index.
+    formed_rows: Vec<usize>,
     /// Consulted only to tell people from equipment when a GIVE moves a race.
     ruleset: std::sync::Arc<crate::movement::rules::Ruleset>,
     /// Every `TRANSPORT`/`DISTRIBUTE` this document writes, in document order, to be applied once
@@ -3019,7 +3021,8 @@ impl Working {
             by_id,
             by_alias: BTreeMap::new(),
             current: None,
-            forms: super::blocks::FormStack::new(),
+            forms: super::blocks::FormBlocks::new(),
+            formed_rows: Vec::new(),
             ruleset,
             transports: Vec::new(),
             refused_shipments: std::collections::BTreeSet::new(),
@@ -3047,43 +3050,34 @@ impl Working {
     /// order at top level is applied to whichever unit (formed or not) is currently active, and
     /// anything at `depth.turn > 0` is next month's and changes nothing.
     fn visit(&mut self, event: super::walk::Event<'_>) {
-        use super::walk::{BlockKind, Event};
+        use super::blocks::{Hexes, Step};
+        use super::walk::Event;
 
-        match event {
-            Event::Broken { .. } => {}
-            Event::Directive(_) => {
-                // `#atlantis` and `#end` bound the document; neither leaves a unit's block open.
-                self.current = None;
-                self.forms.reset();
-            }
-            Event::Unit(line) => {
-                self.forms.reset();
+        let by_id = &self.by_id;
+        let units = &self.units;
+        let hex_of = |unit: &str| {
+            by_id
+                .get(unit)
+                .map(|&index| units[index].unit.region_id.clone())
+        };
+        let step = self
+            .forms
+            .visit(&event, Some(self.ruleset.as_ref()), Hexes::Of(&hex_of));
+        match (step, event) {
+            (_, Event::Unit(line)) => {
                 self.current = line
                     .arguments
                     .first()
                     .and_then(|id| self.by_id.get(&id.text))
                     .copied();
             }
-            Event::Open {
-                line,
-                kind: BlockKind::Form,
-                depth,
-            } if depth.turn == 0 => {
-                self.open_form(line.number, line.arguments);
+            // `#atlantis` and `#end` bound the document; neither leaves a unit's block open.
+            (_, Event::Directive(_)) => self.current = None,
+            (Step::Formed(index), Event::Open { line, .. }) => self.open_form(index, line.number),
+            (Step::Order { flag }, Event::Order { line, .. }) => {
+                self.read_order(line.command, line.arguments, line.number, flag);
             }
-            Event::Open { .. } => {}
-            Event::Close {
-                kind: BlockKind::Form,
-                depth,
-                ..
-            } if depth.turn == 0 => {
-                self.forms.close();
-            }
-            Event::Close { .. } | Event::Stray { .. } | Event::Abandoned(_) => {}
-            Event::Order { line, depth } if depth.turn == 0 => {
-                self.read_order(line.command, line.arguments, line.number);
-            }
-            Event::Order { .. } => {}
+            _ => {}
         }
     }
 
@@ -3091,7 +3085,7 @@ impl Working {
     fn active(&self) -> Option<usize> {
         match self.forms.owner() {
             super::blocks::Owner::Block => self.current,
-            super::blocks::Owner::Formed(index) => Some(*index),
+            super::blocks::Owner::Formed(index) => Some(self.formed_rows[*index]),
             super::blocks::Owner::Nobody => None,
         }
     }
@@ -3319,29 +3313,25 @@ impl Working {
         }
     }
 
-    fn open_form(&mut self, form_line: usize, arguments: &[super::lexer::Token]) {
-        // The alias has to be a number of at least 1 (`rules/form`): `GIVE NEW n` is the only way
-        // to reach the formed unit, and the grammar's `Arg::Unit` accepts `NEW 1` and never
-        // `NEW a` or `NEW 0`.
-        let alias = arguments
-            .first()
-            .and_then(|token| super::forms::read_alias(token));
-        let (Some(alias), Some(parent)) = (alias, self.active()) else {
-            // A FORM that cannot be read still opens a block, or its orders would fall through
-            // to the unit outside it.
-            self.forms.open(None);
-            return;
+    /// Adds the row of the unit [`super::blocks::FormBlocks`] just recorded as `formed[record]`.
+    /// Whether this `FORM` creates anybody - the alias, a taken alias, a former nobody can name -
+    /// was decided there, once for every reader.
+    fn open_form(&mut self, record: usize, form_line: usize) {
+        let formed = &self.forms.formed()[record];
+        let alias = formed.alias.clone();
+        let parent = match &formed.former {
+            super::blocks::OrderedUnitKey::Shown(unit) => self.by_id[unit],
+            // Recorded before this one, so its row already exists.
+            super::blocks::OrderedUnitKey::Formed(outer_line) => self.forms.formed()[..record]
+                .iter()
+                .rposition(|outer| outer.form_line == *outer_line)
+                .map(|outer| self.formed_rows[outer])
+                .expect("a nested FORM's former is a FORM recorded above it"),
         };
-
+        let alias = alias.as_str();
         let placed_in = self.units[parent].placed_in.clone();
         let parent = &self.units[parent].unit;
         let key = (parent.region_id.clone(), alias.to_string());
-        if self.by_alias.contains_key(&key) {
-            // The alias is taken, so the server would refuse this FORM; its block is swallowed
-            // rather than applied to the unit the alias already names.
-            self.forms.open(None);
-            return;
-        }
 
         // The walked flags, not the report's: the engine applies every flag order while it parses,
         // so those written above this line are in force when the FORM copies them (`ah-78rd`,
@@ -3387,7 +3377,7 @@ impl Working {
             recruits_unmerged: false,
             study: None,
         });
-        self.forms.open(Some(index));
+        self.formed_rows.push(index);
     }
 
     /// Applied through the grammar's own consumed prefix (`ah-86vk`), like [`super::intents`]:
@@ -3399,11 +3389,11 @@ impl Working {
         command: &super::lexer::Token,
         arguments: &[super::lexer::Token],
         line: usize,
+        flag: Option<crate::report::flags::FlagChange>,
     ) {
         let Some(active) = self.active() else {
             return;
         };
-        let raw_arguments = arguments;
         let Some(arguments) =
             super::grammar::consumed_arguments(command, arguments, Some(self.ruleset.as_ref()))
         else {
@@ -3412,9 +3402,7 @@ impl Working {
 
         if command.is("name") {
             self.rename(active, arguments);
-        } else if let Some(change) =
-            read_flag_line(command, raw_arguments, Some(self.ruleset.as_ref()))
-        {
+        } else if let Some(change) = flag {
             let unit = &mut self.units[active].unit;
             crate::report::flags::apply(&mut unit.flags, change);
             // Derived rather than maintained: keeping `on_guard` and the flag list in step by hand
