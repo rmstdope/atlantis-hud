@@ -1,5 +1,5 @@
 use super::support::{document, trace};
-use crate::common::at;
+use crate::common::{assert_fleet_sails, at, ruleset};
 use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::movement::request::{
     trace_orders_for_remembered_report, MoveOrderTraceResponse,
@@ -42,15 +42,17 @@ fn a_written_move_is_traced_across_the_map() {
 /// like a MOVE traces over land.
 #[test]
 fn a_written_sail_order_traces_over_water() {
+    // Sailors (12590) helps, so the longship has the four sailing levels it needs: 11125's two
+    // alone leave it short of sailors and in port (`rules/movement_sailing`, `ah-zbtx`).
+    let orders = format!("{}unit 12590\nSAIL\n", document("11125", "SAIL S\n"));
+    assert_fleet_sails(G3_F42_T40, &orders, &ruleset());
     let response = trace_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,
         G3_F42_T40,
         "[]",
         "11125",
-        // Sailors (12590) helps, so the longship has the four sailing levels it needs: 11125's two
-        // alone leave it short of sailors and in port (`rules/movement_sailing`, `ah-zbtx`).
-        &format!("{}unit 12590\nSAIL\n", document("11125", "SAIL S\n")),
+        &orders,
     )
     .expect("the ruleset loads");
     let path = response.path.expect("a traced path");
@@ -394,6 +396,7 @@ fn an_order_into_unexplored_country_is_drawn_to_its_end() {
 #[test]
 fn a_unit_that_boards_a_fleet_this_month_is_traced_as_sailing_with_it() {
     let orders = "unit 10575\nSAIL SE\nunit 1298\nENTER 235\n";
+    assert_fleet_sails(G5_F21_T24, orders, &ruleset());
     let response = trace_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,

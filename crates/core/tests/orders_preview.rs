@@ -9,6 +9,8 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, UnitPreviewStatus};
 use atlantis_hud_core::report::orders::extract_orders_template;
 
+mod common;
+
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
@@ -235,12 +237,14 @@ fn a_real_unit_renamed_guarded_and_marched_previews_in_both_hexes() {
 /// overloaded raft stays in port (`rules/movement_sailing`, `ah-zbtx`).
 #[test]
 fn a_unit_that_boards_a_departing_fleet_is_previewed_as_departing() {
+    let orders = "unit 10575\nSAIL SE\nunit 1298\nENTER 235\n";
+    common::assert_fleet_sails(G5_F21_T24, orders, &common::ruleset());
     let response = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,
         G5_F21_T24,
         "[]",
-        "unit 10575\nSAIL SE\nunit 1298\nENTER 235\n",
+        orders,
     )
     .expect("the ruleset loads");
 
@@ -372,12 +376,14 @@ fn a_unit_formed_aboard_a_sailing_fleet_is_carried_with_it() {
     // The passenger Drones (10594) forms the new unit: 10575's two sailing-1 gnolls are the raft's
     // whole crew, and giving one away would leave it short of sailors, kept in port
     // (`rules/movement_sailing`, `ah-zbtx`).
+    let orders = "unit 10575\nSAIL SE\nunit 10594\nFORM 1\nEND\nGIVE NEW 1 1 GNOL\n";
+    common::assert_fleet_sails(G5_F21_T24, orders, &common::ruleset());
     let response = preview_orders_for_remembered_report(
         &mut ReportCache::new(),
         RULESET,
         G5_F21_T24,
         "[]",
-        "unit 10575\nSAIL SE\nunit 10594\nFORM 1\nEND\nGIVE NEW 1 1 GNOL\n",
+        orders,
     )
     .expect("the ruleset loads");
 
