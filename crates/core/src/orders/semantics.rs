@@ -62776,6 +62776,42 @@ BUILD
         assert_eq!(hover, problems);
     }
 
+    /// `ah-o9t1`: `ALL` finds no silver when the shipments run because a GIVE handed all of it
+    /// away first (`rules/sequenceofevents`: GIVE orders run before TRANSPORT). The hover says
+    /// what Problems says, as it does when STUDY spent the silver.
+    #[test]
+    fn a_refused_transport_of_all_after_give_reads_alike_in_both_places() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+        home.units.push(unit("902"));
+        let (hover, problems) = hover_and_problems(
+            vec![home],
+            "unit 900\nGIVE 902 ALL SILV\nTRANSPORT 901 ALL SILV\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."]
+        );
+        assert_eq!(hover, problems);
+    }
+
+    /// `ah-o9t1`: an accepted `ALL` that finds nothing to move after a GIVE is no refusal, so
+    /// neither place says anything and no shipment row is written.
+    #[test]
+    fn an_accepted_transport_of_all_after_give_says_nothing() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+        home.units.push(unit("902"));
+        let (hover, problems) = hover_and_problems(
+            vec![home],
+            "unit 900\nGIVE 902 ALL SILV\nDISTRIBUTE 901 ALL SILV\n",
+            CheckOptions::default(),
+        );
+        assert!(hover.is_empty(), "{hover:?}");
+        assert!(problems.is_empty(), "{problems:?}");
+    }
+
     /// `ah-q3bp`: a zero amount names no amount either ("moves nothing"), so its hint names the
     /// goods as the `ALL` form's does.
     #[test]

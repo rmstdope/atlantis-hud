@@ -4406,22 +4406,49 @@ impl Working {
             // checked below - the two lists are not the same (`IENT` may not be given but may be
             // transported).
             let moving = self.tags_moved_from(&held, &pending.what, &pending.amount);
-            // An order over goods the sender does not hold has nothing to retain and nothing to
-            // explain, whoever it was aimed at.
-            if moving.is_empty() {
-                continue;
-            }
+            // An order over goods the sender does not hold has nothing to retain, and nothing to
+            // explain - except a refused `ALL` of one named item, which the order's warning
+            // reports whatever the stock, and the hover says alike: GIVE runs before TRANSPORT
+            // (`rules/sequenceofevents`), so it may have emptied the stock (`ah-o9t1`).
+            let finds_none_of = if moving.is_empty() {
+                match self.all_of_an_item_finding_none(pending, &held) {
+                    Some(tag) => Some(tag),
+                    None => continue,
+                }
+            } else {
+                None
+            };
             if let TransportTargetOutcome::Refused(reason) =
                 Self::transport_target(verdict.acceptance)
             {
+                // The order's warning speaks only of the four refusals the report settles, so with
+                // nothing to move there is nothing more for the hover to explain either: not an
+                // unsettled refusal, nor a target whose eligibility or acceptance is unknown.
+                let settled = !verdict.unsettled
+                    && matches!(
+                        reason,
+                        TransportTargetReason::NotQuartermaster
+                            | TransportTargetReason::NotCaravanseraiOwner
+                            | TransportTargetReason::SenderOwnsNoCaravanserai
+                            | TransportTargetReason::SenderNotQuartermaster
+                    );
+                if finds_none_of.is_some() && !settled {
+                    continue;
+                }
                 // One record for the order, naming the goods only where there is a claim to make.
-                let (amount, tag) = self.goods_named(pending, &moving);
+                let (amount, tag) = match &finds_none_of {
+                    Some(tag) => (0, tag.clone()),
+                    None => self.goods_named(pending, &moving),
+                };
                 // DISTRIBUTE carries only what TRANSPORT does (`rules/economy_transport`), so the
                 // hint needs every item the line moves to be one the game transports (`ah-7j90`).
                 let distribute_delivers = verdict.distribute_would_deliver
-                    && moving
-                        .iter()
-                        .all(|(_, tag, _)| self.ruleset.can_be_transported(tag));
+                    && match &finds_none_of {
+                        Some(tag) => self.ruleset.can_be_transported(tag),
+                        None => moving
+                            .iter()
+                            .all(|(_, tag, _)| self.ruleset.can_be_transported(tag)),
+                    };
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4446,7 +4473,10 @@ impl Working {
             let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
                 let (reason, reach) = refused.refusal();
-                let (amount, tag) = self.goods_named(pending, &moving);
+                let (amount, tag) = match &finds_none_of {
+                    Some(tag) => (0, tag.clone()),
+                    None => self.goods_named(pending, &moving),
+                };
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4470,6 +4500,11 @@ impl Working {
             // moves them and nothing claims they moved: the list keeps them and carries the ` ?`
             // that says it may be wrong (`ah-7ale.5`).
             if arrival == super::transport::Arrival::Unmeasured {
+                // Nothing held is nothing the ` ?` could be about, and the order's warning is
+                // silent on an unmeasured distance.
+                if finds_none_of.is_some() {
+                    continue;
+                }
                 // Never gated: this is what the ` ?` is drawn from, and a mark on a figure is not
                 // a warning about an order.
                 self.units[pending.sender].shipment_unmeasured = true;
@@ -4679,6 +4714,23 @@ impl Working {
         amount: &super::forms::Amount,
     ) -> Vec<(String, String, i64)> {
         self.tags_moved_from(&self.units[holder].unit.items, what, amount)
+    }
+
+    /// The tag a line of `ALL <item>` names when it finds none of that item to move as its phase
+    /// opens - none held, or no more than `EXCEPT` keeps - or `None` for any other line that moves
+    /// nothing (`ah-o9t1`). Only a named item: the order's warning words a refusal for nothing
+    /// else.
+    fn all_of_an_item_finding_none(
+        &self,
+        pending: &PendingTransport,
+        held: &[crate::report::model::ItemAmount],
+    ) -> Option<String> {
+        let (super::forms::Selector::Item(text), super::forms::Amount::All { .. }) =
+            (&pending.what, &pending.amount)
+        else {
+            return None;
+        };
+        item_named(Some(&self.ruleset), text, || held.iter())
     }
 
     /// The same question asked of an explicit item list rather than of a row's live holdings, so
@@ -12071,6 +12123,35 @@ mod tests {
             &unit.transport_target_issues[0]
         }
 
+        /// `ah-o9t1`: an `ALL` that finds nothing to move - the stock discarded first
+        /// (`rules/give`: "If 0 is specified as the unit number, then the items are discarded."),
+        /// or never held - is explained only where the order's warning explains it. A target
+        /// whose eligibility the report does not show, or a foreign unit the month may still
+        /// change, gets no warning, so the hover says nothing either.
+        #[test]
+        fn an_all_that_finds_nothing_says_nothing_of_an_unknown_or_unsettled_target() {
+            for orders in [
+                "unit 5530\nGIVE 0 ALL STON\nTRANSPORT 7004 ALL STON\n",
+                "unit 5530\nTRANSPORT 7004 ALL WOOD\n",
+                "unit 5530\nGIVE 0 ALL STON\nTRANSPORT 7001 ALL STON\n",
+                "unit 5530\nTRANSPORT 7001 ALL WOOD\n",
+            ] {
+                let response = two_hex_preview(orders);
+                // A unit with nothing to show has no row at all, which says nothing too.
+                let said: Vec<String> = row(&response, "1:1,1", "5530")
+                    .map(|sender| {
+                        assert!(sender.transport_sent.is_empty(), "{orders}");
+                        sender
+                            .transport_target_issues
+                            .iter()
+                            .map(|issue| issue.sentence.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                assert!(said.is_empty(), "{orders}: {said:?}");
+            }
+        }
+
         // A quartermaster owning a Caravanserai may DISTRIBUTE to any unit within two hexes:
         // `CheckTransportOrders` (`../Atlantis/runorders.cpp`) never asks a DISTRIBUTE's target
         // about skill or structure. A TRANSPORT's target it always asks, whoever sends it, so the
@@ -15408,6 +15489,53 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(TransportTargetReason::TooFarToAccept, true)]
         );
+    }
+
+    /// `ah-o9t1`: with the stone discarded first (`rules/give`: "If 0 is specified as the unit
+    /// number, then the items are discarded."; `rules/sequenceofevents` runs GIVE before
+    /// TRANSPORT), a too-far `ALL` reads the moves-nothing sentence the order's warning reads,
+    /// and an unmeasured one neither marks the list nor explains anything.
+    #[test]
+    fn an_all_that_finds_nothing_is_explained_only_where_the_distance_is_settled() {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let orders = "unit 900\nGIVE 0 ALL STON\nTRANSPORT 901 ALL STON\n";
+
+        let unmeasured = reach_preview(&report, orders, "");
+        let sender = reach_unit(&unmeasured, "900");
+        assert!(!sender.shipment_unmeasured);
+        assert!(sender.transport_target_issues.is_empty());
+        assert!(sender.transport_sent.is_empty());
+
+        let settled = reach_preview(&report, orders, FLAT_MAP);
+        let sender = reach_unit(&settled, "900");
+        assert!(sender.transport_sent.is_empty());
+        let hover: Vec<String> = sender
+            .transport_target_issues
+            .iter()
+            .map(|issue| issue.sentence.clone())
+            .collect();
+
+        let parsed = ReportCache::new().classified(&report, RULESET);
+        let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+        let options = super::super::semantics::CheckOptions {
+            geometry: crate::movement::graph::geometry_from_json(FLAT_MAP).expect("the map reads"),
+            ..super::super::semantics::CheckOptions::default()
+        };
+        let problems: Vec<String> =
+            super::super::semantics::check_turn(&parsed, orders, Some(&ruleset), options)
+                .into_iter()
+                .filter(|finding| {
+                    finding.code == super::super::semantics::codes::TRANSPORT_OUT_OF_REACH
+                })
+                .map(|finding| finding.message)
+                .collect();
+
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is 5 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing."
+                .to_string()]
+        );
+        assert_eq!(hover, problems);
     }
 
     /// `ah-hc7z`: with no map shape, a report that shows rows well past twice the gap settles the
