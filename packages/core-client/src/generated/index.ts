@@ -83,6 +83,7 @@ export type { RegionExit } from "./RegionExit";
 export type { RegionLimits } from "./RegionLimits";
 export type { RegionPreview } from "./RegionPreview";
 export type { RegionSummary } from "./RegionSummary";
+export type { RegionsUsed } from "./RegionsUsed";
 export type { ReportHeaderInfo } from "./ReportHeaderInfo";
 export type { ReportParseResult } from "./ReportParseResult";
 export type { ReportRegion } from "./ReportRegion";

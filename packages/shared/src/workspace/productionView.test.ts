@@ -7,7 +7,7 @@ import {
   type ReportRegion,
   type WorkedRegion
 } from "@atlantis/core-client";
-import { activatesRow, hexesOverNote, productionView, regionsUsed, statesRegionLimit } from "./productionView";
+import { activatesRow, hexesOverNote, productionView, statesRegionLimit } from "./productionView";
 
 /**
  * The Production window's words and judgements (ah-nneu). Every string here is one the design
@@ -20,8 +20,9 @@ const regionsOf = (count: number, overrides: Partial<WorkedRegion> = {}): Worked
 const view = (overview: ProductionOverview, regions: ReportRegion[] = []) =>
   productionView(overview, (regionId) => regions.find((region) => region.regionId === regionId));
 
-const pooled = (maximum: number, regions: WorkedRegion[]) =>
-  aProductionOverview({ limits: { pooled: maximum, tax: null, trade: null }, regions });
+/** A pooled overview whose core count is `used` (ah-rh62: the window shows core's count, never its rows'). */
+const pooled = (maximum: number, regions: WorkedRegion[], used = 0) =>
+  aProductionOverview({ limits: { pooled: maximum, tax: null, trade: null }, used: { pooled: used, tax: 0, trade: 0 }, regions });
 
 const oneRow = (region: Partial<WorkedRegion>) =>
   view(pooled(40, [aWorkedRegion({ regionId: "r", ...region })]));
@@ -35,7 +36,7 @@ const fullTax = { base: 800, taxed: true, collected: 800, pillaged: null, atMost
 
 describe("productionView", () => {
   it("a pooled report counts every region that uses a slot", () => {
-    const result = view(pooled(40, regionsOf(34, { usesTaxSlot: true })));
+    const result = view(pooled(40, regionsOf(34, { usesTaxSlot: true }), 34));
     expect(result.counts).toHaveLength(1);
     expect(result.counts[0]).toMatchObject({
       label: "Regions",
@@ -50,21 +51,21 @@ describe("productionView", () => {
   });
 
   it("one region of room reads as one hex", () => {
-    expect(view(pooled(40, regionsOf(39, { usesTaxSlot: true }))).counts[0].note).toBe("1 more hex could tax or produce");
+    expect(view(pooled(40, regionsOf(39, { usesTaxSlot: true }), 39)).counts[0].note).toBe("1 more hex could tax or produce");
   });
 
   it("over the limit is red and says how many are refused", () => {
-    const line = view(pooled(40, regionsOf(42, { usesTaxSlot: true }))).counts[0];
+    const line = view(pooled(40, regionsOf(42, { usesTaxSlot: true }), 42)).counts[0];
     expect(line.state).toBe("over");
     expect(line.fraction).toBe(1);
     expect(line.note).toBe("2 hexes over — orders in 2 hexes will be refused");
-    expect(view(pooled(40, regionsOf(41, { usesTaxSlot: true }))).counts[0].note).toBe(
+    expect(view(pooled(40, regionsOf(41, { usesTaxSlot: true }), 41)).counts[0].note).toBe(
       "1 hex over — orders in 1 hex will be refused"
     );
   });
 
   it("exactly at the limit is full with no note", () => {
-    const line = view(pooled(40, regionsOf(40, { usesTaxSlot: true }))).counts[0];
+    const line = view(pooled(40, regionsOf(40, { usesTaxSlot: true }), 40)).counts[0];
     expect(line.state).toBe("full");
     expect(line.note).toBe("");
   });
@@ -74,7 +75,13 @@ describe("productionView", () => {
       ...regionsOf(12, { usesTaxSlot: true, usesTradeSlot: true }),
       ...regionsOf(8, { usesTradeSlot: true }).map((region, index) => ({ ...region, regionId: `t${index}` }))
     ];
-    const result = view(aProductionOverview({ limits: { pooled: null, tax: 25, trade: 25 }, regions }));
+    const result = view(
+      aProductionOverview({
+        limits: { pooled: null, tax: 25, trade: 25 },
+        used: { pooled: 20, tax: 12, trade: 20 },
+        regions
+      })
+    );
     expect(result.counts.map((line) => [line.label, line.used, line.maximum, line.note])).toEqual([
       ["Tax regions", 12, 25, "13 more hexes could tax"],
       ["Trade regions", 20, 25, "5 more hexes could produce"]
@@ -249,36 +256,20 @@ describe("the helpers the faction view shares (ah-x7s3)", () => {
     expect(hexesOverNote(2)).toBe("2 hexes over — orders in 2 hexes will be refused");
   });
 
-  it("regionsUsed counts all regions, tax slots and trade slots", () => {
-    const overview = aProductionOverview({
-      regions: [
-        aWorkedRegion({ regionId: "a", usesTaxSlot: true, usesTradeSlot: false }),
-        aWorkedRegion({ regionId: "b", usesTaxSlot: true, usesTradeSlot: true }),
-        aWorkedRegion({ regionId: "c", usesTaxSlot: false, usesTradeSlot: true })
-      ]
-    });
-    expect(regionsUsed(overview)).toEqual({ pooled: 3, tax: 2, trade: 2 });
-  });
-
   /**
-   * ah-lb2o, reopened: a listed region whose orders the game refuses before the region limit
-   * (an unskilled PRODUCE, a PILLAGE under a foreign guard) uses no slot, so a pooled "Regions"
-   * line counts it no more than the separate lines do, and agrees with the region-limit warning.
+   * ah-rh62: which orders use a slot is core's to decide (ah-lb2o took a second PR because the window
+   * once recounted its rows). The Regions line shows the count core sends, whatever the
+   * rows' own flags would add up to.
    */
-  it("a pooled count leaves out a listed region that uses no slot", () => {
+  it("the Regions line shows the count core sends, not one made from the rows", () => {
     const result = view(
       pooled(10, [
         ...regionsOf(10, { usesTaxSlot: true }),
         aWorkedRegion({ regionId: "jungle", usesTaxSlot: false, usesTradeSlot: false }),
         aWorkedRegion({ regionId: "swamp", usesTaxSlot: false, usesTradeSlot: true })
-      ])
+      ], 7)
     );
-    expect(result.title).toBe("Production · 11 of 10 regions");
-    expect(result.counts[0]).toMatchObject({
-      used: 11,
-      maximum: 10,
-      state: "over",
-      note: "1 hex over — orders in 1 hex will be refused"
-    });
+    expect(result.title).toBe("Production · 7 of 10 regions");
+    expect(result.counts[0]).toMatchObject({ used: 7, maximum: 10, state: "room", note: "3 more hexes could tax or produce" });
   });
 });
