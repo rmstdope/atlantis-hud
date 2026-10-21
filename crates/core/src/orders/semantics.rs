@@ -79251,7 +79251,8 @@ BUILD
 
     /// The window carries the count the warning makes (`ah-rh62`): one region with a reaching TAX,
     /// one with a reaching PRODUCE, one with both, and one whose only order - an unskilled PRODUCE
-    /// - never reaches `ActivityCheck`. Pooled, that is three regions; two tax and two trade.
+    /// - never reaches `ActivityCheck`. Pooled, that is three regions; two tax and two trade - and
+    /// against a limit of two, the warning counts the same three.
     #[test]
     fn the_production_window_carries_the_count_the_warning_makes() {
         let regions = vec![
@@ -79273,7 +79274,7 @@ BUILD
         let review = review_trade(
             regions,
             "unit 4\nPRODUCE grain\nunit 5\nPRODUCE grain\nunit 6\nTAX\nunit 7\nPRODUCE grain\nunit 8\nTAX\n",
-            &[("Regions", 5)],
+            &[("Regions", 2)],
         );
 
         assert_eq!(
@@ -79283,6 +79284,16 @@ BUILD
                 tax: 2,
                 trade: 2
             }
+        );
+        // The warning counts the same three regions against the limit of two.
+        let warnings = trade_sentences(&review.findings);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0]
+                .message
+                .starts_with("PRODUCE, TAX and PILLAGE orders in 3 regions; "),
+            "{}",
+            warnings[0].message
         );
     }
 
