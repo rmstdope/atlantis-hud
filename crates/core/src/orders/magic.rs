@@ -96,21 +96,36 @@ pub(crate) fn lone_leader(men: i64, men_by_race: &[ItemAmount]) -> Option<bool> 
 /// Days of practice a cast that works gives: `neworigins/rules.cpp` SKILL_PRACTICE_AMOUNT, per man.
 pub(crate) const PRACTICE_DAYS: u32 = 5;
 
-/// `skills` as they stand once this month's `CAST` of `spell` has practised (`ah-ozr2`), or
-/// `None` when the cast practises nothing the app can be sure of.
+/// `skills` as they stand, when the month-long orders run, once this month's `CAST` of `spell`
+/// has practised (`ah-ozr2`), or `None` when the cast practises nothing by then.
 ///
-/// `runorders.cpp` runs CAST before the month-long orders, so a STUDY sees the practice. The
-/// engine practises only a cast that works (`spells.cpp`: `if (val) u->Practice(sk)`), and the
-/// one failure counted here is the certain one: a spell that is not cast at all, or a level below
-/// the lowest at which `data/<tag>` says the spell creates anything - `data/SWIN` makes its
-/// Cloudship only from level 3. Where the practice goes is `unit.cpp` `Unit::Practice`, as
-/// [`practised_by`] walks it.
+/// `runorders.cpp` runs CAST before the month-long orders, so a STUDY sees the practice - except
+/// for the casts `spells.cpp` files in `u->teleportorders`, which practise only in
+/// RunTeleportOrders, after them: teleportation, portal lore, and gate lore other than
+/// `CAST Gate_Lore DETECT`. The engine practises only a cast that works (`spells.cpp`:
+/// `if (val) u->Practice(sk)`), and the failures counted here are the certain ones: a spell that
+/// is not cast at all, or a level below the lowest at which `data/<tag>` says the spell creates
+/// anything - `data/SWIN` makes its Cloudship only from level 3. A cast refused for its silver or
+/// materials is the caller's to rule out, from the ledger's verdict. Where the practice goes is
+/// `unit.cpp` `Unit::Practice`, as [`practised_by`] walks it.
 pub(crate) fn after_cast_practice(
     ruleset: &Ruleset,
     skills: &[Skill],
     spell: &SkillEntry,
+    arguments: &[String],
 ) -> Option<Vec<Skill>> {
     if !matches!(spell.usage, Some(SkillUse::Cast | SkillUse::Both)) {
+        return None;
+    }
+    let detects = arguments
+        .first()
+        .is_some_and(|argument| argument.eq_ignore_ascii_case("detect"));
+    let late = match spell.tag.to_uppercase().as_str() {
+        "TELE" | "PORT" => true,
+        "GATE" => !detects,
+        _ => false,
+    };
+    if late {
         return None;
     }
     let level = level_of(skills, &spell.tag);
@@ -275,7 +290,7 @@ mod tests {
         let spell = ruleset
             .find_skill(spell)
             .expect("the catalogue carries the spell");
-        let after = after_cast_practice(&ruleset, skills, spell)?;
+        let after = after_cast_practice(&ruleset, skills, spell, &[])?;
         after
             .iter()
             .zip(skills)
