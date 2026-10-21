@@ -24609,12 +24609,11 @@ fn fleet_carrying<'a>(
 /// structure id: the course as ordered, which the produce check judges a passenger by
 /// ([`carried_away`]'s doc, `ah-jk9h`).
 ///
-/// The course is the fleet's owner's once this month's `PROMOTE`s have run
-/// ([`structure_owner_after_promotes`], the rule `check_fleet_course` reads too): `rules/sail`
+/// The course is the fleet's owner's when the fleets move ([`fleet_owner_when_it_moves`], the
+/// owner `check_fleet_course` names too): `rules/sail`
 /// sails a fleet "in the directions given" only for its owner, and `rules/sequenceofevents` runs
 /// PROMOTE before movement. An owner that sets no course carries nobody, so its passengers are
-/// judged in the hex they stay in (`ah-d8qy`). Only where no owner can be named is the course
-/// taken from whoever could captain the fleet and wrote one.
+/// judged in the hex they stay in (`ah-d8qy`).
 fn fleet_carrying_as_ordered<'a>(
     hex: &'a Hex<'a>,
     ordered: &Ordered<'_>,
@@ -24634,31 +24633,50 @@ fn fleet_carrying_as_ordered<'a>(
                 )
             })
         };
-        let owner = structure_owner_after_promotes(hex, &fleet.structure_id);
-        match owner {
-            // Only the owner after PROMOTE sets the course (`ah-d8qy`): an owner with none -
-            // ours, or a foreign one whose orders the report does not carry - keeps the fleet
-            // in port, as `check_fleet_course` says.
-            Some(owner_id) => hex
-                .units
-                .iter()
-                .find(|other| other.unit.unit_id == owner_id)
-                .and_then(course),
-            // Nobody can be named owner: the course as anyone who could captain it wrote it.
-            None => hex.units.iter().find_map(|other| {
-                could_captain(other, &fleet.structure_id)
-                    .then(|| course(other))
-                    .flatten()
-            }),
-        }
-        .filter(|placed| {
-            let Intent::Sail { steps } = &placed.intent else {
-                return true;
-            };
-            sail_month_end(hex.region, steps, &HashMap::new(), ruleset, hull).leaves()
-        })
-        .map(|placed| (fleet.structure_id.as_str(), placed, hull))
+        // Only the owner when the fleets move sets the course (`ah-d8qy`): an owner with none -
+        // ours, or a foreign one whose orders the report does not carry - keeps the fleet in
+        // port, as `check_fleet_course` says.
+        fleet_owner_when_it_moves(hex, &fleet.structure_id)
+            .and_then(|owner_id| {
+                hex.units
+                    .iter()
+                    .find(|other| other.unit.unit_id == owner_id)
+            })
+            .and_then(course)
+            .filter(|placed| {
+                let Intent::Sail { steps } = &placed.intent else {
+                    return true;
+                };
+                sail_month_end(hex.region, steps, &HashMap::new(), ruleset, hull).leaves()
+            })
+            .map(|placed| (fleet.structure_id.as_str(), placed, hull))
     })
+}
+
+/// Who owns `structure_id` when the fleets move: the head of
+/// [`standing::occupants_after_promotes`]'s list once the formed units known to gain nobody are
+/// gone - `Game::DeleteEmptyUnits` runs after PROMOTE and before movement (`rules/form`: "If no
+/// recruits are gained at all, the empty unit will be dissolved"), so a promoted empty unit hands
+/// the hull to the next in line, as [`surviving_formed_crews`] does for
+/// `movement::fleet::fleet_course` (`ah-d8qy` review, finding 1). An owner's `EVICT` never puts
+/// the owner outside, so the head is the same with or without the EVICTs.
+fn fleet_owner_when_it_moves(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
+    let deleted = |unit_id: &str| {
+        hex.units.iter().any(|ordered| {
+            ordered.unit.unit_id == unit_id
+                && ordered.formed.is_some()
+                && ordered.after_the_market().gained_nobody()
+        })
+    };
+    standing::occupants_after_promotes(occupants_view(hex, structure_id), |owner| {
+        hex.units
+            .iter()
+            .find(|promoter| promoter.unit.unit_id == owner)
+            .into_iter()
+            .flat_map(|promoter| promoter.promotes.iter().map(|promote| &promote.target))
+    })
+    .into_iter()
+    .find(|unit_id| !deleted(unit_id))
 }
 
 /// **Where a fleet sailing `steps` out of `from` ends the month** - the one answer the preview
@@ -82855,10 +82873,11 @@ BUILD
         let id = origin.region_id.clone();
         // The captain first: it owns the longship, "the first unit listed under the object"
         // (`rules/world_structures`), and only the owner sails it (`rules/sail`, `ah-d8qy`).
-        for (at, mut unit) in [(0, captain), (origin.units.len() + 1, aboard(passenger))] {
-            unit.region_id = id.clone();
-            origin.units.insert(at, unit);
-        }
+        let [mut captain, mut passenger] = [captain, aboard(passenger)];
+        captain.region_id = id.clone();
+        passenger.region_id = id;
+        origin.units.insert(0, captain);
+        origin.units.push(passenger);
         let report = ParsedReport {
             regions: vec![destination, origin],
             ..Default::default()
@@ -83520,20 +83539,15 @@ BUILD
         assert!(fee > 0, "{passenger:?}");
         assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
         assert_eq!(passenger.borrowed_where_fleet_lands, None, "{passenger:?}");
-        assert!(
-            loan_lines(&review, "901", SilverChangeCause::WasLent)
-                .iter()
-                .all(|(_, place, _)| place.is_none()),
-            "{passenger:?}"
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![(Some("Unit 903 (903)".to_string()), None, fee)],
+            "the banker beside it lends the fee, in this hex"
         );
         assert_eq!(
             silver_of(&review, "902").at_month_end,
             Some(500),
             "the resident where it would have landed lends nothing"
-        );
-        assert!(
-            silver_of(&review, "903").at_month_end < Some(500),
-            "the banker beside it lends"
         );
         assert!(
             review
@@ -83543,6 +83557,34 @@ BUILD
             "the fleet's own 'will not sail' finding is unchanged: {:?}",
             review.findings
         );
+    }
+
+    /// `ah-d8qy` review, finding 1: a unit FORMed with no men and promoted is deleted before
+    /// anything moves (`rules/form`: "If no recruits are gained at all, the empty unit will be
+    /// dissolved"; `Game::DeleteEmptyUnits`), so the captain owns the longship again and sails
+    /// it - the passenger is lent where its fleet lands, as if nothing were promoted.
+    #[test]
+    fn a_promoted_unit_that_gains_nobody_leaves_the_captain_sailing() {
+        let (report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), 500))]),
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![sharing(with_silver(unit("902"), 500))],
+            ),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nFORM 1\nEND\nPROMOTE NEW 1\nunit 901\nSTUDY COMB\n\
+                      unit 903\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let passenger = silver_of(&review, "901");
+        assert_eq!(
+            passenger.borrowed_where_fleet_lands.as_deref(),
+            Some("mountain (7,53)"),
+            "{passenger:?}"
+        );
+        assert_eq!(silver_of(&review, "903").at_month_end, Some(500));
     }
 
     /// `ah-d8qy`: ... and where nobody in the hex it stays in can pay, its STUDY is refused there

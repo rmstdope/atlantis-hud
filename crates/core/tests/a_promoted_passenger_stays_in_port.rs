@@ -58,17 +58,38 @@ fn loans(row: &UnitSilver) -> Vec<(SilverChangeCause, Option<String>, Option<Str
         .collect()
 }
 
-/// The passenger's popup loses the loans from ocean (38,44): none of its lines names a place or
-/// Drones (9508), and it is not marked as borrowing where its fleet lands.
+/// The passenger's popup loses the loans from ocean (38,44) and shows the Lonthax lenders as a
+/// unit that never boarded would: Drones (3732) pays its $200 STUDY and Drones (4375) its upkeep,
+/// no line names a place, and with the fee paid its `study fish` draws no finding.
 #[test]
 fn the_passenger_borrows_only_in_the_hex_it_stays_in() {
     let review = review();
     let passenger = row_of(&review, "10594");
     assert_eq!(passenger.borrowed_where_fleet_lands, None, "{passenger:?}");
-    for (cause, other, place) in loans(passenger) {
-        assert_eq!(place, None, "{cause:?} from {other:?}");
-        assert_ne!(other.as_deref(), Some("Drones (9508)"), "{cause:?}");
-    }
+    assert_eq!(
+        loans(passenger),
+        vec![
+            (
+                SilverChangeCause::WasLent,
+                Some("Drones (3732)".to_string()),
+                None
+            ),
+            (
+                SilverChangeCause::WasLentForUpkeep,
+                Some("Drones (4375)".to_string()),
+                None
+            ),
+        ]
+    );
+    assert_eq!(passenger.borrowed_for_orders, 200, "{passenger:?}");
+    assert!(
+        review
+            .findings
+            .iter()
+            .all(|finding| finding.unit_id.as_deref() != Some("10594")),
+        "{:?}",
+        review.findings
+    );
 }
 
 /// The landing hex's lender no longer lends to the passenger.
