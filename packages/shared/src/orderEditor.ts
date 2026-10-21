@@ -190,7 +190,11 @@ export type ValidatedOrders = {
 };
 
 /** No regions and no limits: what the window reads before the first validation lands. */
-export const NO_PRODUCTION: ProductionOverview = { limits: { pooled: null, tax: null, trade: null }, regions: [] };
+export const NO_PRODUCTION: ProductionOverview = {
+  limits: { pooled: null, tax: null, trade: null },
+  used: { pooled: 0, tax: 0, trade: 0 },
+  regions: []
+};
 
 /** No new students: what the Allowances rows read before the first validation lands. `ah-x7s3`. */
 export const NO_STUDENTS: NewStudents = { quartermasters: 0, mages: 0, apprentices: 0 };

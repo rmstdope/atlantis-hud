@@ -8,7 +8,7 @@ import type {
   NewStudents,
   ProductionOverview
 } from "@atlantis/core-client";
-import { hexesOverNote, regionsUsed } from "./productionView";
+import { hexesOverNote } from "./productionView";
 
 export type AllowanceState = "room" | "full" | "over";
 
@@ -38,7 +38,8 @@ function counted(
   production: ProductionOverview,
   students: NewStudents
 ): Counted | null {
-  const regions = regionsUsed(production);
+  // Core's own count, the one its region-limit warning makes (ah-rh62).
+  const regions = production.used;
   switch (label.toLowerCase()) {
     case "regions":
       return { used: regions.pooled, overNote: hexesOverNote };
@@ -59,7 +60,7 @@ function counted(
 
 /**
  * `FactionStatus.entries`, in report order, each counted row worked out from this turn's orders
- * (`ah-x7s3`): Regions from the Production window's own count, the study rows as the report's figure
+ * (`ah-x7s3`): Regions from core's own count (`ah-rh62`), the study rows as the report's figure
  * plus this turn's new students. The maximum is the report's, unless this turn's FACTION order
  * applies (`ah-7g4f`): then Regions (or Tax and Trade Regions), Quartermasters, Mages and
  * Apprentices take the limits the ordered points give.

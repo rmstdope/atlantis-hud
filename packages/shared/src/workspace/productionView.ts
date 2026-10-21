@@ -61,19 +61,6 @@ export function activatesRow(key: string): boolean {
 
 const hexes = (count: number) => (count === 1 ? "hex" : "hexes");
 
-/**
- * How many regions this turn's orders use: against a pooled limit, every region using either slot;
- * else each slot. A listed region using neither (its orders refused before the limit) counts
- * nowhere, as in the region-limit warning (ah-lb2o).
- */
-export function regionsUsed(overview: ProductionOverview): { pooled: number; tax: number; trade: number } {
-  return {
-    pooled: overview.regions.filter((region) => region.usesTaxSlot || region.usesTradeSlot).length,
-    tax: overview.regions.filter((region) => region.usesTaxSlot).length,
-    trade: overview.regions.filter((region) => region.usesTradeSlot).length
-  };
-}
-
 /** "2 hexes over — orders in 2 hexes will be refused". */
 export function hexesOverNote(over: number): string {
   return `${over} ${hexes(over)} over — orders in ${over} ${hexes(over)} will be refused`;
@@ -104,8 +91,9 @@ function countLine(
 }
 
 function counts(overview: ProductionOverview): CountLine[] {
-  const { limits, regions } = overview;
-  const used = regionsUsed(overview);
+  // Core counts the regions used, by the walk its region-limit warning counts (ah-rh62): never
+  // recount them from `regions` here.
+  const { limits, regions, used } = overview;
   if (limits.pooled !== null) {
     return [
       countLine("Regions", used.pooled, limits.pooled, regions.length, {

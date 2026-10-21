@@ -347,6 +347,7 @@ export function aWorkedRegion(overrides: Partial<WorkedRegion> = {}): WorkedRegi
 export function aProductionOverview(overrides: Partial<ProductionOverview> = {}): ProductionOverview {
   return {
     limits: { pooled: null, tax: null, trade: null },
+    used: { pooled: 0, tax: 0, trade: 0 },
     regions: [],
     ...overrides
   };

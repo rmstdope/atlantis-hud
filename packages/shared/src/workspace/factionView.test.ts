@@ -24,6 +24,7 @@ describe("allowanceRows (ah-x7s3)", () => {
 
   it("Tax Regions and Trade Regions count their own slots", () => {
     const production = aProductionOverview({
+      used: { pooled: 2, tax: 2, trade: 1 },
       regions: [
         aWorkedRegion({ regionId: "a", usesTaxSlot: true, usesTradeSlot: false }),
         aWorkedRegion({ regionId: "b", usesTaxSlot: true, usesTradeSlot: true })
@@ -39,7 +40,7 @@ describe("allowanceRows (ah-x7s3)", () => {
   it("a Regions row over its limit is over, with the Production window's note", () => {
     const [row] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
-      aProductionOverview({ regions: regions(12, { usesTaxSlot: true }) }),
+      aProductionOverview({ used: { pooled: 12, tax: 12, trade: 0 }, regions: regions(12, { usesTaxSlot: true }) }),
       NONE, null);
     expect(row).toMatchObject({
       used: 12,
@@ -49,12 +50,14 @@ describe("allowanceRows (ah-x7s3)", () => {
     });
   });
 
-  // ah-lb2o: a listed region whose orders fail before the limit uses no slot and is not counted.
-  it("a Regions row leaves out a listed region that uses no slot", () => {
+  // ah-rh62: which orders use a slot is core's to decide (ah-lb2o), so the row shows core's count
+  // and never one made from the listed regions' flags.
+  it("a Regions row shows the count core sends, not one made from the rows", () => {
     const [row] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
       aProductionOverview({
-        regions: [...regions(11, { usesTaxSlot: true }), aWorkedRegion({ regionId: "jungle" })]
+        used: { pooled: 11, tax: 11, trade: 0 },
+        regions: [...regions(9, { usesTaxSlot: true }), aWorkedRegion({ regionId: "jungle" })]
       }),
       NONE, null);
     expect(row).toMatchObject({ used: 11, state: "over", note: "1 hex over — orders in 1 hex will be refused" });
@@ -218,7 +221,7 @@ describe("faction order (ah-7g4f)", () => {
   it("allowanceRows takes the applied limits", () => {
     const [regionRow] = allowanceRows(
       statusOf({ label: "Regions", used: 0, maximum: 10 }),
-      aProductionOverview({ regions: regions(43, { usesTaxSlot: true }) }),
+      aProductionOverview({ used: { pooled: 43, tax: 43, trade: 0 }, regions: regions(43, { usesTaxSlot: true }) }),
       NONE,
       LIMITS
     );
