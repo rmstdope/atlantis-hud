@@ -370,6 +370,100 @@ jobs:
           path: atlantis-hud-web-*.tar.gz
           if-no-files-found: error
 
+  web-image:
+    name: Additional web container
+    needs: web-tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Require a stable release tag on main
+        shell: bash
+        run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 9.12.0
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/playwright-browser
+      - uses: actions/download-artifact@v7
+        with:
+          name: web-tarball
+          path: web-archive
+      - name: Package and test the already verified web release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 deploy/check_container.py \
+            --archive "web-archive/atlantis-hud-web-${GITHUB_REF_NAME}.tar.gz" \
+            --tag "$GITHUB_REF_NAME"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish tested static image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy
+          push: true
+          platforms: linux/amd64
+          tags: ghcr.io/rmstdope/atlantis-hud-web:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/rmstdope/atlantis-hud
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Write deployment manifest
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          Path("deployment.json").write_text(json.dumps({
+              "tag": os.environ["GITHUB_REF_NAME"],
+              "revision": os.environ["GITHUB_SHA"],
+              "images": {
+                  "web": "ghcr.io/rmstdope/atlantis-hud-web@" + os.environ["IMAGE_DIGEST"]
+              }
+          }) + "\n")
+          PY
+      - uses: actions/upload-artifact@v6
+        with:
+          name: deployment-manifest
+          path: deployment.json
+          if-no-files-found: error
+          overwrite: true
+
+  publish-deployment:
+    name: Publish manual deployment manifest
+    needs: [publish, web-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: deployment-manifest
+      - name: Attach manifest to the completed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" deployment.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo 'Manual deployment: `rmstdope-deploy release atlantis-hud --tag '"$GITHUB_REF_NAME"'`' >> "$GITHUB_STEP_SUMMARY"
+
   publish:
     name: Publish release
     runs-on: ubuntu-latest
