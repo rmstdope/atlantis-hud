@@ -371,6 +371,13 @@ pub struct TransportTargetIssue {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(as = "Option<bool>", optional))]
     pub distribute_delivers: bool,
+    /// The line was written with `ALL`, with or without `EXCEPT`. A settled refusal then names no
+    /// figure and says the order moves nothing, as the order's warning does (`ah-6ypx`); `amount`
+    /// still carries what `ALL` would have taken, for the sentences that could not count it.
+    /// Absent otherwise.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    pub all: bool,
     /// The issue as the unit preview's hover states it, rendered from the fields above by
     /// `transport_wording::issue_sentence` when the transport walk hands its issues over. Core
     /// words every refusal, so the hover and the order's warning cannot disagree (`ah-9lyr`).
@@ -1637,6 +1644,35 @@ pub(crate) struct SettledMovement {
     pub(crate) movement: Option<crate::report::model::UnitMovement>,
     /// As [`FormedAsOrdered::refused_movement`].
     pub(crate) refused_movement: bool,
+}
+
+/// The hover's sentence for every refused or uncounted shipment of the month, in unit and then
+/// document order: what the order checks' tests compare their own refusal sentence against, so a
+/// test can hold the two places to the same words on one built report (`ah-6ypx`).
+#[cfg(test)]
+pub(crate) fn transport_issue_sentences(
+    report: &crate::report::ParsedReport,
+    ruleset: &crate::movement::rules::Ruleset,
+    orders_document: &str,
+    options: super::semantics::CheckOptions,
+) -> Vec<String> {
+    let ruleset = std::sync::Arc::new(ruleset.clone());
+    let ordered =
+        crate::movement::fleet::OrderedUnits::of_month(report, orders_document, Some(&ruleset));
+    let geometry = options.geometry;
+    let (units, _) = settle(
+        report,
+        &ruleset,
+        orders_document,
+        &ordered,
+        geometry,
+        options,
+    );
+    units
+        .iter()
+        .flat_map(|working| working.transport_target_issues.iter())
+        .map(|issue| issue.sentence.clone())
+        .collect()
 }
 
 /// How a unit the report prints moves once this month's orders before movement have run: the
@@ -4303,8 +4339,8 @@ impl Working {
 
     /// [`Self::goods_claimed`] for one refused line, with a refused `ALL SILV` naming the silver
     /// `ALL` would have taken when the shipments run rather than the report's holding
-    /// (`ah-7jsv`). Where nothing would be left to take, the sentence names no amount and says the
-    /// order moves nothing.
+    /// (`ah-7jsv`). Where nothing would be left to take, the amount is `0`, so the sentence names
+    /// no amount and says the order moves nothing.
     fn goods_named(
         &self,
         pending: &PendingTransport,
@@ -4316,7 +4352,9 @@ impl Working {
         }
         match self.unshipped_silver.get(&(pending.sender, pending.line)) {
             Some(&left) if left > 0 => (left, tag),
-            Some(_) => (0, String::new()),
+            // The tag stays, so the DISTRIBUTE hint can name the goods as the order's warning
+            // does (`ah-q3bp`, `ah-6ypx`); a zero amount names no figure.
+            Some(_) => (0, tag),
             None => (amount, tag),
         }
     }
@@ -4397,6 +4435,7 @@ impl Working {
                         unsettled: verdict.unsettled,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,
                         distribute_delivers,
+                        all: matches!(pending.amount, super::forms::Amount::All { .. }),
                         sentence: String::new(),
                     },
                 ));
@@ -4421,6 +4460,7 @@ impl Working {
                         unsettled: false,
                         distribute: pending.order == super::transport::ShipmentOrder::Distribute,
                         distribute_delivers: false,
+                        all: matches!(pending.amount, super::forms::Amount::All { .. }),
                         sentence: String::new(),
                     },
                 ));
@@ -4453,6 +4493,7 @@ impl Working {
                             distribute: pending.order
                                 == super::transport::ShipmentOrder::Distribute,
                             distribute_delivers: false,
+                            all: matches!(pending.amount, super::forms::Amount::All { .. }),
                             sentence: String::new(),
                         },
                     ));
@@ -12217,6 +12258,7 @@ mod tests {
                     unsettled: false,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence:
                         "Unit 5532 does not own a Caravanserai, so 5 STON stay with this unit."
                             .to_string(),
@@ -12284,6 +12326,7 @@ mod tests {
                     unsettled: false,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "Could not count 5 STON for unit 99999 because your report does not show whether it is an eligible transport target.".to_string(),
                 }
             );
@@ -12329,6 +12372,7 @@ mod tests {
                     unsettled: false,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "Could not count 5 STON for unit 7003 because your report does not show whether its faction accepts transports from yours.".to_string(),
                 }
             );
@@ -12412,6 +12456,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "Could not count 5 STON for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }
             );
@@ -12499,6 +12544,7 @@ mod tests {
                     unsettled: false,
                     distribute: true,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "This unit is not a quartermaster, so 5 STON stay with this unit."
                         .to_string(),
                 }
@@ -12531,6 +12577,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "Could not count this TRANSPORT for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }
             );
@@ -12576,6 +12623,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "Could not count 5 FUR for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }]
             );
@@ -12602,6 +12650,7 @@ mod tests {
                     unsettled: true,
                     distribute: false,
                     distribute_delivers: false,
+                    all: false,
                     sentence: "Could not count 5 FUR for unit 7001 because it does not own a Caravanserai now, but this month's orders may change that before TRANSPORT runs.".to_string(),
                 }]
             );
@@ -15258,6 +15307,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                all: false,
                 sentence: "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string(),
             }]
         );
@@ -15341,6 +15391,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                all: false,
                 sentence: "Could not count 5 STON for unit 901 because your report does not show how far the world reaches around, so the distance cannot be worked out. Enter the map's width under Settings › Per game › Map to count it.".to_string(),
             }]
         );
@@ -15624,6 +15675,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                all: false,
                 sentence: "Unit 901 is 4 hexes away and this unit can ship 3 hexes, so 1 IRON stays with this unit.".to_string(),
             }]
         );
@@ -15737,6 +15789,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                all: false,
                 sentence: "Unit 901 is 3 hexes away and takes goods from 2 hexes, so 5 STON stay with this unit.".to_string(),
             }]
         );
@@ -15769,6 +15822,7 @@ mod tests {
                 unsettled: false,
                 distribute: false,
                 distribute_delivers: false,
+                all: false,
                 sentence: "Unit 901 is in the underworld and this unit is on the surface, so 9 FUR stay with this unit.".to_string(),
             }]
         );

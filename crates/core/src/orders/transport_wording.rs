@@ -115,6 +115,15 @@ fn distribute_hint(issue: &TransportTargetIssue) -> Option<String> {
         return None;
     }
     if !issue.unsettled {
+        // A settled refusal that names no figure gives "them" nothing to refer to, so the hint
+        // names the goods by their code, in the words the order's warning appends (`ah-q3bp`,
+        // `ah-6ypx`).
+        if !issue.tag.is_empty() && !names_a_figure(issue) {
+            return Some(format!(
+                "DISTRIBUTE would deliver the {}.",
+                issue.tag.to_ascii_uppercase()
+            ));
+        }
         return Some(DISTRIBUTE_DELIVERS_THEM.to_string());
     }
     Some(
@@ -129,9 +138,16 @@ fn distribute_hint(issue: &TransportTargetIssue) -> Option<String> {
     )
 }
 
+/// Whether a settled refusal names its goods with a figure: a single tag and a positive amount,
+/// on a line not written with `ALL` (`ah-6ypx`), as the order's warning names them.
+fn names_a_figure(issue: &TransportTargetIssue) -> bool {
+    !issue.tag.is_empty() && issue.amount > 0 && !issue.all
+}
+
 fn refusal_sentence(issue: &TransportTargetIssue) -> String {
     let to = issue.to.as_str();
-    let goods = (!issue.tag.is_empty()).then_some((issue.amount, issue.tag.as_str()));
+    let goods =
+        (!issue.tag.is_empty() && issue.amount > 0).then_some((issue.amount, issue.tag.as_str()));
     let goods_text = goods.map(|(amount, tag)| format!("{amount} {tag}"));
     // The word the line was written with, for a sentence that names the order (`ah-lis2`).
     let order_word = if issue.distribute {
@@ -140,6 +156,9 @@ fn refusal_sentence(issue: &TransportTargetIssue) -> String {
         "TRANSPORT"
     };
     let order = format!("this {order_word}");
+    // What a settled refusal says of the goods: none for an `ALL`, whose figure the order's
+    // warning never names and which read as what the unit keeps at month end (`ah-6ypx`).
+    let settled_goods = goods.filter(|_| names_a_figure(issue));
 
     if issue.unsettled {
         // The month may undo the refusal (`ah-nsz8`, the navigator's words of 2026-10-17): the
@@ -174,7 +193,7 @@ fn refusal_sentence(issue: &TransportTargetIssue) -> String {
         | TransportTargetReason::SenderOwnsNoCaravanserai
         | TransportTargetReason::SenderNotQuartermaster => {
             let who = refusal_clause(to, issue.reason).unwrap_or_default();
-            format!("{who}, so {}.", tail(order_word, goods, false))
+            format!("{who}, so {}.", tail(order_word, settled_goods, false))
         }
         TransportTargetReason::EligibilityUnknown => format!(
             "{} your report does not show whether it is an eligible transport target.",
@@ -193,7 +212,7 @@ fn refusal_sentence(issue: &TransportTargetIssue) -> String {
         | TransportTargetReason::TooFarToShip => format!(
             "{}, so {}.",
             reach_clause(to, issue.reason, issue.reach.as_ref()),
-            tail(order_word, goods, true)
+            tail(order_word, settled_goods, true)
         ),
     }
 }
@@ -222,6 +241,7 @@ mod tests {
             unsettled: false,
             distribute: false,
             distribute_delivers: false,
+            all: false,
             sentence: String::new(),
         }
     }
@@ -359,5 +379,48 @@ mod tests {
             "Unit 901 is not a quartermaster, so 100 SILV stay with this unit.",
         );
         says(&refused("901", R::NotQuartermaster, true, false), "Could not count 100 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs.");
+    }
+
+    // `ah-6ypx`, against `docs/ui/ah-6ypx-refused-all-transport.html`: a settled refusal of
+    // `ALL` names no figure, as the order's warning never has.
+    #[test]
+    fn a_settled_refusal_of_all_names_no_figure() {
+        let all = |to: &str, amount, tag, reason| {
+            let mut one = issue(to, amount, tag, reason);
+            one.all = true;
+            one
+        };
+        says(
+            &all("3732", 19693, "SILV", R::NotQuartermaster),
+            "Unit 3732 is not a quartermaster, so this TRANSPORT moves nothing.",
+        );
+        let mut distribute = all("3732", 19693, "SILV", R::NotQuartermaster);
+        distribute.distribute = true;
+        says(
+            &distribute,
+            "Unit 3732 is not a quartermaster, so this DISTRIBUTE moves nothing.",
+        );
+        says(
+            &all("7002", 10, "MSWO", R::NotCaravanseraiOwner),
+            "Unit 7002 does not own a Caravanserai, so this TRANSPORT moves nothing.",
+        );
+        let mut far = all("901", 5, "STON", R::TooFarToAccept);
+        far.reach = distance(3, 2);
+        says(
+            &far,
+            "Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.",
+        );
+        // The DISTRIBUTE hint names the goods, in the words the order's warning appends (`ah-q3bp`).
+        let mut delivers = all("901", 19693, "SILV", R::NotQuartermaster);
+        delivers.distribute_delivers = true;
+        says(
+            &delivers,
+            "Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV.",
+        );
+        // What could not be counted keeps its figure: the order's warning states none of these.
+        let mut unsettled = all("901", 19693, "SILV", R::NotQuartermaster);
+        unsettled.unsettled = true;
+        says(&unsettled, "Could not count 19693 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs.");
+        says(&all("99999", 19693, "SILV", R::EligibilityUnknown), "Could not count 19693 SILV for unit 99999 because your report does not show whether it is an eligible transport target.");
     }
 }

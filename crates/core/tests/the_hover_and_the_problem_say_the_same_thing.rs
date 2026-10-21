@@ -66,3 +66,43 @@ fn a_distribute_from_a_unit_that_is_not_a_quartermaster() {
     );
     assert_eq!(hover(&orders), problems(&orders));
 }
+
+/// `ah-6ypx`, against `docs/ui/ah-6ypx-refused-all-transport.html`: a refused `ALL` names no
+/// figure in either place, for every item and both order words.
+fn moves_nothing(line: &str, expected: &str) {
+    let orders = orders(line);
+    assert_eq!(hover(&orders), vec![expected.to_string()], "{line}");
+    assert_eq!(hover(&orders), problems(&orders), "{line}");
+}
+
+#[test]
+fn a_refused_transport_of_all_moves_nothing_in_both_places() {
+    moves_nothing(
+        "TRANSPORT 1162 ALL SILV",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_transport_of_all_except_moves_nothing_in_both_places() {
+    moves_nothing(
+        "TRANSPORT 1162 ALL SILV EXCEPT 10",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_distribute_of_all_moves_nothing_in_both_places() {
+    moves_nothing(
+        "DISTRIBUTE 1162 ALL SILV",
+        "This unit is not a quartermaster, so this DISTRIBUTE moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_transport_of_all_of_another_item_moves_nothing_in_both_places() {
+    moves_nothing(
+        "TRANSPORT 1162 ALL MSWO",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}

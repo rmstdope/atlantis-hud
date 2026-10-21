@@ -62659,6 +62659,87 @@ BUILD
         );
     }
 
+    /// `ah-6ypx`: the hover and the order's warning on the same built report, for the two
+    /// refusals of `ALL` only the unit tests pinned before - so the two places, which compose
+    /// their sentences separately, cannot drift apart unnoticed.
+    fn hover_and_problems(
+        regions: Vec<ReportRegion>,
+        orders: &str,
+        options: CheckOptions,
+    ) -> (Vec<String>, Vec<String>) {
+        let report = report(regions);
+        let hover = crate::orders::effects::transport_issue_sentences(
+            &report,
+            &ruleset(),
+            orders,
+            options.clone(),
+        );
+        let problems = check_turn(&report, orders, Some(&ruleset()), options)
+            .into_iter()
+            .filter(|finding| {
+                finding.code == codes::TRANSPORT_TARGET_REFUSED
+                    || finding.code == codes::TRANSPORT_OUT_OF_REACH
+            })
+            .map(|finding| finding.message)
+            .collect();
+        (hover, problems)
+    }
+
+    #[test]
+    fn a_refused_transport_of_all_a_distribute_would_deliver_reads_alike_in_both_places() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+        let (hover, problems) = hover_and_problems(
+            vec![home],
+            "unit 900\nTRANSPORT 901 ALL SILV\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."]
+        );
+        assert_eq!(hover, problems);
+    }
+
+    #[test]
+    fn a_shipment_of_all_too_far_away_reads_alike_in_both_places() {
+        let sender = with_item(unit("900"), 5, "stone", "STON");
+        let (hover, problems) = hover_and_problems(
+            vec![
+                shipping_from(vec![sender]),
+                caravanserai_owner("901", 1, 0, 6),
+            ],
+            "unit 900\nTRANSPORT 901 ALL STON\n",
+            with_map(),
+        );
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing."]
+        );
+        assert_eq!(hover, problems);
+    }
+
+    /// `ALL` finds no silver when the shipments run: the report's 10 silver pays for a month of
+    /// STUDY first (`data/COMB`: "costs 10 silver per month of study"; `rules/sequenceofevents`
+    /// runs STUDY before TRANSPORT). Still the same words in both places, the hint included.
+    #[test]
+    fn a_refused_transport_of_all_that_finds_no_silver_reads_alike_in_both_places() {
+        let mut home = caravanserai_owner("900", 5, 0, 0);
+        let owner = home.units.remove(0);
+        home.units.push(with_silver(owner, 10));
+        home.units.push(unit("901"));
+        let (hover, problems) = hover_and_problems(
+            vec![home],
+            "unit 900\nSTUDY COMB\nTRANSPORT 901 ALL SILV\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."]
+        );
+        assert_eq!(hover, problems);
+    }
+
     /// `ah-q3bp`: a zero amount names no amount either ("moves nothing"), so its hint names the
     /// goods as the `ALL` form's does.
     #[test]
