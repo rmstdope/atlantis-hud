@@ -25387,6 +25387,19 @@ fn check_magic_study_prerequisites(
         let Some(skills) = ordered.after_the_market().skills else {
             continue;
         };
+        // The last CAST is the one the engine keeps (`spells.cpp`, each parser sets
+        // `u->castorders`), and its practice lands before the study is judged (`ah-ozr2`).
+        let practised = ordered
+            .intents
+            .iter()
+            .rev()
+            .find_map(|placed| match &placed.intent {
+                Intent::Cast { spell, .. } => Some(spell),
+                _ => None,
+            })
+            .and_then(|spell| ruleset.find_skill(spell))
+            .and_then(|spell| magic::after_cast_practice(ruleset, skills, spell));
+        let skills = practised.as_deref().unwrap_or(skills);
         let level = skills
             .iter()
             .find(|entry| entry.tag.eq_ignore_ascii_case(&skill.tag))
@@ -59400,6 +59413,91 @@ BUILD
     /// A funded leader holding `level` in manipulation, ordered to study it.
     fn apprentice(level: u32) -> ReportUnit {
         with_race(studying_unit("5", "MANI", level), 1, "leader", "LEAD")
+    }
+
+    // --- a cast's practice counts before a prerequisite caps the study (`ah-ozr2`, gh-1847) ---
+    //
+    // `runorders.cpp` runs CAST before the month-long orders, and a cast that works gives
+    // `neworigins/rules.cpp`'s SKILL_PRACTICE_AMOUNT, 5 days, to the skill `Unit::Practice`
+    // (`unit.cpp`) picks: a prerequisite at or below the spell's level takes it in the spell's
+    // place. `CheckDepend` (`unit.cpp`) then lets STUDY go ahead only while every prerequisite is
+    // above the spell's level - `rules/magic_skills`.
+
+    /// A lone leader mage with Force and Spirit at 3, `demon` days in demon lore and `imps` in
+    /// summon imps, levels as `rules/skills_studying` counts them from those days.
+    fn summoner(demon: u32, imps: u32) -> ReportUnit {
+        let mut mage = with_silver(unit("5"), 1000);
+        for (tag, points) in [
+            ("FORC", 180),
+            ("SPIR", 180),
+            ("DEMO", demon),
+            ("SUIM", imps),
+        ] {
+            mage = with_skill_points(mage, tag, level_for_points(points), points);
+        }
+        with_race(mage, 1, "leader", "LEAD")
+    }
+
+    fn capped(findings: &[Finding]) -> Vec<&str> {
+        findings
+            .iter()
+            .filter(|finding| finding.code == codes::MAGIC_STUDY_CAPPED_BY_PREREQUISITES)
+            .map(|finding| finding.message.as_str())
+            .collect()
+    }
+
+    /// The navigator's case from gh-1847: `data/SUIM` creates imps from level 1, so the cast works,
+    /// demon lore (2, at or below summon imps' 2) takes the 5 days, reaches 180 - level 3 - before
+    /// the study runs, and summon imps may go on to level 3.
+    #[test]
+    fn a_cast_that_lifts_the_prerequisite_unblocks_the_study() {
+        let findings = check(
+            vec![region(vec![summoner(175, 90)])],
+            "unit 5\nCAST Summon_Imps\nSTUDY SUIM\n",
+        );
+
+        assert_eq!(capped(&findings), Vec::<&str>::new(), "{findings:?}");
+    }
+
+    /// Five days take demon lore from 170 to 175, still level 2, so the study is still capped.
+    #[test]
+    fn a_cast_that_leaves_the_prerequisite_short_still_warns() {
+        let findings = check(
+            vec![region(vec![summoner(170, 90)])],
+            "unit 5\nCAST Summon_Imps\nSTUDY SUIM\n",
+        );
+
+        assert_eq!(
+            capped(&findings),
+            vec!["summon imps cannot advance past level 2 until demon lore reaches level 3"]
+        );
+    }
+
+    /// The reporter's own case: `data/SWIN` makes a Cloudship only from level 3, so at level 2 the
+    /// cast fails (`spells.cpp` `RunCreateArtifact`, "Skill level isn't that high"), nothing is
+    /// practised, and weather lore stays at level 2.
+    #[test]
+    fn a_cast_below_the_level_that_works_practises_nothing() {
+        let mage = with_race(
+            with_skill_points(
+                with_skill_points(with_silver(unit("5"), 1000), "WEAT", 2, 175),
+                "SWIN",
+                2,
+                90,
+            ),
+            1,
+            "leader",
+            "LEAD",
+        );
+        let findings = check(
+            vec![region(vec![mage])],
+            "unit 5\nCAST Summon_Wind\nSTUDY SWIN\n",
+        );
+
+        assert_eq!(
+            capped(&findings),
+            vec!["summon wind cannot advance past level 2 until weather lore reaches level 3"]
+        );
     }
 
     /// `ah-xy2g` (gh-1554): manipulation is studied as the ordinary skill the navigator ruled it
