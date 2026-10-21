@@ -29257,6 +29257,9 @@ struct RegionUse<'a, 'b> {
     region: Option<&'b ReportRegion>,
     /// The order line. `None` for `TaxByFlag`.
     placed: Option<&'a PlacedIntent>,
+    /// Whether this use can spend a region at all: [`reaches_activity_check`], judged once here so
+    /// the refusals, the warning and the Production window read one answer (`ah-rh62`).
+    reaches: bool,
 }
 
 /// Every use of a tax or trade slot this month's orders make. The one walk both the region-limit
@@ -29295,6 +29298,7 @@ fn region_uses<'a, 'b: 'a>(
                     },
                     region: Some(hex.region),
                     placed,
+                    reaches: false,
                 });
             }
             for placed in ordered_unit.intents.iter() {
@@ -29308,6 +29312,7 @@ fn region_uses<'a, 'b: 'a>(
                             kind: RegionUseKind::Produce,
                             region: production_region(hex, ordered_unit, ruleset, &by_coordinate),
                             placed: Some(placed),
+                            reaches: false,
                         });
                     }
                     Intent::Pillage => uses.push(RegionUse {
@@ -29316,6 +29321,7 @@ fn region_uses<'a, 'b: 'a>(
                         kind: RegionUseKind::Pillage,
                         region: Some(hex.region),
                         placed: Some(placed),
+                        reaches: false,
                     }),
                     // TRANSPORT, BUY and SELL never use up a region. The rules page says TRANSPORT
                     // "counts as trade activity in the hex of the unit issuing the order", but the
@@ -29326,6 +29332,9 @@ fn region_uses<'a, 'b: 'a>(
                 }
             }
         }
+    }
+    for used in &mut uses {
+        used.reaches = reaches_activity_check(used, ruleset);
     }
     uses
 }
@@ -29343,7 +29352,7 @@ fn region_uses<'a, 'b: 'a>(
 /// Within the tax phase every PILLAGE runs before any TAX (`runorders.cpp`: `RunPillageOrders`,
 /// then `RunTaxOrders`), so pillaged regions are walked before taxed ones.
 ///
-/// Only a use that reaches `ActivityCheck` is walked: [`reaches_activity_check`].
+/// Only a use that reaches `ActivityCheck` is walked: `RegionUse::reaches`.
 #[derive(Debug, Default)]
 struct RegionRefusals<'b> {
     taxing: Vec<&'b ReportRegion>,
@@ -29354,7 +29363,6 @@ fn region_refusals<'b>(
     report: &ParsedReport,
     uses: &[RegionUse<'_, 'b>],
     allowances: RegionAllowances,
-    ruleset: Option<&Ruleset>,
 ) -> RegionRefusals<'b> {
     let position: HashMap<&str, usize> = report
         .regions
@@ -29365,10 +29373,7 @@ fn region_refusals<'b>(
     // Every distinct region the uses of `wanted` kinds are made in, in report order.
     let regions_of = |wanted: fn(RegionUseKind) -> bool| {
         let mut regions: Vec<&'b ReportRegion> = Vec::new();
-        for used in uses
-            .iter()
-            .filter(|used| wanted(used.kind) && reaches_activity_check(used, ruleset))
-        {
+        for used in uses.iter().filter(|used| wanted(used.kind) && used.reaches) {
             if let Some(region) = used.region {
                 if !regions
                     .iter()
@@ -29523,7 +29528,7 @@ fn region_limit_refusals(
     let RegionRefusals {
         taxing,
         producing: refused,
-    } = region_refusals(report, &uses, allowances, ruleset);
+    } = region_refusals(report, &uses, allowances);
     // A TAX or PILLAGE is made in the hex it is ordered in (`region_uses`), so the refused region
     // is the hex.
     let taxing = taxing.iter().map(|region| region.coordinate).collect();
@@ -29579,10 +29584,7 @@ fn check_trade_regions(
     let uses = region_uses(hexes.iter().map(|(hex, _)| hex), ruleset);
     // Only what reaches `ActivityCheck` can spend a region, so only that is counted and warned
     // (`ah-lb2o`): an order the engine refuses first is another warning's to name.
-    let reaching: Vec<&RegionUse<'_, '_>> = uses
-        .iter()
-        .filter(|used| reaches_activity_check(used, ruleset))
-        .collect();
+    let reaching: Vec<&RegionUse<'_, '_>> = uses.iter().filter(|used| used.reaches).collect();
     for used in &reaching {
         let Some(region) = used.region else {
             continue;
@@ -29593,7 +29595,7 @@ fn check_trade_regions(
             taxing.insert(region.region_id.as_str());
         }
     }
-    let refusals = region_refusals(report, &uses, allowances, ruleset);
+    let refusals = region_refusals(report, &uses, allowances);
     // One name per region: a region several walks refuse - its PILLAGE and its TAX, or its TAX
     // and its PRODUCE on a pooled counter - is still one region refused.
     let labels = |regions: &[&ReportRegion]| -> Vec<String> {
@@ -29893,12 +29895,8 @@ fn worked_region(
         orders,
         // A slot is used only by what reaches `ActivityCheck`, as the warning counts it
         // (`ah-lb2o`); the region stays listed with its orders either way.
-        uses_tax_slot: uses
-            .iter()
-            .any(|used| !is_produce(&used) && reaches_activity_check(used, ruleset)),
-        uses_trade_slot: uses
-            .iter()
-            .any(|used| is_produce(&used) && reaches_activity_check(used, ruleset)),
+        uses_tax_slot: uses.iter().any(|used| !is_produce(&used) && used.reaches),
+        uses_trade_slot: uses.iter().any(|used| is_produce(&used) && used.reaches),
         tax: WorkedTax {
             base,
             taxed,
