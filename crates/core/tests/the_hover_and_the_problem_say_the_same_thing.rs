@@ -155,3 +155,56 @@ fn a_refused_transport_of_all_of_another_item_after_give_moves_nothing_in_both_p
         "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
     );
 }
+
+/// `ah-19f7`, against `docs/ui/ah-19f7-refused-transport-hover.html`: a refused exact amount
+/// from a unit that gave all of the item away first (`rules/sequenceofevents`: GIVE runs before
+/// TRANSPORT) moves nothing, and reads so in both places rather than naming goods the unit no
+/// longer holds.
+#[test]
+fn a_refused_transport_of_an_amount_after_give_moves_nothing_in_both_places() {
+    moves_nothing_after_give(
+        "GIVE 1162 ALL MSWO",
+        "TRANSPORT 1162 1 MSWO",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_distribute_of_an_amount_after_give_moves_nothing_in_both_places() {
+    moves_nothing_after_give(
+        "GIVE 1162 ALL MSWO",
+        "DISTRIBUTE 1162 1 MSWO",
+        "This unit is not a quartermaster, so this DISTRIBUTE moves nothing.",
+    );
+}
+
+/// `ah-19f7`: Ivanhoe gives all his silver away, but has no month-long order, so works (`ah-gjq4`) for 12
+/// silver before TRANSPORT runs (`rules/sequenceofevents`: WORK, then TRANSPORT). He holds some,
+/// though less than the 100 ordered, so both places name the ordered figure.
+#[test]
+fn a_refused_transport_of_more_than_is_left_names_the_ordered_figure_in_both_places() {
+    let orders = orders("GIVE 1162 ALL SILV\nTRANSPORT 1162 100 SILV");
+    assert_eq!(
+        hover(&orders),
+        vec!["Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.".to_string()]
+    );
+    assert_eq!(hover(&orders), problems(&orders));
+}
+
+/// `ah-19f7`: a name neither the catalogue nor Ivanhoe's stock knows moves nothing, in both
+/// places, whichever amount it is written with.
+#[test]
+fn a_refused_transport_of_an_unknown_name_moves_nothing_in_both_places() {
+    moves_nothing(
+        "TRANSPORT 1162 ALL FOOBAR",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+    moves_nothing(
+        "TRANSPORT 1162 100 FOOBAR",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+    moves_nothing(
+        "DISTRIBUTE 1162 ALL FOOBAR",
+        "This unit is not a quartermaster, so this DISTRIBUTE moves nothing.",
+    );
+}
