@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The unit that is taken from (ah-42li)</title>
+<style>
+  :root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --edge-soft:#1e2733;
+    --ink:#dbe3ec; --ink-soft:#a3b0c0; --ink-dim:#8a97a8;
+    --brass:#d9a441; --brass-bright:#eebe63; --select:#4a9fd8; --ok:#4fb783; --warn:#d9a441; --danger:#d97070; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+  header, main, section { max-width:1180px; margin-left:auto; margin-right:auto; }
+  h1 { font-size:26px; letter-spacing:0.4px; } h1 span { color:var(--brass); }
+  h2.rule { font-size:17px; letter-spacing:0.3px; margin:38px 0 4px; border-top:1px solid var(--edge); padding-top:20px; }
+  h2.rule em { color:var(--brass); font-style:normal; font-size:11px; letter-spacing:1.8px; text-transform:uppercase; margin-right:10px; }
+  header p, section > p { color:var(--ink-soft); max-width:94ch; margin-top:10px; font-size:14px; }
+  strong { color:var(--ink); }
+  code { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:0.9em; color:var(--brass-bright); }
+  .tips { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:20px; margin-top:14px; align-items:start; }
+  .tip { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--raised); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; box-shadow:0 8px 26px rgba(0,0,0,.45); }
+  .tip .sect { color:var(--brass); font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:6px; }
+  .tip .hd { color:var(--ink); font-size:12.5px; margin-bottom:6px; border-bottom:1px solid var(--edge-soft); padding-bottom:5px;}
+  .il { font-size:12px; color:var(--ink-soft); padding:3px 0; border-bottom:1px solid var(--edge-soft); display:flex; justify-content:space-between; gap:12px;}
+  .il:last-child { border-bottom:0; }
+  .il .k { color:var(--ink); }
+  .il .v { font-family:'SF Mono',Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink); white-space:nowrap;}
+  .il .s { display:block; color:var(--ink-dim); font-size:11px; font-style:italic; margin-top:2px; font-family:Georgia,serif;}
+  .il.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .il.badline { background:rgba(217,112,112,.09); border-left:2px solid var(--danger); padding-left:7px; }
+  .note { font-size:11.5px; color:var(--ink-soft); font-style:italic; padding-top:7px; margin-top:5px; border-top:1px solid var(--edge-soft); font-family:Georgia,serif;}
+  .note.newline { background:rgba(79,183,131,.09); border-left:2px solid var(--ok); padding-left:7px; }
+  .cap { color:var(--ink-soft); font-size:12.5px; margin-top:12px; } .cap b { color:var(--ink); }
+  .bad { color:var(--danger); } .good { color:var(--ok); } .dim { color:var(--ink-dim); }
+  pre.calc { background:var(--ground); border:1px solid var(--edge-soft); border-radius:4px; padding:9px 11px; font:11.5px/1.6 'SF Mono',Menlo,Consolas,monospace; color:var(--ink-soft); overflow-x:auto; margin-top:10px; }
+  table.q { border-collapse:collapse; font-size:13px; margin-top:14px; width:100%; }
+  table.q th, table.q td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--edge-soft); vertical-align:top; }
+  table.q th { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; }
+  table.q td.k { color:var(--brass-bright); font-family:'SF Mono',Menlo,Consolas,monospace; font-size:12px; white-space:nowrap; }
+
+  .prob { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--panel); border:1px solid var(--edge); border-radius:5px; padding:10px 12px; }
+  .prob .hx { color:var(--brass); font-size:11px; letter-spacing:1.2px; text-transform:uppercase; margin:6px 0 4px; }
+  .prob .f { font-size:12.5px; padding:4px 0 4px 8px; border-left:2px solid var(--warn); margin:4px 0; color:var(--ink); }
+  .prob .f.err { border-left-color:var(--danger); }
+  .prob .f .who { color:var(--ink-dim); font-size:11.5px; display:block; }
+  .prob .f.newline { background:rgba(79,183,131,.09); }
+  .gone { text-decoration:line-through; color:var(--ink-dim); }
+  @media (max-width:600px){ body{padding:20px 16px 40px;} }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Option A</span> &mdash; the plain sentences</h1>
+  <p>Lonthax (36,44). The Raft [235] is owned by <strong>Drones (10575)</strong>, whose orders are
+  <code>SAIL SE NE</code>, <code>PROMOTE 10594</code>, <code>EVICT 10594</code>. Passenger
+  <strong>Drones (10594)</strong> has no silver and orders <code>STUDY fish</code>, which costs $10 a
+  month. Because the passenger is promoted first, only it may set the course &mdash; so the raft
+  stays in Lonthax, and so does the passenger.</p>
+  <p>Today the planner still pays the passenger's study with silver from a unit in the ocean hex
+  where the raft <em>would</em> have landed, and says nothing is wrong. Both options fix that: the
+  passenger is judged in Lonthax. They differ only in whether the new lines say <em>why</em> it is
+  judged there.</p>
+</header>
+<main>
+<section>
+  <h2 class="rule"><em>1</em> Problems &mdash; Lonthax</h2>
+  <div class="prob">
+    <div class="hx">Lonthax (36,44)</div>
+    <div class="f err"><span class="who">Drones (10575) &middot; SAIL SE NE</span>only the new owner, Drones (10594), can set the course, so the ship will not sail.</div>
+    <div class="f err newline"><span class="who">Drones (10594) &middot; STUDY fish</span>this STUDY will be refused: it costs $10 and only $0 is left to pay it then</div>
+  </div>
+  <p class="cap">Green band: the line that is new. The first line is unchanged from today.</p>
+</section>
+<section>
+  <h2 class="rule"><em>2</em> The passenger's Silver popup</h2>
+  <div class="tips">
+  <div class="tip"><div class="sect">Today (wrong)</div><div class="hd">Drones (10594) &mdash; Silver</div>
+    <div class="il"><span class="k">has<span class="s">in the report</span></span><span class="v">0</span></div>
+    <div class="il badline"><span class="k">was lent<span class="s">by Drones (9508), where its fleet lands in ocean (38,44)</span></span><span class="v">+200</span></div>
+    <div class="il badline"><span class="k">was lent for upkeep<span class="s">by Drones (9508)</span></span><span class="v">+200</span></div>
+  </div>
+  <div class="tip"><div class="sect">Option A</div><div class="hd">Drones (10594) &mdash; Silver</div>
+    <div class="il"><span class="k">has<span class="s">in the report</span></span><span class="v">0</span></div>
+    
+    
+  </div>
+  </div>
+  <p class="cap">The loans from the unit out at sea are gone. Any loan a unit in Lonthax itself can
+  make shows here exactly as it would for a unit that never boarded.</p>
+</section>
+<section>
+  <h2 class="rule"><em>3</em> The ocean hex (38,44)</h2>
+  <p>Drones (9508) no longer lends anything to the passenger: its Silver popup loses the
+  <span class="gone">lent &hellip; on the STUDY of Drones (10594), arriving by sea</span> part, and
+  the passenger no longer counts towards that hex's silver. Same in both options.</p>
+</section>
+</main></body></html>
