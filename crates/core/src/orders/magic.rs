@@ -13,8 +13,8 @@
 //! answers `None`, and every caller goes silent on it. A warning that is wrong costs more than one
 //! that is missing.
 
-use crate::movement::rules::{Ruleset, SkillEntry};
-use crate::report::model::{ItemAmount, Skill};
+use crate::movement::rules::{Ruleset, SkillEntry, SkillUse};
+use crate::report::model::{level_for_points, ItemAmount, Skill};
 
 /// The tag a leader carries in `men_by_race`.
 ///
@@ -91,6 +91,100 @@ pub(crate) fn lone_leader(men: i64, men_by_race: &[ItemAmount]) -> Option<bool> 
                 .filter(|race| race.amount > 0)
                 .all(|race| race.tag.eq_ignore_ascii_case(LEADER_TAG)),
     )
+}
+
+/// Days of practice a cast that works gives: `neworigins/rules.cpp` SKILL_PRACTICE_AMOUNT, per man.
+pub(crate) const PRACTICE_DAYS: u32 = 5;
+
+/// `skills` as they stand, when the month-long orders run, once this month's `CAST` of `spell`
+/// has practised (`ah-ozr2`), or `None` when the cast practises nothing by then.
+///
+/// `runorders.cpp` runs CAST before the month-long orders, so a STUDY sees the practice - except
+/// for the casts `spells.cpp` files in `u->teleportorders`, which practise only in
+/// RunTeleportOrders, after them: teleportation, portal lore, and gate lore other than
+/// `CAST Gate_Lore DETECT`. The engine practises only a cast that works (`spells.cpp`:
+/// `if (val) u->Practice(sk)`), and the failures counted here are the certain ones: a spell that
+/// is not cast at all, or a level below the lowest at which `data/<tag>` says the spell creates
+/// anything - `data/SWIN` makes its Cloudship only from level 3. A create-artifact cast the
+/// ledger refuses for its silver or materials is the caller's to rule out. Every other cast that
+/// may make nothing - a chance creation that rolls none, an enchantment with nothing to enchant
+/// (`spells.cpp` `RunEnchant`) - is counted as working: accept on doubt. Where the practice goes
+/// is `unit.cpp` `Unit::Practice`, as [`practised_by`] walks it.
+pub(crate) fn after_cast_practice(
+    ruleset: &Ruleset,
+    skills: &[Skill],
+    spell: &SkillEntry,
+    arguments: &[String],
+) -> Option<Vec<Skill>> {
+    if !matches!(spell.usage, Some(SkillUse::Cast | SkillUse::Both)) {
+        return None;
+    }
+    let detects = arguments
+        .first()
+        .is_some_and(|argument| argument.eq_ignore_ascii_case("detect"));
+    let late = match spell.tag.to_uppercase().as_str() {
+        "TELE" | "PORT" => true,
+        "GATE" => !detects,
+        _ => false,
+    };
+    if late {
+        return None;
+    }
+    let level = level_of(skills, &spell.tag);
+    let works_from = spell
+        .cast
+        .as_ref()
+        .and_then(|cast| cast.creates.iter().map(|made| made.level).min())
+        .unwrap_or(1);
+    if level < works_from {
+        return None;
+    }
+    let gains = practised_by(ruleset, skills, spell)?;
+    let mut after = skills.to_vec();
+    let entry = after
+        .iter_mut()
+        .find(|skill| skill.tag.eq_ignore_ascii_case(&gains))?;
+    // A report that printed no days still printed the level, which stands at its threshold at
+    // least: `rules/skills_studying`, level n at 30 * n(n+1)/2 days.
+    let floor = 15 * entry.level * (entry.level + 1);
+    entry.points = entry.points.max(floor) + PRACTICE_DAYS;
+    entry.level = entry.level.max(level_for_points(entry.points));
+    Some(after)
+}
+
+/// The tag a month's practice of `skill` raises, after `unit.cpp` `Unit::Practice`: nothing for a
+/// skill never studied or already at its maximum; otherwise each prerequisite, in the order the
+/// catalogue lists them, whose level is not above the skill's is practised in its place, the first
+/// that gains taking the days, and one that cannot gain withholds them from the skill; with none
+/// at or below, the skill itself. `packages/shared/src/castPractice.ts` walks the same rule for
+/// the planner.
+fn practised_by(ruleset: &Ruleset, skills: &[Skill], skill: &SkillEntry) -> Option<String> {
+    let level = level_of(skills, &skill.tag);
+    if level < 1 || level >= skill.max_level {
+        return None;
+    }
+    let mut withheld = false;
+    for need in &skill.requires {
+        if level_of(skills, &need.tag) > level {
+            continue;
+        }
+        // Terminates: a prerequisite's own prerequisites are strictly shallower in the tree.
+        if let Some(gains) = ruleset
+            .find_skill(&need.tag)
+            .and_then(|prerequisite| practised_by(ruleset, skills, prerequisite))
+        {
+            return Some(gains);
+        }
+        withheld = true;
+    }
+    (!withheld).then(|| skill.tag.to_uppercase())
+}
+
+fn level_of(skills: &[Skill], tag: &str) -> u32 {
+    skills
+        .iter()
+        .find(|skill| skill.tag.eq_ignore_ascii_case(tag))
+        .map_or(0, |skill| skill.level)
 }
 
 #[cfg(test)]
@@ -181,5 +275,114 @@ mod tests {
     fn a_composition_that_does_not_add_up_cannot_be_judged() {
         assert_eq!(lone_leader(3, &[race(1, "LEAD")]), None);
         assert_eq!(lone_leader(1, &[]), None);
+    }
+
+    /// A skill at the level `points` days stand for.
+    fn at(tag: &str, points: u32) -> Skill {
+        Skill {
+            level: level_for_points(points),
+            points,
+            ..skill(tag)
+        }
+    }
+
+    /// What casting `spell` raises, and to how many days, for a mage holding `skills`.
+    fn practice(skills: &[Skill], spell: &str) -> Option<(String, u32, u32)> {
+        let ruleset = ruleset();
+        let spell = ruleset
+            .find_skill(spell)
+            .expect("the catalogue carries the spell");
+        let after = after_cast_practice(&ruleset, skills, spell, &[])?;
+        after
+            .iter()
+            .zip(skills)
+            .find(|(after, before)| after.points != before.points)
+            .map(|(after, _)| (after.tag.clone(), after.points, after.level))
+    }
+
+    /// `unit.cpp` `Unit::Practice`: summon imps (2) passes its practice to demon lore (2, not
+    /// above it), whose own prerequisites, force and spirit at 3, are above it - so demon lore
+    /// takes the 5 days.
+    #[test]
+    fn a_spell_passes_its_practice_to_a_prerequisite_not_above_it() {
+        let skills = [
+            at("FORC", 180),
+            at("SPIR", 180),
+            at("DEMO", 175),
+            at("SUIM", 90),
+        ];
+        assert_eq!(
+            practice(&skills, "Summon_Imps"),
+            Some(("DEMO".to_string(), 180, 3))
+        );
+    }
+
+    /// The walk goes on down the chain: force (2) is not above demon lore (2), so force gains.
+    #[test]
+    fn the_practice_goes_down_the_chain_to_the_first_that_can_gain() {
+        let skills = [
+            at("FORC", 90),
+            at("SPIR", 180),
+            at("DEMO", 175),
+            at("SUIM", 90),
+        ];
+        assert_eq!(practice(&skills, "SUIM"), Some(("FORC".to_string(), 95, 2)));
+    }
+
+    /// With every prerequisite above it, the spell practises itself.
+    #[test]
+    fn a_spell_with_every_prerequisite_above_it_practises_itself() {
+        let skills = [
+            at("FORC", 180),
+            at("SPIR", 180),
+            at("DEMO", 300),
+            at("SUIM", 90),
+        ];
+        assert_eq!(practice(&skills, "SUIM"), Some(("SUIM".to_string(), 95, 2)));
+    }
+
+    /// `data/SWIN` creates its Cloudship only from level 3, so a cast at 2 fails and practises
+    /// nothing; at 3 it works and weather lore (3, not above; its own force and pattern above it)
+    /// gains.
+    #[test]
+    fn a_cast_below_the_level_that_creates_practises_nothing() {
+        assert_eq!(practice(&[at("WEAT", 175), at("SWIN", 90)], "SWIN"), None);
+        assert_eq!(
+            practice(
+                &[
+                    at("FORC", 300),
+                    at("PATT", 300),
+                    at("WEAT", 180),
+                    at("SWIN", 180)
+                ],
+                "SWIN"
+            ),
+            Some(("WEAT".to_string(), 185, 3))
+        );
+    }
+
+    /// A skill that is not cast - demon lore is automatic - is never practised by a CAST.
+    #[test]
+    fn a_skill_that_is_not_cast_practises_nothing() {
+        assert_eq!(
+            practice(&[at("FORC", 180), at("SPIR", 180), at("DEMO", 90)], "DEMO"),
+            None
+        );
+    }
+
+    /// A level the report printed without its days still stands at its threshold.
+    #[test]
+    fn a_level_printed_without_days_is_counted_from_its_threshold() {
+        let skills = [
+            at("FORC", 180),
+            at("SPIR", 180),
+            Skill {
+                points: 0,
+                level: 2,
+                ..skill("DEMO")
+            },
+            at("SUIM", 90),
+        ];
+        assert_eq!(practice(&skills, "SUIM"), Some(("DEMO".to_string(), 95, 2)));
     }
 }
