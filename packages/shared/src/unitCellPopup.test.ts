@@ -5334,6 +5334,64 @@ describe("silver moved by TRANSPORT", () => {
     expect(popupAsText(popup)).toContain("Unit 1162 is not a quartermaster, so 100 SILV stay with this unit.");
   });
 
+  // ah-o9t1: a GIVE of all the silver runs before TRANSPORT (rules/sequenceofevents), so a refused
+  // TRANSPORT/DISTRIBUTE of ALL SILV finds none left and is recorded with amount 0. The Silver
+  // hover reads the same moves-nothing sentence the Items hover and Problems do.
+  it("a refused silver TRANSPORT of ALL that finds none left says it moves nothing", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({
+            to: "1162",
+            amount: 0,
+            all: true,
+            reason: "notQuartermaster",
+            toUnshown: false,
+            sentence: "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing."
+          }),
+          issue({
+            to: "1163",
+            amount: 0,
+            all: true,
+            distribute: true,
+            reason: "notQuartermaster",
+            toUnshown: false,
+            orderIndex: 1,
+            sentence: "Unit 1163 is not a quartermaster, so this DISTRIBUTE moves nothing."
+          })
+        ]
+      }),
+      { held: 500, atMonthEnd: 0, expense: 500, changes: [{ amount: -500, cause: "gave-away", line: 2, other: "unit 1162" }] }
+    );
+    expect(popup.notes).toEqual([
+      "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+      "Unit 1163 is not a quartermaster, so this DISTRIBUTE moves nothing."
+    ]);
+    expect(popupAsText(popup)).toContain("Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.");
+  });
+
+  it("an ALL SILV refusal the month may undo still says nothing when none is left", () => {
+    const popup = silverPopup(
+      unit({
+        own: true,
+        transportTargetIssues: [
+          issue({
+            to: "1162",
+            amount: 0,
+            all: true,
+            reason: "notQuartermaster",
+            toUnshown: false,
+            unsettled: true,
+            sentence: "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing."
+          })
+        ]
+      }),
+      { held: 500, atMonthEnd: 0, expense: 500, changes: [{ amount: -500, cause: "gave-away", line: 2, other: "unit 1162" }] }
+    );
+    expect(popupAsText(popup)).not.toContain("moves nothing");
+  });
+
   it("a silver TRANSPORT the map proves out of reach says why the silver stays too", () => {
     const popup = silverPopup(
       unit({
