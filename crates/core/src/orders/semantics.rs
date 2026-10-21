@@ -24608,6 +24608,12 @@ fn fleet_carrying<'a>(
 /// [`fleet_carrying`] before any fleet is kept in port for its load or crew, with the fleet's
 /// structure id: the course as ordered, which the produce check judges a passenger by
 /// ([`carried_away`]'s doc, `ah-jk9h`).
+///
+/// The course is the fleet's owner's when the fleets move ([`fleet_owner_when_it_moves`], the
+/// owner `check_fleet_course` names too): `rules/sail`
+/// sails a fleet "in the directions given" only for its owner, and `rules/sequenceofevents` runs
+/// PROMOTE before movement. An owner that sets no course carries nobody, so its passengers are
+/// judged in the hex they stay in (`ah-d8qy`).
 fn fleet_carrying_as_ordered<'a>(
     hex: &'a Hex<'a>,
     ordered: &Ordered<'_>,
@@ -24618,21 +24624,25 @@ fn fleet_carrying_as_ordered<'a>(
             return None;
         }
         let hull = Hull::from_flies(fleet_flies(fleet, Some(ruleset)));
-        hex.units
-            .iter()
-            .find_map(|other| {
-                could_captain(other, &fleet.structure_id)
-                    .then(|| {
-                        other.intents.iter().find(|placed| {
-                            matches!(
-                                placed.intent,
-                                Intent::Sail { ref steps }
-                                    if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
-                            )
-                        })
-                    })
-                    .flatten()
+        let course = |other: &'a Ordered<'a>| {
+            other.intents.iter().find(|placed| {
+                matches!(
+                    placed.intent,
+                    Intent::Sail { ref steps }
+                        if steps.iter().any(|step| matches!(step, MoveStep::Go(_)))
+                )
             })
+        };
+        // Only the owner when the fleets move sets the course (`ah-d8qy`): an owner with none -
+        // ours, or a foreign one whose orders the report does not carry - keeps the fleet in
+        // port, as `check_fleet_course` says.
+        fleet_owner_when_it_moves(hex, &fleet.structure_id)
+            .and_then(|owner_id| {
+                hex.units
+                    .iter()
+                    .find(|other| other.unit.unit_id == owner_id)
+            })
+            .and_then(course)
             .filter(|placed| {
                 let Intent::Sail { steps } = &placed.intent else {
                     return true;
@@ -24641,6 +24651,32 @@ fn fleet_carrying_as_ordered<'a>(
             })
             .map(|placed| (fleet.structure_id.as_str(), placed, hull))
     })
+}
+
+/// Who owns `structure_id` when the fleets move: the head of
+/// [`standing::occupants_after_promotes`]'s list once the formed units known to gain nobody are
+/// gone - `Game::DeleteEmptyUnits` runs after PROMOTE and before movement (`rules/form`: "If no
+/// recruits are gained at all, the empty unit will be dissolved"), so a promoted empty unit hands
+/// the hull to the next in line, as [`surviving_formed_crews`] does for
+/// `movement::fleet::fleet_course` (`ah-d8qy` review, finding 1). An owner's `EVICT` never puts
+/// the owner outside, so the head is the same with or without the EVICTs.
+fn fleet_owner_when_it_moves(hex: &Hex<'_>, structure_id: &str) -> Option<String> {
+    let deleted = |unit_id: &str| {
+        hex.units.iter().any(|ordered| {
+            ordered.unit.unit_id == unit_id
+                && ordered.formed.is_some()
+                && ordered.after_the_market().gained_nobody()
+        })
+    };
+    standing::occupants_after_promotes(occupants_view(hex, structure_id), |owner| {
+        hex.units
+            .iter()
+            .find(|promoter| promoter.unit.unit_id == owner)
+            .into_iter()
+            .flat_map(|promoter| promoter.promotes.iter().map(|promote| &promote.target))
+    })
+    .into_iter()
+    .find(|unit_id| !deleted(unit_id))
 }
 
 /// **Where a fleet sailing `steps` out of `from` ends the month** - the one answer the preview
@@ -38953,8 +38989,8 @@ mod tests {
                 ..yielding(
                     vec![product(36, "iron", "IRON")],
                     vec![
-                        passenger,
                         sailor,
+                        passenger,
                         with_item(producer("1795", 8, "MINI", 3), 8, "pick", "PICK"),
                     ],
                 )
@@ -38993,7 +39029,7 @@ mod tests {
                     coordinate: Coordinate { x: 7, y: 51, z: 1 },
                     ..Default::default()
                 }],
-                ..yielding(Vec::new(), vec![passenger, sailor])
+                ..yielding(Vec::new(), vec![sailor, passenger])
             };
             let mut regions = vec![here];
             regions.extend(beyond);
@@ -78053,7 +78089,7 @@ BUILD
         sailor.skills.push(sail(4));
         let region = ReportRegion {
             structures: vec![longship("329")],
-            ..produces(vec![fisherman, sailor])
+            ..produces(vec![sailor, fisherman])
         };
         let findings = check(vec![region], "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
 
@@ -78115,7 +78151,7 @@ BUILD
         sailor.skills.push(sail(4));
         let region = ReportRegion {
             structures: vec![fort],
-            ..produces(vec![fisherman, sailor])
+            ..produces(vec![sailor, fisherman])
         };
         let findings = check(vec![region], "unit 4021\nPRODUCE fish\nunit 4022\nSAIL N\n");
 
@@ -82916,10 +82952,13 @@ BUILD
             ..Default::default()
         });
         let id = origin.region_id.clone();
-        for mut unit in [captain, aboard(passenger)] {
-            unit.region_id = id.clone();
-            origin.units.push(unit);
-        }
+        // The captain first: it owns the longship, "the first unit listed under the object"
+        // (`rules/world_structures`), and only the owner sails it (`rules/sail`, `ah-d8qy`).
+        let [mut captain, mut passenger] = [captain, aboard(passenger)];
+        captain.region_id = id.clone();
+        passenger.region_id = id;
+        origin.units.insert(0, captain);
+        origin.units.push(passenger);
         let report = ParsedReport {
             regions: vec![destination, origin],
             ..Default::default()
@@ -83548,6 +83587,142 @@ BUILD
             silver_of(&review, "902").at_month_end,
             Some(1),
             "the resident lends nothing"
+        );
+    }
+
+    /// [`a_passenger_studying_between_two_sharers`] whose captain 4022 hands the longship to the
+    /// passenger with `PROMOTE 901`, and 901 sets no course: rules/sail lets only the fleet's
+    /// owner sail it "in the directions given", and rules/sequenceofevents runs PROMOTE before
+    /// movement, so the fleet stays in the ocean at (7,55) (`ah-d8qy`).
+    fn a_promoted_passenger_studying_between_two_sharers(banker: i64) -> TurnReview {
+        let (report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), banker))]),
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![sharing(with_silver(unit("902"), 500))],
+            ),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nPROMOTE 901\nunit 901\nSTUDY COMB\nunit 903\nunit 902\n";
+        review_turn(&report, orders, Some(&trident()), CheckOptions::default())
+    }
+
+    /// `ah-d8qy`: a passenger whose fleet will not sail is judged in the hex it stays in -
+    /// rules/share lends "in the same region" - so the banker beside it pays its STUDY, and the
+    /// resident where the fleet would have landed lends it nothing.
+    #[test]
+    fn a_passengers_study_is_lent_where_it_stays_when_a_promote_keeps_the_fleet_in_port() {
+        let review = a_promoted_passenger_studying_between_two_sharers(500);
+        let passenger = silver_of(&review, "901");
+        let fee = passenger.wanted_for_orders.expect("the study is priced");
+        assert!(fee > 0, "{passenger:?}");
+        assert_eq!(passenger.borrowed_for_orders, fee, "{passenger:?}");
+        assert_eq!(passenger.borrowed_where_fleet_lands, None, "{passenger:?}");
+        assert_eq!(
+            loan_lines(&review, "901", SilverChangeCause::WasLent),
+            vec![(Some("Unit 903 (903)".to_string()), None, fee)],
+            "the banker beside it lends the fee, in this hex"
+        );
+        assert_eq!(
+            silver_of(&review, "902").at_month_end,
+            Some(500),
+            "the resident where it would have landed lends nothing"
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::SAIL_NOT_BY_OWNER),
+            "the fleet's own 'will not sail' finding is unchanged: {:?}",
+            review.findings
+        );
+    }
+
+    /// `ah-d8qy` review, finding 1: a unit FORMed with no men and promoted is deleted before
+    /// anything moves (`rules/form`: "If no recruits are gained at all, the empty unit will be
+    /// dissolved"; `Game::DeleteEmptyUnits`), so the captain owns the longship again and sails
+    /// it - the passenger is lent where its fleet lands, as if nothing were promoted.
+    #[test]
+    fn a_promoted_unit_that_gains_nobody_leaves_the_captain_sailing() {
+        let (report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), 500))]),
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![sharing(with_silver(unit("902"), 500))],
+            ),
+            None,
+        );
+        let orders = "unit 4022\nSAIL N\nFORM 1\nEND\nPROMOTE NEW 1\nunit 901\nSTUDY COMB\n\
+                      unit 903\nunit 902\n";
+        let review = review_turn(&report, orders, Some(&trident()), CheckOptions::default());
+        let passenger = silver_of(&review, "901");
+        assert_eq!(
+            passenger.borrowed_where_fleet_lands.as_deref(),
+            Some("mountain (7,53)"),
+            "{passenger:?}"
+        );
+        assert_eq!(silver_of(&review, "903").at_month_end, Some(500));
+    }
+
+    /// `ah-d8qy`: ... and where nobody in the hex it stays in can pay, its STUDY is refused there
+    /// exactly as it is for a passenger of a fleet nobody orders to sail - the same findings on
+    /// its own lines, counted in the hex it stays in - and the resident where it would have landed
+    /// is untouched.
+    #[test]
+    fn a_passengers_study_nobody_can_pay_where_it_stays_is_refused_as_if_it_never_sailed() {
+        let review = a_promoted_passenger_studying_between_two_sharers(0);
+        assert_eq!(silver_of(&review, "901").borrowed_for_orders, 0);
+        assert_eq!(silver_of(&review, "902").at_month_end, Some(500));
+
+        let (report, _) = passenger_palace(
+            open_sea(vec![sharing(with_silver(unit("903"), 0))]),
+            region_at(
+                "1:7,53",
+                7,
+                53,
+                vec![sharing(with_silver(unit("902"), 500))],
+            ),
+            None,
+        );
+        let unsailed = review_turn(
+            &report,
+            "unit 4022\nPROMOTE 901\nunit 901\nSTUDY COMB\nunit 903\nunit 902\n",
+            Some(&trident()),
+            CheckOptions::default(),
+        );
+        let on_901 = |review: &TurnReview| -> Vec<(String, String, Option<String>)> {
+            review
+                .findings
+                .iter()
+                .filter(|finding| finding.unit_id.as_deref() == Some("901"))
+                .map(|finding| {
+                    (
+                        finding.code.0.to_string(),
+                        finding.message.clone(),
+                        finding.counted_in.clone(),
+                    )
+                })
+                .collect()
+        };
+        assert!(
+            on_901(&review)
+                .iter()
+                .any(|(_, message, _)| message.contains("so this STUDY is refused")),
+            "{:?}",
+            review.findings
+        );
+        assert_eq!(on_901(&review), on_901(&unsailed));
+        assert_eq!(
+            hex_silver_warning(&review, "1:7,55"),
+            hex_silver_warning(&unsailed, "1:7,55")
+        );
+        assert!(
+            hex_silver_warning(&review, "1:7,53").is_none(),
+            "the landing hex no longer counts the passenger"
         );
     }
 
