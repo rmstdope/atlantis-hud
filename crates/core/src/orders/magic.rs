@@ -105,9 +105,11 @@ pub(crate) const PRACTICE_DAYS: u32 = 5;
 /// `CAST Gate_Lore DETECT`. The engine practises only a cast that works (`spells.cpp`:
 /// `if (val) u->Practice(sk)`), and the failures counted here are the certain ones: a spell that
 /// is not cast at all, or a level below the lowest at which `data/<tag>` says the spell creates
-/// anything - `data/SWIN` makes its Cloudship only from level 3. A cast refused for its silver or
-/// materials is the caller's to rule out, from the ledger's verdict. Where the practice goes is
-/// `unit.cpp` `Unit::Practice`, as [`practised_by`] walks it.
+/// anything - `data/SWIN` makes its Cloudship only from level 3. A create-artifact cast the
+/// ledger refuses for its silver or materials is the caller's to rule out. Every other cast that
+/// may make nothing - a chance creation that rolls none, an enchantment with nothing to enchant
+/// (`spells.cpp` `RunEnchant`) - is counted as working: accept on doubt. Where the practice goes
+/// is `unit.cpp` `Unit::Practice`, as [`practised_by`] walks it.
 pub(crate) fn after_cast_practice(
     ruleset: &Ruleset,
     skills: &[Skill],

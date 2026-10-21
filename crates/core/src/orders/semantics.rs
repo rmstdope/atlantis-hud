@@ -25389,8 +25389,10 @@ fn check_magic_study_prerequisites(
             continue;
         };
         // The last CAST is the one the engine keeps (`unit.cpp` `ClearCastOrders`, called by
-        // each CAST parser in `spells.cpp`), and its practice can land before the study is judged
-        // (`ah-ozr2`) - unless the ledger already refused it for its silver or materials.
+        // each CAST parser in `spells.cpp` once it has parsed the order; a malformed one, or a
+        // repeated portal or gate lore, is the exception and is not modelled), and its practice
+        // can land before the study is judged (`ah-ozr2`) - unless the ledger already refused it
+        // for its silver or materials.
         let refused = ledger.refused_casts.get(&ordered.unit.unit_id);
         let practised = ordered
             .intents

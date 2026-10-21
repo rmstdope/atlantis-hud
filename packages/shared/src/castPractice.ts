@@ -13,6 +13,9 @@
  *   (unit.cpp:1450-1462);
  * - with no prerequisite qualifying, the spell itself gains.
  *
+ * The Rust checker walks the same rule in `crates/core/src/orders/magic.rs` (`practised_by`, ah-ozr2)
+ * for the prerequisite warning, so a correction here belongs there too.
+ *
  * Pure, because `packages/shared` has no jsdom (ah-nass).
  */
 
