@@ -4406,22 +4406,40 @@ impl Working {
             // checked below - the two lists are not the same (`IENT` may not be given but may be
             // transported).
             let moving = self.tags_moved_from(&held, &pending.what, &pending.amount);
-            // An order over goods the sender does not hold has nothing to retain and nothing to
-            // explain, whoever it was aimed at.
-            if moving.is_empty() {
-                continue;
-            }
+            // An order over goods the sender does not hold has nothing to retain, and nothing to
+            // explain - except a refused `ALL` of one named item, which the order's warning
+            // reports whatever the stock, and the hover says alike: GIVE runs before TRANSPORT
+            // (`rules/sequenceofevents`), so it may have emptied the stock (`ah-o9t1`).
+            let finds_none_of = if moving.is_empty() {
+                match self.all_of_an_item_finding_none(pending, &held) {
+                    Some(tag) => Some(tag),
+                    None => continue,
+                }
+            } else {
+                None
+            };
             if let TransportTargetOutcome::Refused(reason) =
                 Self::transport_target(verdict.acceptance)
             {
+                // The order's warning is silent on an unsettled refusal, so with nothing held
+                // there is nothing for the hover to explain either.
+                if finds_none_of.is_some() && verdict.unsettled {
+                    continue;
+                }
                 // One record for the order, naming the goods only where there is a claim to make.
-                let (amount, tag) = self.goods_named(pending, &moving);
+                let (amount, tag) = match &finds_none_of {
+                    Some(tag) => (0, tag.clone()),
+                    None => self.goods_named(pending, &moving),
+                };
                 // DISTRIBUTE carries only what TRANSPORT does (`rules/economy_transport`), so the
                 // hint needs every item the line moves to be one the game transports (`ah-7j90`).
                 let distribute_delivers = verdict.distribute_would_deliver
-                    && moving
-                        .iter()
-                        .all(|(_, tag, _)| self.ruleset.can_be_transported(tag));
+                    && match &finds_none_of {
+                        Some(tag) => self.ruleset.can_be_transported(tag),
+                        None => moving
+                            .iter()
+                            .all(|(_, tag, _)| self.ruleset.can_be_transported(tag)),
+                    };
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4446,7 +4464,10 @@ impl Working {
             let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
                 let (reason, reach) = refused.refusal();
-                let (amount, tag) = self.goods_named(pending, &moving);
+                let (amount, tag) = match &finds_none_of {
+                    Some(tag) => (0, tag.clone()),
+                    None => self.goods_named(pending, &moving),
+                };
                 issues[pending.sender].push((
                     pending.sequence,
                     TransportTargetIssue {
@@ -4470,6 +4491,11 @@ impl Working {
             // moves them and nothing claims they moved: the list keeps them and carries the ` ?`
             // that says it may be wrong (`ah-7ale.5`).
             if arrival == super::transport::Arrival::Unmeasured {
+                // Nothing held is nothing the ` ?` could be about, and the order's warning is
+                // silent on an unmeasured distance.
+                if finds_none_of.is_some() {
+                    continue;
+                }
                 // Never gated: this is what the ` ?` is drawn from, and a mark on a figure is not
                 // a warning about an order.
                 self.units[pending.sender].shipment_unmeasured = true;
@@ -4684,6 +4710,23 @@ impl Working {
     /// The same question asked of an explicit item list rather than of a row's live holdings, so
     /// that a transport phase can resolve against the allowance it opened with while the movement
     /// itself is applied to the live list (`ah-d0ku`).
+    /// The tag a line of `ALL <item>` names when it finds none of that item to move as its phase
+    /// opens - none held, or no more than `EXCEPT` keeps - or `None` for any other line that moves
+    /// nothing (`ah-o9t1`). Only a named item: the order's warning words a refusal for nothing
+    /// else.
+    fn all_of_an_item_finding_none(
+        &self,
+        pending: &PendingTransport,
+        held: &[crate::report::model::ItemAmount],
+    ) -> Option<String> {
+        let (super::forms::Selector::Item(text), super::forms::Amount::All { .. }) =
+            (&pending.what, &pending.amount)
+        else {
+            return None;
+        };
+        item_named(Some(&self.ruleset), text, || held.iter())
+    }
+
     fn tags_moved_from(
         &self,
         held_items: &[crate::report::model::ItemAmount],

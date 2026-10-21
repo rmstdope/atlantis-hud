@@ -106,3 +106,48 @@ fn a_refused_transport_of_all_of_another_item_moves_nothing_in_both_places() {
         "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
     );
 }
+
+/// `ah-o9t1`: GIVE runs before TRANSPORT (`rules/sequenceofevents`), so a GIVE of all of an item
+/// leaves a later refused `ALL` of it nothing to move - and it reads as `ah-6ypx` agreed, in both
+/// places.
+fn moves_nothing_after_give(give: &str, line: &str, expected: &str) {
+    let orders = format!("#atlantis 42 \"<password>\"\n\nunit 683\n{give}\n{line}\n");
+    assert_eq!(hover(&orders), vec![expected.to_string()], "{give} / {line}");
+    assert_eq!(hover(&orders), problems(&orders), "{give} / {line}");
+}
+
+#[test]
+fn a_refused_transport_of_all_after_give_moves_nothing_in_both_places() {
+    moves_nothing_after_give(
+        "GIVE 1162 ALL SILV",
+        "TRANSPORT 1162 ALL SILV",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_transport_of_all_except_after_give_moves_nothing_in_both_places() {
+    moves_nothing_after_give(
+        "GIVE 1162 ALL SILV",
+        "TRANSPORT 1162 ALL SILV EXCEPT 10",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_distribute_of_all_after_give_moves_nothing_in_both_places() {
+    moves_nothing_after_give(
+        "GIVE 1162 ALL SILV",
+        "DISTRIBUTE 1162 ALL SILV",
+        "This unit is not a quartermaster, so this DISTRIBUTE moves nothing.",
+    );
+}
+
+#[test]
+fn a_refused_transport_of_all_of_another_item_after_give_moves_nothing_in_both_places() {
+    moves_nothing_after_give(
+        "GIVE 1162 ALL MSWO",
+        "TRANSPORT 1162 ALL MSWO",
+        "Unit 1162 is not a quartermaster, so this TRANSPORT moves nothing.",
+    );
+}
