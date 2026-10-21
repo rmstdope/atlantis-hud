@@ -112,7 +112,11 @@ fn a_refused_transport_of_all_of_another_item_moves_nothing_in_both_places() {
 /// places.
 fn moves_nothing_after_give(give: &str, line: &str, expected: &str) {
     let orders = format!("#atlantis 42 \"<password>\"\n\nunit 683\n{give}\n{line}\n");
-    assert_eq!(hover(&orders), vec![expected.to_string()], "{give} / {line}");
+    assert_eq!(
+        hover(&orders),
+        vec![expected.to_string()],
+        "{give} / {line}"
+    );
     assert_eq!(hover(&orders), problems(&orders), "{give} / {line}");
 }
 
