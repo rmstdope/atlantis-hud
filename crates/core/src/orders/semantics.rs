@@ -79250,9 +79250,9 @@ BUILD
     }
 
     /// The window carries the count the warning makes (`ah-rh62`): one region with a reaching TAX,
-    /// one with a reaching PRODUCE, one with both, and one whose only order - an unskilled PRODUCE
-    /// - never reaches `ActivityCheck`. Pooled, that is three regions; two tax and two trade - and
-    /// against a limit of two, the warning counts the same three.
+    /// one with a reaching PRODUCE, one with both, and one whose only order, an unskilled PRODUCE,
+    /// never reaches `ActivityCheck`. Pooled, that is three regions, two tax and two trade; against
+    /// a limit of two, the warning counts the same three.
     #[test]
     fn the_production_window_carries_the_count_the_warning_makes() {
         let regions = vec![
