@@ -2915,6 +2915,11 @@ struct Working {
     /// spend silver on STUDY or CAST (`ah-7jsv`). Filled by `apply_item_effects`, read by
     /// `goods_named`.
     unshipped_silver: BTreeMap<(usize, usize), i64>,
+    /// `(sender index, 1-based document line)` of every exact-amount shipment whose sender holds
+    /// none of the item as it runs - the ledger's answer, which the order's warning reads too, so
+    /// the two say the same thing (`ah-19f7`). Filled by `apply_item_effects`, read by
+    /// `warned_goods`.
+    nothing_to_ship: std::collections::BTreeSet<(usize, usize)>,
     /// Every unit id the report names, ours and everyone else's. A target in here but not in
     /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls
     /// "which your report does not show" (`ah-bxgs`).
@@ -3068,6 +3073,7 @@ impl Working {
             transports: Vec::new(),
             refused_shipments: std::collections::BTreeSet::new(),
             unshipped_silver: BTreeMap::new(),
+            nothing_to_ship: std::collections::BTreeSet::new(),
             shipping,
             known_units,
             shown_in_region,
@@ -3307,6 +3313,11 @@ impl Working {
             for (line, left) in &effect.unshipped_silver {
                 if let Ok(line) = usize::try_from(*line) {
                     self.unshipped_silver.insert((index, line), *left);
+                }
+            }
+            for line in &effect.nothing_to_ship {
+                if let Ok(line) = usize::try_from(*line) {
+                    self.nothing_to_ship.insert((index, line));
                 }
             }
         }
@@ -4407,17 +4418,14 @@ impl Working {
             // transported).
             let moving = self.tags_moved_from(&held, &pending.what, &pending.amount);
             // An order over goods the sender does not hold has nothing to retain, and nothing to
-            // explain - except a refused `ALL` of one named item, which the order's warning
-            // reports whatever the stock, and the hover says alike: GIVE runs before TRANSPORT
-            // (`rules/sequenceofevents`), so it may have emptied the stock (`ah-o9t1`).
-            let finds_none_of = if moving.is_empty() {
-                match self.all_of_an_item_finding_none(pending, &held) {
-                    Some(tag) => Some(tag),
-                    None => continue,
-                }
-            } else {
-                None
-            };
+            // explain - except a refusal of one named item, which the order's warning reports
+            // whatever the stock and the name, and the hover says alike: GIVE runs before
+            // TRANSPORT (`rules/sequenceofevents`), so it may have emptied the stock (`ah-o9t1`,
+            // `ah-19f7`).
+            let warned = self.warned_goods(pending, &held, &moving);
+            if moving.is_empty() && warned.is_none() {
+                continue;
+            }
             if let TransportTargetOutcome::Refused(reason) =
                 Self::transport_target(verdict.acceptance)
             {
@@ -4432,20 +4440,25 @@ impl Working {
                             | TransportTargetReason::SenderOwnsNoCaravanserai
                             | TransportTargetReason::SenderNotQuartermaster
                     );
-                if finds_none_of.is_some() && !settled {
+                if moving.is_empty() && !settled {
                     continue;
                 }
-                // One record for the order, naming the goods only where there is a claim to make.
-                let (amount, tag) = match &finds_none_of {
-                    Some(tag) => (0, tag.clone()),
-                    None => self.goods_named(pending, &moving),
+                // One record for the order, naming the goods only where there is a claim to make:
+                // a settled refusal names them as the order's warning does (`ah-19f7`), any other
+                // what the hover can count.
+                let (amount, tag) = match &warned {
+                    Some(goods) if settled => goods.clone(),
+                    _ => self.goods_named(pending, &moving),
                 };
                 // DISTRIBUTE carries only what TRANSPORT does (`rules/economy_transport`), so the
-                // hint needs every item the line moves to be one the game transports (`ah-7j90`).
+                // hint needs every item the line moves to be one the game transports (`ah-7j90`):
+                // the named one, where the hover moves none of it.
                 let distribute_delivers = verdict.distribute_would_deliver
-                    && match &finds_none_of {
-                        Some(tag) => self.ruleset.can_be_transported(tag),
-                        None => moving
+                    && match &warned {
+                        Some((_, tag)) if moving.is_empty() => {
+                            !tag.is_empty() && self.ruleset.can_be_transported(tag)
+                        }
+                        _ => moving
                             .iter()
                             .all(|(_, tag, _)| self.ruleset.can_be_transported(tag)),
                     };
@@ -4473,8 +4486,8 @@ impl Working {
             let arrival = self.arrival(&verdict);
             if let super::transport::Arrival::TooFar(refused) = arrival {
                 let (reason, reach) = refused.refusal();
-                let (amount, tag) = match &finds_none_of {
-                    Some(tag) => (0, tag.clone()),
+                let (amount, tag) = match &warned {
+                    Some(goods) => goods.clone(),
                     None => self.goods_named(pending, &moving),
                 };
                 issues[pending.sender].push((
@@ -4502,7 +4515,7 @@ impl Working {
             if arrival == super::transport::Arrival::Unmeasured {
                 // Nothing held is nothing the ` ?` could be about, and the order's warning is
                 // silent on an unmeasured distance.
-                if finds_none_of.is_some() {
+                if moving.is_empty() {
                     continue;
                 }
                 // Never gated: this is what the ` ?` is drawn from, and a mark on a figure is not
@@ -4716,21 +4729,45 @@ impl Working {
         self.tags_moved_from(&self.units[holder].unit.items, what, amount)
     }
 
-    /// The tag a line of `ALL <item>` names when it finds none of that item to move as its phase
-    /// opens - none held, or no more than `EXCEPT` keeps - or `None` for any other line that moves
-    /// nothing (`ah-o9t1`). Only a named item: the order's warning words a refusal for nothing
-    /// else.
-    fn all_of_an_item_finding_none(
+    /// The goods a settled refusal of this line names, exactly as the order's warning names them
+    /// (`check_transport_reach`), or `None` for a line naming no item - the warning words a
+    /// refusal for a named item only. `(0, tag)` names no figure, so the sentence says the order
+    /// moves nothing; the tag is still carried for the DISTRIBUTE hint, and is empty where neither
+    /// the catalogue nor the stock knows the name.
+    ///
+    /// - An exact amount names the ordered figure of an item the game transports, unless the
+    ///   ledger finds the sender holding none of it as the line runs (`ah-19f7`). That is the
+    ///   ledger's answer and not this walk's own stock, which may lack what the month adds before
+    ///   TRANSPORT - WORK runs first (`rules/sequenceofevents`) - so the two places cannot
+    ///   disagree.
+    /// - An `ALL` that finds nothing to move - none held, or no more than `EXCEPT` keeps - names
+    ///   none (`ah-o9t1`); one that does is counted by [`Self::goods_named`].
+    fn warned_goods(
         &self,
         pending: &PendingTransport,
         held: &[crate::report::model::ItemAmount],
-    ) -> Option<String> {
-        let (super::forms::Selector::Item(text), super::forms::Amount::All { .. }) =
-            (&pending.what, &pending.amount)
-        else {
+        moving: &[(String, String, i64)],
+    ) -> Option<(i64, String)> {
+        let super::forms::Selector::Item(text) = &pending.what else {
             return None;
         };
-        item_named(Some(&self.ruleset), text, || held.iter())
+        let tag = || item_named(Some(&self.ruleset), text, || held.iter()).unwrap_or_default();
+        match pending.amount {
+            super::forms::Amount::Exact(ordered) => {
+                let tag = tag();
+                let holds_none = self
+                    .nothing_to_ship
+                    .contains(&(pending.sender, pending.line));
+                // No claim about goods the game would not carry (`ah-7j90`).
+                if tag.is_empty() || !self.ruleset.can_be_transported(&tag) {
+                    return Some((0, String::new()));
+                }
+                let holds_none = ordered <= 0 || holds_none;
+                Some((if holds_none { 0 } else { ordered }, tag))
+            }
+            _ if moving.is_empty() => Some((0, tag())),
+            _ => Some(self.goods_named(pending, moving)),
+        }
     }
 
     /// The same question asked of an explicit item list rather than of a row's live holdings, so
@@ -12012,11 +12049,37 @@ mod tests {
         }
 
         #[test]
-        fn a_refusal_is_silent_when_the_unit_holds_none_of_it() {
-            let response = two_hex_preview("unit 6857\nTRANSPORT 5530 2 HORS\n");
+        fn a_refusal_of_goods_the_unit_holds_none_of_says_what_the_warning_says() {
+            let orders = "unit 6857\nTRANSPORT 5530 2 HORS\n";
+            let response = two_hex_preview(orders);
 
-            // `6857` holds no horses: nothing to refuse, nothing to report, no row at all.
-            assert!(row(&response, "1:2,2", "6857").is_none());
+            // `6857` holds no horses, so nothing moves - but the order's warning still reports
+            // the refusal, and the hover says it alike (`ah-19f7`, "hover matches every
+            // refusal").
+            let sender = row(&response, "1:2,2", "6857").expect("the refusal is reported");
+            assert!(sender.transport_sent.is_empty());
+            let said: Vec<String> = sender
+                .transport_target_issues
+                .iter()
+                .map(|issue| issue.sentence.clone())
+                .collect();
+            assert_eq!(
+                said,
+                vec!["Unit 5530 is not a quartermaster, so this TRANSPORT moves nothing."]
+            );
+            let problems: Vec<String> = super::super::super::semantics::check_turn(
+                &ReportCache::new().classified(&report_across_two_hexes(), RULESET),
+                orders,
+                Some(&Ruleset::from_json(RULESET).expect("the ruleset loads")),
+                super::super::super::semantics::CheckOptions::default(),
+            )
+            .into_iter()
+            .filter(|finding| {
+                finding.code == super::super::super::semantics::codes::TRANSPORT_TARGET_REFUSED
+            })
+            .map(|finding| finding.message)
+            .collect();
+            assert_eq!(said, problems);
         }
 
         #[test]
@@ -12135,6 +12198,11 @@ mod tests {
                 "unit 5530\nTRANSPORT 7004 ALL WOOD\n",
                 "unit 5530\nGIVE 0 ALL STON\nTRANSPORT 7001 ALL STON\n",
                 "unit 5530\nTRANSPORT 7001 ALL WOOD\n",
+                // `ah-19f7`: an exact amount the sender holds none of, and a name nothing knows.
+                "unit 5530\nGIVE 0 ALL STON\nTRANSPORT 7004 5 STON\n",
+                "unit 5530\nGIVE 0 ALL STON\nTRANSPORT 7001 5 STON\n",
+                "unit 5530\nTRANSPORT 7004 ALL FOOBAR\n",
+                "unit 5530\nTRANSPORT 7001 5 FOOBAR\n",
             ] {
                 let response = two_hex_preview(orders);
                 // A unit with nothing to show has no row at all, which says nothing too.
@@ -15536,6 +15604,75 @@ mod tests {
                 .to_string()]
         );
         assert_eq!(hover, problems);
+    }
+
+    /// The too-far sentence the hover and the order's warning give `orders` from Source (900) on
+    /// `reach_report`'s flat map, five hexes from its target: `(hover, problems)`.
+    fn too_far_sentences(orders: &str) -> (Vec<String>, Vec<String>) {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let settled = reach_preview(&report, orders, FLAT_MAP);
+        let hover = reach_unit(&settled, "900")
+            .transport_target_issues
+            .iter()
+            .map(|issue| issue.sentence.clone())
+            .collect();
+        let parsed = ReportCache::new().classified(&report, RULESET);
+        let ruleset = Ruleset::from_json(RULESET).expect("the ruleset loads");
+        let options = super::super::semantics::CheckOptions {
+            geometry: crate::movement::graph::geometry_from_json(FLAT_MAP).expect("the map reads"),
+            ..super::super::semantics::CheckOptions::default()
+        };
+        let problems =
+            super::super::semantics::check_turn(&parsed, orders, Some(&ruleset), options)
+                .into_iter()
+                .filter(|finding| {
+                    finding.code == super::super::semantics::codes::TRANSPORT_OUT_OF_REACH
+                })
+                .map(|finding| finding.message)
+                .collect();
+        (hover, problems)
+    }
+
+    /// `ah-19f7`: a too-far exact amount reads as the order's warning reads it - the ordered
+    /// figure while the sender holds any of the goods, even fewer than ordered, and "moves
+    /// nothing" once it holds none (`rules/give`: "If 0 is specified as the unit number, then the
+    /// items are discarded."; `rules/sequenceofevents` runs GIVE before TRANSPORT).
+    #[test]
+    fn a_too_far_exact_amount_reads_alike_in_both_places() {
+        for (orders, expected) in [
+            (
+                "unit 900\nTRANSPORT 901 9 STON\n",
+                "Unit 901 is 5 hexes away and takes goods from 2 hexes, so 9 STON stay with this unit.",
+            ),
+            (
+                "unit 900\nGIVE 0 ALL STON\nTRANSPORT 901 5 STON\n",
+                "Unit 901 is 5 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.",
+            ),
+            (
+                "unit 900\nTRANSPORT 901 5 FOOBAR\n",
+                "Unit 901 is 5 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing.",
+            ),
+        ] {
+            let (hover, problems) = too_far_sentences(orders);
+            assert_eq!(hover, vec![expected.to_string()], "{orders}");
+            assert_eq!(hover, problems, "{orders}");
+        }
+    }
+
+    /// `ah-19f7`: an unmeasured distance is no warning, so an exact amount the sender holds none
+    /// of neither marks the list nor explains anything.
+    #[test]
+    fn an_exact_amount_holding_none_says_nothing_of_an_unmeasured_distance() {
+        let report = reach_report((0, 0), (0, 10), (0, 1));
+        let unmeasured = reach_preview(
+            &report,
+            "unit 900\nGIVE 0 ALL STON\nTRANSPORT 901 5 STON\n",
+            "",
+        );
+        let sender = reach_unit(&unmeasured, "900");
+        assert!(!sender.shipment_unmeasured);
+        assert!(sender.transport_target_issues.is_empty());
+        assert!(sender.transport_sent.is_empty());
     }
 
     /// `ah-hc7z`: with no map shape, a report that shows rows well past twice the gap settles the

@@ -1092,7 +1092,14 @@ pub fn review_turn(
         check_two_month_long_orders(hex, &options, &mut findings);
         check_unknown_skills(hex, ruleset, &mut findings);
         check_transfer_targets(hex, &located, &options, &mut findings);
-        check_transport_reach(hex, shipping.as_ref(), ruleset, &options, &mut findings);
+        check_transport_reach(
+            hex,
+            ledger,
+            shipping.as_ref(),
+            ruleset,
+            &options,
+            &mut findings,
+        );
         check_take_from_another_faction(hex, &options, &mut findings);
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
@@ -7219,6 +7226,13 @@ struct Ledger<'a> {
     /// silver that stays, and that is the silver left at TRANSPORT - after every STUDY and CAST
     /// (`rules/sequenceofevents`) - not the report's holding. Read by [`item_effects`].
     unshipped_silver: BTreeMap<(String, usize), i64>,
+    /// Every exact-amount shipment of a named item that does not certainly arrive and whose sender
+    /// holds none of the item as its sub-phase runs, keyed by sender and 1-based document line
+    /// (`ah-19f7`). GIVE runs before TRANSPORT (`rules/sequenceofevents`), so a refusal of one
+    /// moves nothing rather than leaving the ordered figure with the unit: the order's warning
+    /// and the hover both read it from here, so the two cannot disagree. Read by
+    /// [`check_transport_reach`] and [`item_effects`].
+    nothing_to_ship: BTreeSet<(String, usize)>,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -7767,6 +7781,29 @@ impl Ledger<'_> {
             .unwrap_or_default()
     }
 
+    /// What the sender of `before` holds of `tag` as that shipment runs, never below zero: the
+    /// stock TRANSPORT sees ([`Self::transport_holding`]), with what earlier sub-phases moved in
+    /// or out (`received_earlier`) and less what this unit's earlier shipments of the phase took
+    /// (`shipped`, [`shipment_allowance_used`]). One reading for the shipping bill, the unshown
+    /// target's month and [`Ledger::nothing_to_ship`], so they cannot drift apart (`ah-19f7`).
+    fn stock_as_shipment_runs(
+        &self,
+        hex: &Hex<'_>,
+        before: &ShipmentName,
+        tag: &str,
+        received_earlier: &BTreeMap<(String, String), i64>,
+        shipped: &BTreeMap<String, i64>,
+    ) -> i64 {
+        let sender = before.sender.as_str();
+        let arrived = received_earlier
+            .get(&(sender.to_string(), tag.to_string()))
+            .copied()
+            .unwrap_or_default();
+        (self.transport_holding(hex, sender, tag, before) + arrived
+            - shipment_allowance_used(shipped, tag))
+        .max(0)
+    }
+
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
     /// ITEMS preview settles separately from the ordinary per-hex ledger.
     fn phase_holdings(&self, hex: &Hex<'_>) -> PhaseHoldings {
@@ -7863,6 +7900,7 @@ fn ledger_for_reaching<'a>(
         silver_at_transport_check: BTreeMap::new(),
         cut_shipments: Vec::new(),
         unshipped_silver: BTreeMap::new(),
+        nothing_to_ship: BTreeSet::new(),
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -8798,6 +8836,13 @@ pub(crate) fn item_effects(
                 .unshipped_silver
                 .insert(i64::try_from(*line).unwrap_or(i64::MAX), *left);
         }
+        for (unit_id, line) in &ledger.nothing_to_ship {
+            result
+                .entry(unit_key(&hex.region.region_id, unit_id))
+                .or_default()
+                .nothing_to_ship
+                .push(i64::try_from(*line).unwrap_or(i64::MAX));
+        }
         // A silver shipment refused for want of silver keeps its silver in the preview too
         // (`ah-0aqx`).
         for refused in ledger.cut_shipments.iter().filter(|cut| cut.refused) {
@@ -8944,6 +8989,10 @@ pub(crate) struct UnitItemEffects {
     /// 1-based document line (`ah-7jsv`): the silver the hover says stays, which the item preview
     /// cannot count itself, since it has no silver ledger of its own.
     pub unshipped_silver: BTreeMap<i64, i64>,
+    /// The 1-based document lines of this unit's exact-amount shipments whose sender holds none of
+    /// the item as they run ([`Ledger::nothing_to_ship`], `ah-19f7`): the hover reads them as moving
+    /// nothing, as the order's warning does.
+    pub nothing_to_ship: Vec<i64>,
     /// The food maintenance eats off this unit, whoever's upkeep it paid (`ah-q490`). Apart from
     /// `moved` because it is applied last: `rules/sequenceofevents` assesses maintenance after
     /// every `TRANSPORT`, which the preview applies after `moved`.
@@ -26515,6 +26564,7 @@ fn check_transfer_targets(
 /// anchored.
 fn check_transport_reach(
     hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
     shipping: Option<&super::transport::Shipping>,
     ruleset: Option<&Ruleset>,
     options: &CheckOptions,
@@ -26563,8 +26613,13 @@ fn check_transport_reach(
                     .filter(|tag| ruleset.is_some_and(|rules| rules.can_be_transported(tag))),
                 _ => None,
             };
+            // A sender holding none of the goods as its shipment runs keeps nothing here either:
+            // the order moves nothing (`ah-19f7`).
+            let holds_none = ledger
+                .nothing_to_ship
+                .contains(&(sender.to_string(), placed.line));
             let goods = || match amount {
-                Amount::Exact(moved) if *moved > 0 => {
+                Amount::Exact(moved) if *moved > 0 && !holds_none => {
                     transportable().map(|tag| (*moved, tag.to_ascii_uppercase()))
                 }
                 // `ALL` is a question about stock, which this check does not ask.
@@ -26985,6 +27040,19 @@ fn shipping_bills(
                 amount,
                 received_earlier,
             );
+            record_nothing_to_ship(
+                ledger,
+                hex,
+                ordered,
+                ruleset,
+                &judged,
+                sub_phase,
+                &name,
+                text,
+                amount,
+                received_earlier,
+                &shipped,
+            );
             // `target_facts` has an entry for every unit in every region of the report, so an
             // absent entry is exactly "the report does not show this unit at all" - narrower than
             // `Acceptance::EligibilityUnknown`, whose other cause is a foreign unit the report does
@@ -26998,14 +27066,13 @@ fn shipping_bills(
                         .and_then(|tag| rules.find_item(&tag))
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
-                            let already_shipped = shipment_allowance_used(&shipped, &tag);
-                            let held = (ledger.transport_holding(hex, sender, &tag, &name)
-                                + received_earlier
-                                    .get(&(sender.to_string(), tag.clone()))
-                                    .copied()
-                                    .unwrap_or_default()
-                                - already_shipped)
-                                .max(0);
+                            let held = ledger.stock_as_shipment_runs(
+                                hex,
+                                &name,
+                                &tag,
+                                received_earlier,
+                                &shipped,
+                            );
                             rules.can_be_transported(&tag)
                                 && super::transfers::quantity_moved(amount, held)
                                     .saturating_mul(entry.weight)
@@ -27057,14 +27124,8 @@ fn shipping_bills(
             // The stock at the phase the step declares (`REPORT_WIDE_STEPS`): the ledger carries
             // every earlier delta into it - every one but an earlier transport phase's, which is
             // added here.
-            let already = shipment_allowance_used(&shipped, &tag);
-            let arrived = received_earlier
-                .get(&(sender.to_string(), tag.clone()))
-                .copied()
-                .unwrap_or_default();
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
-            let held =
-                (ledger.transport_holding(hex, sender, &tag, &name) + arrived - already).max(0);
+            let held = ledger.stock_as_shipment_runs(hex, &name, &tag, received_earlier, &shipped);
             // An exact silver ask the sender cannot meet (`ah-0aqx`, `runorders.cpp`). Refused
             // outright where it exceeds what was held as shipping began (`CheckTransportOrders`:
             // `o->type = NORDERS`); otherwise cut to what is left as it runs (`RunTransportOrders`:
@@ -27323,6 +27384,51 @@ fn record_unshipped_silver(
         (sender.to_string(), name.line),
         super::transfers::quantity_moved(amount, held),
     );
+}
+
+/// [`Ledger::nothing_to_ship`] for one exact-amount line in its own sub-phase (`ah-19f7`): the
+/// sender's own stock of the named item as the line runs - after GIVE and production, with what
+/// earlier sub-phases moved in or out and what this unit's earlier shipments of the phase took,
+/// the reading the unshown-target bill in [`shipping_bills`] makes - is none. A line that is both
+/// accepted and certainly arrives is not recorded: it is no refusal, and the warning and the hover
+/// speak only of refusals.
+#[allow(clippy::too_many_arguments)]
+fn record_nothing_to_ship(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+    judged: &super::transport::Judged,
+    sub_phase: super::transport::ShipmentPhase,
+    name: &ShipmentName,
+    text: &str,
+    amount: &Amount,
+    received_earlier: &BTreeMap<(String, String), i64>,
+    shipped: &BTreeMap<String, i64>,
+) {
+    if judged.phase != sub_phase || !matches!(amount, Amount::Exact(moved) if *moved > 0) {
+        return;
+    }
+    let accepted = judged.acceptance == super::transport::Acceptance::Eligible;
+    let arrives = matches!(
+        judged.measured,
+        Some(super::transport::Measured {
+            arrival: super::transport::Arrival::Certain,
+            ..
+        })
+    );
+    if accepted && arrives {
+        return;
+    }
+    let Some(tag) = resolve_item(text, hex, ordered, ruleset).map(|tag| tag.to_ascii_uppercase())
+    else {
+        return;
+    };
+    if ledger.stock_as_shipment_runs(hex, name, &tag, received_earlier, shipped) == 0 {
+        ledger
+            .nothing_to_ship
+            .insert((name.sender.clone(), name.line));
+    }
 }
 
 /// Book a shipment that reaches its target. `SILV` is both an item and the sender's forecast,
@@ -62810,6 +62916,70 @@ BUILD
         );
         assert!(hover.is_empty(), "{hover:?}");
         assert!(problems.is_empty(), "{problems:?}");
+    }
+
+    /// `ah-19f7`: GIVE runs before TRANSPORT (`rules/sequenceofevents`), so a unit that gave all
+    /// its silver away holds none when its exact TRANSPORT is refused. The warning says the order
+    /// moves nothing rather than naming silver the unit no longer has, as `ALL` already reads
+    /// (`ah-6ypx`), and the hint names the goods by their code.
+    #[test]
+    fn a_refused_exact_transport_after_give_of_all_moves_nothing() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+        home.units.push(unit("902"));
+        let (_, problems) = hover_and_problems(
+            vec![home],
+            "unit 900\nGIVE 902 ALL SILV\nTRANSPORT 901 100 SILV\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            problems,
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."]
+        );
+    }
+
+    /// `ah-19f7`: an item the catalogue does not list, all of it given away first
+    /// (`rules/sequenceofevents`: GIVE runs before TRANSPORT), moves nothing in both places, under
+    /// either amount form. `Ruleset::can_be_transported` refuses only men, mounts, monsters and
+    /// ships, so the DISTRIBUTE hint is appended in both places alike.
+    #[test]
+    fn a_refused_transport_of_a_given_away_uncatalogued_item_reads_alike_in_both_places() {
+        let mut home = shipping_quartermaster();
+        let sender = home.units.remove(0);
+        home.units.insert(0, with_item(sender, 3, "glyph", "GLYPH"));
+        home.units.push(unit("901"));
+        home.units.push(unit("902"));
+        for line in ["TRANSPORT 901 ALL GLYPH", "TRANSPORT 901 3 GLYPH"] {
+            let (hover, problems) = hover_and_problems(
+                vec![home.clone()],
+                &format!("unit 900\nGIVE 902 ALL GLYPH\n{line}\n"),
+                CheckOptions::default(),
+            );
+            assert_eq!(
+                hover,
+                vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the GLYPH."],
+                "{line}"
+            );
+            assert_eq!(hover, problems, "{line}");
+        }
+    }
+
+    /// `ah-19f7`: the hover says what Problems says of that exact amount, hint and all.
+    #[test]
+    fn a_refused_exact_transport_after_give_reads_alike_in_both_places() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+        home.units.push(unit("902"));
+        let (hover, problems) = hover_and_problems(
+            vec![home],
+            "unit 900\nGIVE 902 ALL SILV\nTRANSPORT 901 100 SILV\n",
+            CheckOptions::default(),
+        );
+        assert_eq!(
+            hover,
+            vec!["Unit 901 is not a quartermaster, so this TRANSPORT moves nothing. DISTRIBUTE would deliver the SILV."]
+        );
+        assert_eq!(hover, problems);
     }
 
     /// `ah-q3bp`: a zero amount names no amount either ("moves nothing"), so its hint names the
