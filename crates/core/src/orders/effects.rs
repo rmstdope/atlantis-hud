@@ -2918,7 +2918,7 @@ struct Working {
     /// `(sender index, 1-based document line)` of every exact-amount shipment whose sender holds
     /// none of the item as it runs - the ledger's answer, which the order's warning reads too, so
     /// the two say the same thing (`ah-19f7`). Filled by `apply_item_effects`, read by
-    /// `nothing_to_move_of`.
+    /// `warned_goods`.
     nothing_to_ship: std::collections::BTreeSet<(usize, usize)>,
     /// Every unit id the report names, ours and everyone else's. A target in here but not in
     /// `by_id` is a unit we can see and cannot project; one in neither is what the hover calls

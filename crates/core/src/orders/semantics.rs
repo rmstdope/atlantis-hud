@@ -7781,6 +7781,29 @@ impl Ledger<'_> {
             .unwrap_or_default()
     }
 
+    /// What the sender of `before` holds of `tag` as that shipment runs, never below zero: the
+    /// stock TRANSPORT sees ([`Self::transport_holding`]), with what earlier sub-phases moved in
+    /// or out (`received_earlier`) and less what this unit's earlier shipments of the phase took
+    /// (`shipped`, [`shipment_allowance_used`]). One reading for the shipping bill, the unshown
+    /// target's month and [`Ledger::nothing_to_ship`], so they cannot drift apart (`ah-19f7`).
+    fn stock_as_shipment_runs(
+        &self,
+        hex: &Hex<'_>,
+        before: &ShipmentName,
+        tag: &str,
+        received_earlier: &BTreeMap<(String, String), i64>,
+        shipped: &BTreeMap<String, i64>,
+    ) -> i64 {
+        let sender = before.sender.as_str();
+        let arrived = received_earlier
+            .get(&(sender.to_string(), tag.to_string()))
+            .copied()
+            .unwrap_or_default();
+        (self.transport_holding(hex, sender, tag, before) + arrived
+            - shipment_allowance_used(shipped, tag))
+        .max(0)
+    }
+
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
     /// ITEMS preview settles separately from the ordinary per-hex ledger.
     fn phase_holdings(&self, hex: &Hex<'_>) -> PhaseHoldings {
@@ -27043,14 +27066,13 @@ fn shipping_bills(
                         .and_then(|tag| rules.find_item(&tag))
                         .is_some_and(|entry| {
                             let tag = entry.tag.to_ascii_uppercase();
-                            let already_shipped = shipment_allowance_used(&shipped, &tag);
-                            let held = (ledger.transport_holding(hex, sender, &tag, &name)
-                                + received_earlier
-                                    .get(&(sender.to_string(), tag.clone()))
-                                    .copied()
-                                    .unwrap_or_default()
-                                - already_shipped)
-                                .max(0);
+                            let held = ledger.stock_as_shipment_runs(
+                                hex,
+                                &name,
+                                &tag,
+                                received_earlier,
+                                &shipped,
+                            );
                             rules.can_be_transported(&tag)
                                 && super::transfers::quantity_moved(amount, held)
                                     .saturating_mul(entry.weight)
@@ -27102,14 +27124,8 @@ fn shipping_bills(
             // The stock at the phase the step declares (`REPORT_WIDE_STEPS`): the ledger carries
             // every earlier delta into it - every one but an earlier transport phase's, which is
             // added here.
-            let already = shipment_allowance_used(&shipped, &tag);
-            let arrived = received_earlier
-                .get(&(sender.to_string(), tag.clone()))
-                .copied()
-                .unwrap_or_default();
             let conditional = acceptance == super::transport::Acceptance::AcceptanceUnknown;
-            let held =
-                (ledger.transport_holding(hex, sender, &tag, &name) + arrived - already).max(0);
+            let held = ledger.stock_as_shipment_runs(hex, &name, &tag, received_earlier, &shipped);
             // An exact silver ask the sender cannot meet (`ah-0aqx`, `runorders.cpp`). Refused
             // outright where it exceeds what was held as shipping began (`CheckTransportOrders`:
             // `o->type = NORDERS`); otherwise cut to what is left as it runs (`RunTransportOrders`:
@@ -27408,17 +27424,10 @@ fn record_nothing_to_ship(
     else {
         return;
     };
-    let sender = name.sender.as_str();
-    let held = ledger.transport_holding(hex, sender, &tag, name)
-        + received_earlier
-            .get(&(sender.to_string(), tag.clone()))
-            .copied()
-            .unwrap_or_default()
-        - shipment_allowance_used(shipped, &tag);
-    if held <= 0 {
+    if ledger.stock_as_shipment_runs(hex, name, &tag, received_earlier, shipped) == 0 {
         ledger
             .nothing_to_ship
-            .insert((sender.to_string(), name.line));
+            .insert((name.sender.clone(), name.line));
     }
 }
 
