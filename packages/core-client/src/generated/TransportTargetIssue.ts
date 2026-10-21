@@ -69,6 +69,13 @@ distribute?: boolean,
  */
 distributeDelivers?: boolean, 
 /**
+ * The line was written with `ALL`, with or without `EXCEPT`. A settled refusal then names no
+ * figure and says the order moves nothing, as the order's warning does (`ah-6ypx`); `amount`
+ * still carries what `ALL` would have taken, for the sentences that could not count it.
+ * Absent otherwise.
+ */
+all?: boolean, 
+/**
  * The issue as the unit preview's hover states it, rendered from the fields above by
  * `transport_wording::issue_sentence` when the transport walk hands its issues over. Core
  * words every refusal, so the hover and the order's warning cannot disagree (`ah-9lyr`).
