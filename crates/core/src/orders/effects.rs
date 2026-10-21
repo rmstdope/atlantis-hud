@@ -1646,6 +1646,35 @@ pub(crate) struct SettledMovement {
     pub(crate) refused_movement: bool,
 }
 
+/// The hover's sentence for every refused or uncounted shipment of the month, in unit and then
+/// document order: what the order checks' tests compare their own refusal sentence against, so a
+/// test can hold the two places to the same words on one built report (`ah-6ypx`).
+#[cfg(test)]
+pub(crate) fn transport_issue_sentences(
+    report: &crate::report::ParsedReport,
+    ruleset: &crate::movement::rules::Ruleset,
+    orders_document: &str,
+    options: super::semantics::CheckOptions,
+) -> Vec<String> {
+    let ruleset = std::sync::Arc::new(ruleset.clone());
+    let ordered =
+        crate::movement::fleet::OrderedUnits::of_month(report, orders_document, Some(&ruleset));
+    let geometry = options.geometry;
+    let (units, _) = settle(
+        report,
+        &ruleset,
+        orders_document,
+        &ordered,
+        geometry,
+        options,
+    );
+    units
+        .iter()
+        .flat_map(|working| working.transport_target_issues.iter())
+        .map(|issue| issue.sentence.clone())
+        .collect()
+}
+
 /// How a unit the report prints moves once this month's orders before movement have run: the
 /// settled row's movement, weighed as it holds things after GIVE, TAKE and the market
 /// (`rules/sequenceofevents`), and whether that load refuses its MOVE. `None` when the settle has
@@ -4310,8 +4339,8 @@ impl Working {
 
     /// [`Self::goods_claimed`] for one refused line, with a refused `ALL SILV` naming the silver
     /// `ALL` would have taken when the shipments run rather than the report's holding
-    /// (`ah-7jsv`). Where nothing would be left to take, the sentence names no amount and says the
-    /// order moves nothing.
+    /// (`ah-7jsv`). Where nothing would be left to take, the amount is `0`, so the sentence names
+    /// no amount and says the order moves nothing.
     fn goods_named(
         &self,
         pending: &PendingTransport,
@@ -4323,7 +4352,9 @@ impl Working {
         }
         match self.unshipped_silver.get(&(pending.sender, pending.line)) {
             Some(&left) if left > 0 => (left, tag),
-            Some(_) => (0, String::new()),
+            // The tag stays, so the DISTRIBUTE hint can name the goods as the order's warning
+            // does (`ah-q3bp`, `ah-6ypx`); a zero amount names no figure.
+            Some(_) => (0, tag),
             None => (amount, tag),
         }
     }

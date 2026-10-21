@@ -115,9 +115,10 @@ fn distribute_hint(issue: &TransportTargetIssue) -> Option<String> {
         return None;
     }
     if !issue.unsettled {
-        // A settled refusal of `ALL` names no goods for "them" to refer to, so the hint names them
-        // by their code, in the words the order's warning appends (`ah-q3bp`, `ah-6ypx`).
-        if issue.all && !issue.tag.is_empty() {
+        // A settled refusal that names no figure gives "them" nothing to refer to, so the hint
+        // names the goods by their code, in the words the order's warning appends (`ah-q3bp`,
+        // `ah-6ypx`).
+        if !issue.tag.is_empty() && !names_a_figure(issue) {
             return Some(format!(
                 "DISTRIBUTE would deliver the {}.",
                 issue.tag.to_ascii_uppercase()
@@ -137,9 +138,16 @@ fn distribute_hint(issue: &TransportTargetIssue) -> Option<String> {
     )
 }
 
+/// Whether a settled refusal names its goods with a figure: a single tag and a positive amount,
+/// on a line not written with `ALL` (`ah-6ypx`), as the order's warning names them.
+fn names_a_figure(issue: &TransportTargetIssue) -> bool {
+    !issue.tag.is_empty() && issue.amount > 0 && !issue.all
+}
+
 fn refusal_sentence(issue: &TransportTargetIssue) -> String {
     let to = issue.to.as_str();
-    let goods = (!issue.tag.is_empty()).then_some((issue.amount, issue.tag.as_str()));
+    let goods =
+        (!issue.tag.is_empty() && issue.amount > 0).then_some((issue.amount, issue.tag.as_str()));
     let goods_text = goods.map(|(amount, tag)| format!("{amount} {tag}"));
     // The word the line was written with, for a sentence that names the order (`ah-lis2`).
     let order_word = if issue.distribute {
@@ -150,7 +158,7 @@ fn refusal_sentence(issue: &TransportTargetIssue) -> String {
     let order = format!("this {order_word}");
     // What a settled refusal says of the goods: none for an `ALL`, whose figure the order's
     // warning never names and which read as what the unit keeps at month end (`ah-6ypx`).
-    let settled_goods = if issue.all { None } else { goods };
+    let settled_goods = goods.filter(|_| names_a_figure(issue));
 
     if issue.unsettled {
         // The month may undo the refusal (`ah-nsz8`, the navigator's words of 2026-10-17): the

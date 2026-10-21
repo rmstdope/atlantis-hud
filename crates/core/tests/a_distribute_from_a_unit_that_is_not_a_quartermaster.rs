@@ -226,11 +226,11 @@ fn a_refused_all_silv_to_an_unshown_unit_names_the_silver_left_after_study() {
 
 /// Where the month has spent everything before the shipments run, `ALL` would take nothing: the
 /// hover names no amount and says the order moves nothing, as the order line does (`ah-7jsv`
-/// review, finding 3).
+/// review, finding 3). The tag stays, so a DISTRIBUTE hint can name the goods (`ah-6ypx`).
 #[test]
 fn a_refused_all_silv_with_nothing_left_names_no_amount() {
     let (issues, _) = the_silver_named_by_a_refused_all_silv(&orders(
         "GIVE 1162 2190 SILV\nCAST CFSW\nSTUDY TRUE\nDISTRIBUTE 1162 ALL SILV",
     ));
-    assert_eq!(issues, vec![("1162".to_string(), 0, String::new())]);
+    assert_eq!(issues, vec![("1162".to_string(), 0, "SILV".to_string())]);
 }
