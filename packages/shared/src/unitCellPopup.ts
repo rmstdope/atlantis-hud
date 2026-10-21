@@ -2586,7 +2586,9 @@ export function refusedSilverShipments(unit: PreviewedUnit): string[] {
     .filter(
       (issue) =>
         issue.tag.toUpperCase() === "SILV" &&
-        issue.amount > 0 &&
+        // An `ALL` that finds no silver left - an earlier GIVE handed it away - carries amount 0
+        // and still says it moves nothing, as the Items hover and the order's warning do (`ah-o9t1`).
+        (issue.amount > 0 || issue.all === true) &&
         // `transportTargetUncertain` also excludes an `unsettled` refusal (`ah-nsz8`).
         !transportTargetUncertain(issue) &&
         issue.reason !== "distanceUnmeasured"
