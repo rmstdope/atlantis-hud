@@ -12,7 +12,7 @@
 //! - `rules/produce`: `PRODUCE [item]` produces "as much as possible".
 
 use atlantis_hud_core::orders::production_overview::{
-    RegionLimits, SlotOrder, SlotOrderKind, WorkedResource,
+    RegionLimits, RegionsUsed, SlotOrder, SlotOrderKind, WorkedResource,
 };
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -155,6 +155,33 @@ fn every_taxed_pillaged_and_producing_region_is_listed_once() {
     assert!(regions[1].uses_tax_slot && !regions[1].uses_trade_slot);
     assert_eq!(kinds(2), vec![SlotOrderKind::Produce]);
     assert!(!regions[2].uses_tax_slot && regions[2].uses_trade_slot);
+}
+
+/// The same three hexes, counted by core itself (`ah-rh62`): every region either slot is used in,
+/// then each slot on its own. The window shows these figures rather than counting its rows.
+#[test]
+fn the_overview_counts_the_regions_each_slot_uses() {
+    let farmer_two = FARMER.replace("(902)", "(904)");
+    let text = report(
+        &["Regions: 0 (40)"],
+        &[
+            hex(1, 600, "10 grain [GRAI]", &[TAXER, &farmer_two]),
+            hex(2, 1000, "none", &[RAIDERS]),
+            hex(3, 600, "10 grain [GRAI]", &[FARMER]),
+        ],
+    );
+    let review = review_of(
+        &text,
+        "unit 900\nTAX\nunit 904\nPRODUCE grain\nunit 901\nPILLAGE\nunit 902\nPRODUCE grain\n",
+    );
+    assert_eq!(
+        review.production.used,
+        RegionsUsed {
+            pooled: 3,
+            tax: 2,
+            trade: 2
+        }
+    );
 }
 
 #[test]

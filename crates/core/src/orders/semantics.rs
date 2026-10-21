@@ -52,8 +52,8 @@ use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named
 use crate::orders::magic;
 use crate::orders::new_students::NewStudents;
 use crate::orders::production_overview::{
-    ProductionOverview, RegionLimits, SlotOrder, SlotOrderKind, WorkedRegion, WorkedResource,
-    WorkedTax,
+    ProductionOverview, RegionLimits, RegionsUsed, SlotOrder, SlotOrderKind, WorkedRegion,
+    WorkedResource, WorkedTax,
 };
 use crate::orders::shelter;
 use crate::orders::silver::{
@@ -29339,6 +29339,46 @@ fn region_uses<'a, 'b: 'a>(
     uses
 }
 
+/// The distinct regions this month's orders use each slot in (`ah-rh62`). Only a use that reaches
+/// `ActivityCheck` uses one (`RegionUse::reaches`), and a use with no region counts nowhere. The
+/// region-limit warning and the Production window both count from this, so their figures agree.
+#[derive(Debug, Default)]
+struct SlotsUsed<'b> {
+    /// PRODUCE.
+    producing: BTreeSet<&'b str>,
+    /// TAX, the taxing flag, and PILLAGE.
+    taxing: BTreeSet<&'b str>,
+}
+
+impl<'b> SlotsUsed<'b> {
+    fn of(uses: &[RegionUse<'_, 'b>]) -> Self {
+        let mut used = Self::default();
+        for each in uses.iter().filter(|each| each.reaches) {
+            let Some(region) = each.region else { continue };
+            if each.kind == RegionUseKind::Produce {
+                used.producing.insert(region.region_id.as_str());
+            } else {
+                used.taxing.insert(region.region_id.as_str());
+            }
+        }
+        used
+    }
+
+    /// Every region either slot is used in, as a pooled `Regions` limit counts them.
+    fn pooled(&self) -> usize {
+        self.producing.union(&self.taxing).count()
+    }
+
+    fn counts(&self) -> RegionsUsed {
+        let count = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
+        RegionsUsed {
+            pooled: count(self.pooled()),
+            tax: count(self.taxing.len()),
+            trade: count(self.producing.len()),
+        }
+    }
+}
+
 /// The regions the faction's region limit refuses this month, each list in the order the game
 /// reaches them (`ah-gcrc`).
 ///
@@ -29577,24 +29617,11 @@ fn check_trade_regions(
         return;
     };
 
-    let mut producing: BTreeSet<&str> = BTreeSet::new();
-    // TAX, the taxing flag, and PILLAGE.
-    let mut taxing: BTreeSet<&str> = BTreeSet::new();
-
     let uses = region_uses(hexes.iter().map(|(hex, _)| hex), ruleset);
     // Only what reaches `ActivityCheck` can spend a region, so only that is counted and warned
     // (`ah-lb2o`): an order the engine refuses first is another warning's to name.
     let reaching: Vec<&RegionUse<'_, '_>> = uses.iter().filter(|used| used.reaches).collect();
-    for used in &reaching {
-        let Some(region) = used.region else {
-            continue;
-        };
-        if used.kind == RegionUseKind::Produce {
-            producing.insert(region.region_id.as_str());
-        } else {
-            taxing.insert(region.region_id.as_str());
-        }
-    }
+    let used = SlotsUsed::of(&uses);
     let refusals = region_refusals(report, &uses, allowances);
     // One name per region: a region several walks refuse - its PILLAGE and its TAX, or its TAX
     // and its PRODUCE on a pooled counter - is still one region refused.
@@ -29639,7 +29666,7 @@ fn check_trade_regions(
                 refused,
                 &RegionLimit {
                     allowance,
-                    used: producing.union(&taxing).count(),
+                    used: used.pooled(),
                     refused_in: labels(&[refusals.taxing, refusals.producing].concat()),
                     kinds: "PRODUCE, TAX and PILLAGE",
                     may: "tax and trade",
@@ -29655,7 +29682,7 @@ fn check_trade_regions(
                     refused_uses(true, &refusals.producing, 0),
                     &RegionLimit {
                         allowance,
-                        used: producing.len(),
+                        used: used.producing.len(),
                         refused_in: labels(&refusals.producing),
                         kinds: "PRODUCE",
                         may: "trade",
@@ -29670,7 +29697,7 @@ fn check_trade_regions(
                     refused_uses(false, &refusals.taxing, 0),
                     &RegionLimit {
                         allowance,
-                        used: taxing.len(),
+                        used: used.taxing.len(),
                         refused_in: labels(&refusals.taxing),
                         kinds: "TAX and PILLAGE",
                         may: "tax",
@@ -29717,8 +29744,10 @@ fn production_overview(
         .map(|row| (unit_key(&row.region_id, &row.unit_id), row))
         .collect();
 
+    let uses = region_uses(hexes.iter().map(|(hex, _)| hex), ruleset);
+    let counted = SlotsUsed::of(&uses).counts();
     let mut grouped: HashMap<&str, Vec<RegionUse<'_, '_>>> = HashMap::new();
-    for used in region_uses(hexes.iter().map(|(hex, _)| hex), ruleset) {
+    for used in uses {
         if let Some(region) = used.region {
             grouped
                 .entry(region.region_id.as_str())
@@ -29736,7 +29765,11 @@ fn production_overview(
         })
         .collect();
 
-    ProductionOverview { limits, regions }
+    ProductionOverview {
+        limits,
+        used: counted,
+        regions,
+    }
 }
 
 /// One region's row of the Production window, from the slot uses made in it.
@@ -79213,6 +79246,43 @@ BUILD
                 ("1:8,53", true, false),
                 ("1:9,53", false, false)
             ]
+        );
+    }
+
+    /// The window carries the count the warning makes (`ah-rh62`): one region with a reaching TAX,
+    /// one with a reaching PRODUCE, one with both, and one whose only order - an unskilled PRODUCE
+    /// - never reaches `ActivityCheck`. Pooled, that is three regions; two tax and two trade.
+    #[test]
+    fn the_production_window_carries_the_count_the_warning_makes() {
+        let regions = vec![
+            grain_region("1:6,53", 6, 53, vec![farmer("4")]),
+            grain_region("1:7,53", 7, 53, vec![with_men(unit("5"), 5)]),
+            region_at(
+                "1:8,53",
+                8,
+                53,
+                vec![with_skill(with_men(unit("6"), 5), "COMB", 1)],
+            ),
+            grain_region(
+                "1:9,53",
+                9,
+                53,
+                vec![farmer("7"), with_skill(with_men(unit("8"), 5), "COMB", 1)],
+            ),
+        ];
+        let review = review_trade(
+            regions,
+            "unit 4\nPRODUCE grain\nunit 5\nPRODUCE grain\nunit 6\nTAX\nunit 7\nPRODUCE grain\nunit 8\nTAX\n",
+            &[("Regions", 5)],
+        );
+
+        assert_eq!(
+            review.production.used,
+            RegionsUsed {
+                pooled: 3,
+                tax: 2,
+                trade: 2
+            }
         );
     }
 

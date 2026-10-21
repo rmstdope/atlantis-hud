@@ -10,8 +10,26 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct ProductionOverview {
     pub limits: RegionLimits,
+    /// How many regions this month's orders use, counted by the same walk the region-limit
+    /// warning counts (`ah-rh62`). The window shows these figures and never recounts `regions`.
+    pub used: RegionsUsed,
     /// One entry per region, in the report's region order.
     pub regions: Vec<WorkedRegion>,
+}
+
+/// How many distinct regions this month's orders use a slot in. Only an order that reaches the
+/// region limit uses a slot; one the game refuses first is listed in `regions` but counted here
+/// nowhere (`ah-lb2o`). Counted whatever the limits are.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct RegionsUsed {
+    /// Every region either slot is used in: what a pooled `Regions` limit counts.
+    pub pooled: i64,
+    /// Regions taxed or pillaged: what `Tax Regions` counts.
+    pub tax: i64,
+    /// Regions produced in: what `Trade Regions` counts.
+    pub trade: i64,
 }
 
 /// The `Faction Status:` region limits, as maxima. All three `None`: the report printed none.
