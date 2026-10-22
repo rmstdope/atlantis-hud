@@ -560,8 +560,9 @@ impl ShipmentOrder {
 /// a quartermaster owning a Caravanserai, the transport structure `rules/economy_transport` names -
 /// the engine, not that page's "may also TRANSPORT items to any unit", by the navigator's choice
 /// (`ah-1d3i`). In the New Age worlds a TRANSPORT from a Caravanserai owner is judged as its
-/// DISTRIBUTE, as that page says (`ah-4kcg`). Either target must be at least FRIENDLY to the
-/// sender.
+/// DISTRIBUTE, as that page says (`ah-4kcg`), and a quartermaster target owning no Caravanserai
+/// counts as any unit within 2 hexes there (`ah-a51z`, settled in [`Shipping::judge`], which knows
+/// the distance). Either target must be at least FRIENDLY to the sender.
 ///
 /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we* declare
 /// toward other factions, never theirs toward us, so a foreign target that passes both structural
@@ -604,13 +605,7 @@ pub(crate) fn acceptance(skips_target_test: bool, facts: Option<&TargetFacts>) -
         // (`ah-4kcg`), is what makes an ordinary target eligible. The
         // report can settle that immediately for our unit; a foreign target's attitude stays
         // unknown because `rules/com_attitudes` only reports our attitudes toward others.
-        return if facts.own && facts.quartermaster_disclosed {
-            Acceptance::Eligible
-        } else if facts.own {
-            Acceptance::EligibilityUnknown
-        } else {
-            Acceptance::AcceptanceUnknown
-        };
+        return accepted_as_any_unit(facts);
     }
     if facts.own {
         // Our own report prints our own units' skills in full, so a missing quartermaster is a
@@ -640,6 +635,19 @@ pub(crate) fn acceptance(skips_target_test: bool, facts: Option<&TargetFacts>) -
         return Acceptance::EligibilityUnknown;
     }
     Acceptance::AcceptanceUnknown
+}
+
+/// How a target whose own transport test is skipped answers: certainly for ours, whose skills the
+/// report prints in full, and on the faction's attitude for another's (`rules/com_attitudes` only
+/// reports our attitudes toward others).
+fn accepted_as_any_unit(facts: &TargetFacts) -> Acceptance {
+    if facts.own && facts.quartermaster_disclosed {
+        Acceptance::Eligible
+    } else if facts.own {
+        Acceptance::EligibilityUnknown
+    } else {
+        Acceptance::AcceptanceUnknown
+    }
 }
 
 /// Which reach this shipment is measured against.
@@ -1126,6 +1134,22 @@ impl Shipping {
         // the page over the engine in the New Age worlds (`ah-4kcg`).
         let skips_target_test = sender_can_distribute
             && (order == ShipmentOrder::Distribute || self.transport_to_anyone);
+        // In the New Age worlds a quartermaster that owns no Caravanserai is still "any unit"
+        // within 2 hexes (`newage trident rules/economy_transport`: "Quartermasters may also
+        // TRANSPORT items to any unit within 2 hexes"); only past them does the longer reach
+        // between quartermasters ask for its Caravanserai. The navigator's ruling, `ah-a51z`.
+        let any_unit_within_flat_reach = skips_target_test
+            && order == ShipmentOrder::Transport
+            && target_qm
+            && measured.is_some_and(|measured| {
+                arrival(
+                    Reach::Local,
+                    measured.from,
+                    measured.to,
+                    self.geometry,
+                    &self.shown,
+                ) == Arrival::Certain
+            });
         let acceptance = match acceptance(skips_target_test, facts) {
             _ if sender_not_quartermaster => Acceptance::SenderNotQuartermaster,
             _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
@@ -1137,6 +1161,9 @@ impl Shipping {
                         .is_some_and(|measured| matches!(measured.arrival, Arrival::TooFar(_))) =>
             {
                 Acceptance::SenderOwnsNoCaravanserai
+            }
+            Acceptance::NotCaravanseraiOwner if any_unit_within_flat_reach => {
+                facts.map_or(Acceptance::EligibilityUnknown, accepted_as_any_unit)
             }
             settled => settled,
         };
@@ -1970,6 +1997,34 @@ mod tests {
             judged(ShipmentOrder::Distribute, "901"),
             Acceptance::Eligible
         );
+    }
+
+    /// `ah-a51z`: `newage trident rules/economy_transport` (and `newage arcanum`) reads
+    /// "Quartermasters may also TRANSPORT items to any unit within 2 hexes ... and may TRANSPORT
+    /// items to another quartermaster up to 3 hexes distant". The navigator ruled (2026-10-22) that
+    /// a quartermaster owning no Caravanserai is "any unit" within 2 hexes, and that beyond them it
+    /// still needs the Caravanserai the longer reach between quartermasters asks for.
+    #[test]
+    fn a_new_age_transport_to_a_quartermaster_owning_no_caravanserai_goes_within_two_hexes() {
+        let mut shipping = shipping(
+            &[("900", 1), ("902", 1), ("903", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                // Two hexes away, and three.
+                ("902", at(facts(true, true, false, true), hex(0, 4))),
+                ("903", at(facts(true, true, false, true), hex(0, 6))),
+            ],
+            &[],
+        );
+        shipping.transport_to_anyone = true;
+
+        let judged = |target| {
+            shipping
+                .judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), target)
+                .acceptance
+        };
+        assert_eq!(judged("902"), Acceptance::Eligible);
+        assert_eq!(judged("903"), Acceptance::NotCaravanseraiOwner);
     }
 
     /// `ah-1d3i` review, finding 4: a TRANSPORT from a Caravanserai owner to another faction's
