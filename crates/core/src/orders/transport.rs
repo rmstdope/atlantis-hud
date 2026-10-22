@@ -526,7 +526,9 @@ fn caravanserai_owners_at_transport(
 /// Which of the two words a shipment line was written with. `rules/transport` calls DISTRIBUTE a
 /// synonym of TRANSPORT, but `CheckTransportOrders` (`../Atlantis/runorders.cpp`) asks every
 /// DISTRIBUTE's issuer to be a quartermaster owning a transport structure, whatever the target,
-/// and a TRANSPORT's only beyond `LOCAL_TRANSPORT` (`ah-g4bz`).
+/// and a TRANSPORT's only beyond `LOCAL_TRANSPORT` (`ah-g4bz`). That difference is New Origins'
+/// alone: in the New Age worlds `Shipping` judges a DISTRIBUTE as the TRANSPORT it is a spelling of
+/// (`ah-i71ku`), and the word survives only to name the line in its sentences.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShipmentOrder {
     Transport,
@@ -656,8 +658,9 @@ fn accepted_as_any_unit(facts: &TargetFacts) -> Acceptance {
 /// while two quartermasters use the sender skill's longer reach. That longer reach is TRANSPORT's
 /// alone: the engine's `CheckTransportOrders` measures every DISTRIBUTE against `LOCAL_TRANSPORT`
 /// (`ah-4g2l`), although `rules/transport` calls the two orders one. The engine source at hand is
-/// New Origins'; the New Age worlds' rules text says the same as New Origins' (`newage trident
-/// rules distribute`), so they are assumed to share the engine's behaviour too.
+/// New Origins', and only New Origins keeps the difference: in the New Age worlds DISTRIBUTE "has
+/// the same meaning and syntax" as TRANSPORT (`newage trident rules/distribute`), so `judge_on`
+/// hands this a TRANSPORT there (`ah-i71ku`).
 pub(crate) fn reach_for(
     order: ShipmentOrder,
     sender_is_quartermaster: bool,
@@ -864,6 +867,12 @@ pub(crate) struct Shipping {
     /// and `newage arcanum`); New Origins does as its engine does, which asks every TRANSPORT's
     /// target (`CheckTransportOrders`, `ah-1d3i`). The navigator's ruling, `ah-4kcg`.
     transport_to_anyone: bool,
+    /// Whether DISTRIBUTE is only another spelling of TRANSPORT. In the New Age worlds "the order
+    /// DISTRIBUTE can be used in place of TRANSPORT and has the same meaning and syntax"
+    /// (`newage arcanum rules/distribute`, `newage trident rules/distribute`), so every judgement
+    /// of the line is TRANSPORT's; New Origins keeps its engine's difference (`ah-g4bz`). The
+    /// navigator's ruling, `ah-i71ku`.
+    distribute_is_transport: bool,
 }
 
 impl Shipping {
@@ -886,6 +895,7 @@ impl Shipping {
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
             transport_to_anyone: ruleset.is_new_age(),
+            distribute_is_transport: ruleset.is_new_age(),
         }
     }
 
@@ -1074,6 +1084,11 @@ impl Shipping {
         target: &str,
         facts: Option<&TargetFacts>,
     ) -> Judged {
+        let order = if self.distribute_is_transport {
+            ShipmentOrder::Transport
+        } else {
+            order
+        };
         let sender_qm = self.quartermasters.contains(sender);
         let sender_can_distribute = sender_qm
             && self
@@ -1084,7 +1099,8 @@ impl Shipping {
         // The long reach is the transport structure's owner's alone: `CheckTransportOrders` gives
         // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Recipient ... is too
         // far away."), so a quartermaster that owns none ships like anybody (`ah-1jl9`). A
-        // DISTRIBUTE never gets it: that branch asks for `o->type == O_TRANSPORT` (`ah-4g2l`).
+        // DISTRIBUTE never gets it in New Origins: that branch asks for `o->type == O_TRANSPORT`
+        // (`ah-4g2l`).
         let reach = reach_for(
             order,
             sender_can_distribute,
@@ -1114,16 +1130,17 @@ impl Shipping {
             _ => None,
         };
         // A quartermaster that owns no Caravanserai can neither DISTRIBUTE nor ship past the flat
-        // reach; either refusal is its own, not the target's (`ah-1jl9`). A DISTRIBUTE is refused
-        // whoever its target is: `CheckTransportOrders` asks its issuer for a transport structure
-        // unconditionally (`ah-g4bz`).
+        // reach; either refusal is its own, not the target's (`ah-1jl9`). In New Origins a
+        // DISTRIBUTE is refused whoever its target is: `CheckTransportOrders` asks its issuer for a
+        // transport structure unconditionally (`ah-g4bz`).
         let sender_without_caravanserai = sender_qm && !sender_can_distribute;
-        // A DISTRIBUTE's issuer must hold the skill whatever the target (`ah-lis2`) - when the
-        // catalogue names a quartermaster skill for our report to show. `CheckTransportOrders`
-        // asks about the target's existence, its attitude and the distance before it asks this,
-        // but each of those only refuses a refusal already certain here, so this answer comes
-        // first on purpose: it is the one the player can act on, and it turns what would be a
-        // gap in the report (an unshown or foreign target) into the certainty it is.
+        // In New Origins a DISTRIBUTE's issuer must hold the skill whatever the target
+        // (`ah-lis2`) - when the catalogue names a quartermaster skill for our report to show.
+        // `CheckTransportOrders` asks about the target's existence, its attitude and the distance
+        // before it asks this, but each of those only refuses a refusal already certain here, so
+        // this answer comes first on purpose: it is the one the player can act on, and it turns
+        // what would be a gap in the report (an unshown or foreign target) into the certainty it
+        // is.
         let sender_not_quartermaster =
             order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
         // In New Origins only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks
@@ -1187,8 +1204,10 @@ impl Shipping {
         // is the line a DISTRIBUTE would deliver when that DISTRIBUTE is accepted - certainly for
         // ours, on the faction's attitude for another's - and the map proves it inside the reach
         // (`ah-7j90`). Asked of the DISTRIBUTE judgement itself, so the sender's tests and
-        // DISTRIBUTE's `LOCAL_TRANSPORT` reach are not restated here.
-        let distribute_would_deliver = order == ShipmentOrder::Transport
+        // DISTRIBUTE's `LOCAL_TRANSPORT` reach are not restated here. Where DISTRIBUTE is only
+        // TRANSPORT's other spelling it is refused exactly as this line is (`ah-i71ku`).
+        let distribute_would_deliver = !self.distribute_is_transport
+            && order == ShipmentOrder::Transport
             && matches!(
                 acceptance,
                 Acceptance::NotQuartermaster | Acceptance::NotCaravanseraiOwner
@@ -1869,6 +1888,7 @@ mod tests {
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
             transport_to_anyone: false,
+            distribute_is_transport: false,
         }
     }
 
@@ -2013,6 +2033,84 @@ mod tests {
             judged(ShipmentOrder::Distribute, "901"),
             Acceptance::Eligible
         );
+    }
+
+    /// `ah-i71ku`: in both New Age worlds "the order DISTRIBUTE can be used in place of TRANSPORT
+    /// and has the same meaning and syntax" (`newage arcanum rules/distribute`, `newage trident
+    /// rules/distribute`), so every judgement of a DISTRIBUTE line is the one the same line written
+    /// as TRANSPORT gets - for every sender, target, distance and month the judgement reads.
+    #[test]
+    fn a_new_age_distribute_is_judged_exactly_as_a_transport() {
+        // A sender that is no quartermaster, one owning no Caravanserai, and one owning one; then
+        // every kind of target, here, two hexes off, three, and well past the longer reach
+        // between quartermasters.
+        let units = || {
+            let mut units = vec![
+                ("800".to_string(), facts(true, false, false, true)),
+                ("801".to_string(), facts(true, true, false, true)),
+                ("802".to_string(), facts(true, true, true, true)),
+            ];
+            for (place, standing) in [hex(0, 0), hex(0, 4), hex(0, 6), hex(0, 20)]
+                .into_iter()
+                .enumerate()
+            {
+                for own in [true, false] {
+                    for quartermaster in [true, false] {
+                        for owner in [true, false] {
+                            for disclosed in [true, false] {
+                                units.push((
+                                    format!(
+                                        "9{place}{}{}{}{}",
+                                        u8::from(own),
+                                        u8::from(quartermaster),
+                                        u8::from(owner),
+                                        u8::from(disclosed)
+                                    ),
+                                    at(facts(own, quartermaster, owner, disclosed), standing),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            units
+        };
+        let ids: Vec<String> = units().into_iter().map(|(id, _)| id).collect();
+        for months in [false, true] {
+            for geometry in [Some(fixture_map()), None] {
+                let (names, facts): (Vec<String>, Vec<TargetFacts>) = units().into_iter().unzip();
+                let mut shipping = shipping(
+                    &[("801", 2), ("802", 2)],
+                    names.iter().map(String::as_str).zip(facts).collect(),
+                    &[],
+                );
+                shipping.transport_to_anyone = true;
+                shipping.distribute_is_transport = true;
+                shipping.geometry = geometry;
+                if months {
+                    shipping.may_learn.extend(ids.iter().cloned());
+                    shipping.may_own.extend(ids.iter().cloned());
+                }
+                for sender in ["800", "801", "802"] {
+                    for sender_at in [Some(hex(0, 0)), None] {
+                        for target in ids.iter().map(String::as_str).chain(["unshown"]) {
+                            assert_eq!(
+                                shipping.judge(
+                                    ShipmentOrder::Distribute,
+                                    sender,
+                                    sender_at,
+                                    target
+                                ),
+                                shipping.judge(ShipmentOrder::Transport, sender, sender_at, target),
+                                "{sender} at {sender_at:?} to {target}, months {months}, \
+                                 geometry {}",
+                                geometry.is_some()
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// `ah-a51z`: `newage trident rules/economy_transport` (and `newage arcanum`) reads
