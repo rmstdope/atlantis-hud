@@ -62960,6 +62960,61 @@ BUILD
         assert!(target_findings(vec![home], "unit 900\nDISTRIBUTE 901 100 SILV\n").is_empty());
     }
 
+    /// `ah-4kcg`: ah-1d3i's refusal is New Origins' engine alone. `newage trident
+    /// rules/economy_transport` and `newage arcanum rules/economy_transport` both read
+    /// "Quartermasters may also TRANSPORT items to any unit within 2 hexes", and the navigator
+    /// ruled (2026-10-22) that the New Age worlds behave as written: the same TRANSPORT from a
+    /// Caravanserai owner to an ordinary hex-mate is delivered and warned about nowhere.
+    #[test]
+    fn a_transport_from_a_caravanserai_owner_to_an_ordinary_unit_goes_in_the_new_age_worlds() {
+        let mut home = shipping_quartermaster();
+        home.units.push(unit("901"));
+        for (world, json) in [
+            (
+                "Trident",
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            ),
+            (
+                "Arcanum",
+                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            ),
+        ] {
+            let rules = Ruleset::from_json(json).expect("the committed New Age ruleset loads");
+            let review = |orders: &str| {
+                review_turn(
+                    &report(vec![home.clone()]),
+                    orders,
+                    Some(&rules),
+                    CheckOptions::default(),
+                )
+            };
+            let transported = review("unit 900\nTRANSPORT 901 100 SILV\n");
+            assert!(
+                transported
+                    .findings
+                    .iter()
+                    .all(|finding| finding.code != codes::TRANSPORT_TARGET_REFUSED),
+                "{world}: no refusal is warned: {:?}",
+                transported.findings
+            );
+            let baseline = review("unit 900\n");
+            assert_eq!(
+                shipment_silver(&transported, "900").at_month_end,
+                shipment_silver(&baseline, "900")
+                    .at_month_end
+                    .map(|silver| silver - 100),
+                "{world}: 100 left 900"
+            );
+            assert_eq!(
+                shipment_silver(&transported, "901").at_month_end,
+                shipment_silver(&baseline, "901")
+                    .at_month_end
+                    .map(|silver| silver + 100),
+                "{world}: 100 reached 901"
+            );
+        }
+    }
+
     /// `ah-7j90`: the order line's refusal keeps its words and gains the hint whatever the amount
     /// form, since DISTRIBUTE carries SILV. `ALL` names no amount here, so the hint names the goods
     /// by their code instead of a "them" with nothing to refer to (`ah-q3bp`).

@@ -556,10 +556,12 @@ impl ShipmentOrder {
 ///
 /// A quartermaster owning a Caravanserai may DISTRIBUTE to any unit within two hexes: the engine
 /// never asks a DISTRIBUTE's target about skill or structure (`CheckTransportOrders`,
-/// `../Atlantis/runorders.cpp`). Every TRANSPORT, whoever sends it, may go only to a quartermaster
-/// owning a Caravanserai, the transport structure `rules/economy_transport` names - the engine,
-/// not that page's "may also TRANSPORT items to any unit", by the navigator's choice (`ah-1d3i`).
-/// Either target must be at least FRIENDLY to the sender.
+/// `../Atlantis/runorders.cpp`). In New Origins every TRANSPORT, whoever sends it, may go only to
+/// a quartermaster owning a Caravanserai, the transport structure `rules/economy_transport` names -
+/// the engine, not that page's "may also TRANSPORT items to any unit", by the navigator's choice
+/// (`ah-1d3i`). In the New Age worlds a TRANSPORT from a Caravanserai owner is judged as its
+/// DISTRIBUTE, as that page says (`ah-4kcg`). Either target must be at least FRIENDLY to the
+/// sender.
 ///
 /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we* declare
 /// toward other factions, never theirs toward us, so a foreign target that passes both structural
@@ -574,9 +576,9 @@ pub(crate) enum Acceptance {
     NotQuartermaster,
     NotCaravanseraiOwner,
     /// The sender is a quartermaster that owns no Caravanserai when the shipments run, and the
-    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT beyond the flat reach. A
-    /// TRANSPORT to a unit that is no quartermaster is the target's refusal whoever sends it
-    /// (`ah-1d3i`).
+    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT beyond the flat reach. In
+    /// New Origins a TRANSPORT to a unit that is no quartermaster is the target's refusal whoever
+    /// sends it (`ah-1d3i`).
     /// `CheckTransportOrders` blames the sender for a DISTRIBUTE ("Unit does not own transport
     /// structure.") and the distance for a TRANSPORT ("Recipient ... is too far away.", its range
     /// capped at `LOCAL_TRANSPORT`); the sentence names the sender's missing Caravanserai for
@@ -598,7 +600,8 @@ pub(crate) fn acceptance(skips_target_test: bool, facts: Option<&TargetFacts>) -
         return Acceptance::EligibilityUnknown;
     };
     if skips_target_test && !facts.quartermaster {
-        // A DISTRIBUTE from a Caravanserai owner is what makes an ordinary target eligible. The
+        // A DISTRIBUTE from a Caravanserai owner, or in the New Age worlds its TRANSPORT
+        // (`ah-4kcg`), is what makes an ordinary target eligible. The
         // report can settle that immediately for our unit; a foreign target's attitude stays
         // unknown because `rules/com_attitudes` only reports our attitudes toward others.
         return if facts.own && facts.quartermaster_disclosed {
@@ -847,6 +850,12 @@ pub(crate) struct Shipping {
     /// Kept apart from `may_learn` because `rules/transport` asks the target for both, and a month
     /// that can mend only one leaves a target failing both refused (`ah-xbnu`).
     may_own: std::collections::BTreeSet<String>,
+    /// Whether a quartermaster owning a Caravanserai may TRANSPORT to a unit that is no
+    /// quartermaster, as it may DISTRIBUTE. The New Age worlds do as `rules/economy_transport`
+    /// says ("Quartermasters may also TRANSPORT items to any unit within 2 hexes", `newage trident`
+    /// and `newage arcanum`); New Origins does as its engine does, which asks every TRANSPORT's
+    /// target (`CheckTransportOrders`, `ah-1d3i`). The navigator's ruling, `ah-4kcg`.
+    transport_to_anyone: bool,
 }
 
 impl Shipping {
@@ -868,6 +877,7 @@ impl Shipping {
             month_end: options.month_end.clone(),
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
+            transport_to_anyone: ruleset.is_new_age(),
         }
     }
 
@@ -1108,12 +1118,14 @@ impl Shipping {
         // gap in the report (an unshown or foreign target) into the certainty it is.
         let sender_not_quartermaster =
             order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
-        // Only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks every
-        // TRANSPORT's target for the quartermaster skill and a transport structure, whoever sends
-        // it, so a TRANSPORT to an ordinary unit is the target's refusal even from a quartermaster
-        // owning a Caravanserai. The navigator chose the engine over `rules/economy_transport`'s
-        // "may also TRANSPORT items to any unit" (`ah-1d3i`).
-        let skips_target_test = sender_can_distribute && order == ShipmentOrder::Distribute;
+        // In New Origins only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks
+        // every TRANSPORT's target for the quartermaster skill and a transport structure, whoever
+        // sends it, so a TRANSPORT to an ordinary unit is the target's refusal even from a
+        // quartermaster owning a Caravanserai. The navigator chose the engine over
+        // `rules/economy_transport`'s "may also TRANSPORT items to any unit" there (`ah-1d3i`), and
+        // the page over the engine in the New Age worlds (`ah-4kcg`).
+        let skips_target_test = sender_can_distribute
+            && (order == ShipmentOrder::Distribute || self.transport_to_anyone);
         let acceptance = match acceptance(skips_target_test, facts) {
             _ if sender_not_quartermaster => Acceptance::SenderNotQuartermaster,
             _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
@@ -1813,6 +1825,7 @@ mod tests {
                 .collect(),
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
+            transport_to_anyone: false,
         }
     }
 
