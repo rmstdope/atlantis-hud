@@ -176,7 +176,9 @@ jobs:
         run: |
           site="https://atlantis-hud.kurelid.se"
           for attempt in 1 2 3; do
-            status="$(curl -sS -o page.html -w '%{http_code}' --max-time 30 "$site/" || echo 000)"
+            # The query is a cache-buster: the host's Varnish serves / from cache, so a plain fetch
+            # straight after the upload can return the previous build's page (ah-gktt).
+            status="$(curl -sS -o page.html -w '%{http_code}' --max-time 30 "$site/?build=$GITHUB_SHA" || echo 000)"
             [ "$status" = "200" ] && break
             echo "Attempt $attempt: $site/ returned $status"
             sleep 10
@@ -189,5 +191,9 @@ jobs:
             echo "::error::$site/ answered, but the page served is not this build - no manifest link in it."
             exit 1
           fi
+          # The page at / is the proof that this build is what the domain serves: the host answers the
+          # manifest and icons with a proof-of-work challenge a script cannot pass (ah-gktt), which
+          # the manifest check reports as a notice rather than a failure.
+          pnpm exec tsx scripts/servedBuild.ts page.html apps/web/dist/index.html
           pnpm exec tsx scripts/manifestCheck.ts "$site" apps/web/dist/manifest.webmanifest
           echo "::notice::Published to $site"

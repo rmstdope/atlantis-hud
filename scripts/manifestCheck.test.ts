@@ -5,20 +5,25 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ATTEMPTS,
+  CHALLENGED,
+  challengeNotice,
   checkManifest,
   checkServed,
+  cliRetryDelay,
   failureMessage,
   fetchStatus,
   iconFailureMessage,
   iconPaths,
   iconSuccessNotice,
+  isChallengePage,
   isRetryable,
   MANIFEST_PATH,
   manifestUrl,
   RETRY_DELAY_MS,
   siteUrl,
   successNotice,
-  type Status
+  type Status,
+  wasChallenged
 } from "./manifestCheck";
 
 /**
@@ -162,6 +167,96 @@ describe("against a server that really throttles", () => {
   });
 });
 
+describe("the host's proof-of-work challenge (ah-gktt)", () => {
+  /** one.com's challenge page, trimmed to what identifies it. */
+  const challengePage = `<!doctype html><html><head>
+    <meta name="onehop-proof-of-work-id" content="MGVj"><title>POW</title></head>
+    <body><h2>Please wait while we verify your request</h2></body></html>`;
+
+  let server: Server | undefined;
+  let base: string;
+
+  /** Answers the manifest with `body` as text/html under `status`, every time. */
+  async function start(status: number, body: string): Promise<void> {
+    const running = createServer((_request, response) => {
+      response.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+      response.end(body);
+    });
+    server = running;
+    await new Promise<void>((done) => running.listen(0, "127.0.0.1", done));
+    base = `http://127.0.0.1:${(running.address() as AddressInfo).port}`;
+  }
+
+  afterEach(async () => {
+    const running = server;
+    server = undefined;
+    if (running === undefined) return;
+    running.closeAllConnections();
+    await new Promise<void>((done) => running.close(() => done()));
+  });
+
+  it("recognises the challenge page by its meta tag", () => {
+    expect(isChallengePage(challengePage)).toBe(true);
+    expect(isChallengePage("<html><title>POW</title></html>")).toBe(false);
+  });
+
+  it("asks again after a challenge, since the host lets the odd request through", async () => {
+    const verdict = await checkManifest("https://example.test", scriptedFetcher([CHALLENGED, 200]).fetch, () =>
+      Promise.resolve()
+    );
+    expect(verdict).toEqual({ ok: true, status: 200, attempts: 2 });
+  });
+
+  it("reports a real server's challenge as challenged, not as its 503", async () => {
+    await start(503, challengePage);
+    const verdict = await checkManifest(base, fetchStatus, () => Promise.resolve());
+    expect(verdict).toEqual({ ok: false, status: CHALLENGED, attempts: ATTEMPTS });
+    expect(wasChallenged(verdict)).toBe(true);
+  });
+
+  it("still fails a plain 503 that is not the challenge", async () => {
+    await start(503, "<html><title>Service Unavailable</title></html>");
+    const verdict = await checkManifest(base, fetchStatus, () => Promise.resolve());
+    expect(verdict).toEqual({ ok: false, status: 503, attempts: ATTEMPTS });
+    expect(wasChallenged(verdict)).toBe(false);
+  });
+
+  it("still fails a 404 met after a challenge", async () => {
+    const verdict = await checkManifest("https://example.test", scriptedFetcher([CHALLENGED, 404]).fetch, () =>
+      Promise.resolve()
+    );
+    expect(verdict).toEqual({ ok: false, status: 404, attempts: 2 });
+    expect(wasChallenged(verdict)).toBe(false);
+  });
+
+  it.each([
+    { answers: [CHALLENGED, CHALLENGED, CHALLENGED, 429], status: CHALLENGED, why: "a closing 429 is noise" },
+    { answers: [CHALLENGED, 0, 429, 0], status: CHALLENGED, why: "dropped requests are noise" },
+    { answers: [503, 503, 503, CHALLENGED], status: 503, why: "a closing challenge cannot hide plain 503s" },
+    { answers: [CHALLENGED, 502, CHALLENGED, CHALLENGED], status: 502, why: "one plain 5xx is the server failing" },
+    { answers: [429, 429, 429, 429], status: 429, why: "no challenge is the old policy" }
+  ])("reports $answers as $status: $why", async ({ answers, status }) => {
+    const verdict = await checkServed("https://example.test/x", scriptedFetcher(answers).fetch, () =>
+      Promise.resolve()
+    );
+    expect(verdict).toEqual({ ok: false, status, attempts: ATTEMPTS });
+  });
+
+  it("says what could not be checked, and that it is not a failure", () => {
+    expect(challengeNotice("The manifest", { ok: false, status: CHALLENGED, attempts: 4 })).toBe(
+      "The manifest was answered with the host's proof-of-work challenge in 4 attempts, so it could not be " +
+        "checked from here. A browser passes that challenge; this is not a failure of the deployment."
+    );
+  });
+
+  it("lets the CLI's retry delay be shortened for tests, and only to a usable value", () => {
+    expect(cliRetryDelay({})).toBe(RETRY_DELAY_MS);
+    expect(cliRetryDelay({ MANIFEST_CHECK_RETRY_DELAY_MS: "0" })).toBe(0);
+    expect(cliRetryDelay({ MANIFEST_CHECK_RETRY_DELAY_MS: "soon" })).toBe(RETRY_DELAY_MS);
+    expect(cliRetryDelay({ MANIFEST_CHECK_RETRY_DELAY_MS: "-1" })).toBe(RETRY_DELAY_MS);
+  });
+});
+
 describe("the icons the manifest lists", () => {
   it("takes every string src, without a leading slash", () => {
     expect(
@@ -217,6 +312,16 @@ describe("the deploy workflow", () => {
 
   it("checks the icons of the manifest it just uploaded", () => {
     expect(yaml).toContain('pnpm exec tsx scripts/manifestCheck.ts "$site" apps/web/dist/manifest.webmanifest');
+  });
+
+  it("proves the page at / is this build before the manifest check (ah-gktt)", () => {
+    const build = yaml.indexOf("pnpm exec tsx scripts/servedBuild.ts page.html apps/web/dist/index.html");
+    expect(build).toBeGreaterThan(-1);
+    expect(build).toBeLessThan(yaml.indexOf("pnpm exec tsx scripts/manifestCheck.ts"));
+  });
+
+  it("fetches / past the host's cache, so the page compared is the one just uploaded (ah-gktt)", () => {
+    expect(yaml).toContain(`--max-time 30 "$site/?build=$GITHUB_SHA"`);
   });
 
   it("leaves the page fetch and its wording alone", () => {

@@ -10,6 +10,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MANIFEST_PATH } from "./manifestCheck";
 
 const run = promisify(execFile);
+
+/** The shape of one.com's challenge page, trimmed: the meta tag and title are what identify it. */
+const CHALLENGE_PAGE = `<!doctype html><html lang="en"><head>
+<meta name="onehop-proof-of-work-id" content="MGVj">
+<title>POW</title><script type="module">/* sha256 puzzle */</script></head>
+<body><h2>Please wait while we verify your request</h2></body></html>`;
 const script = fileURLToPath(new URL("./manifestCheck.ts", import.meta.url));
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -21,10 +27,14 @@ const root = fileURLToPath(new URL("..", import.meta.url));
  * transform error and the deploy step would have failed on every release. This suite is what makes
  * that visible.
  */
-async function runCli(site: string, manifestFile?: string): Promise<{ code: number; out: string }> {
+async function runCli(
+  site: string,
+  manifestFile?: string,
+  env: NodeJS.ProcessEnv = {}
+): Promise<{ code: number; out: string }> {
   const args = ["exec", "tsx", script, site, ...(manifestFile === undefined ? [] : [manifestFile])];
   try {
-    const { stdout } = await run("pnpm", args, { cwd: root });
+    const { stdout } = await run("pnpm", args, { cwd: root, env: { ...process.env, ...env } });
     return { code: 0, out: stdout };
   } catch (error) {
     const failure = error as { code?: number; stdout?: string; stderr?: string };
@@ -44,9 +54,16 @@ describe("the manifest check as the workflow runs it", () => {
     return file;
   }
 
-  async function start(throttled: number): Promise<void> {
+  async function start(throttled: number, challenge = false): Promise<void> {
     let seen = 0;
     server = createServer((request, response) => {
+      if (challenge && (request.url === `/${MANIFEST_PATH}` || request.url === "/app-icons/a.png")) {
+        // What one.com's Varnish answers in place of the file (ah-gktt): a 503 HTML page carrying a
+        // proof-of-work script that only a browser runs.
+        response.writeHead(503, { "content-type": "text/html; charset=utf-8" });
+        response.end(CHALLENGE_PAGE);
+        return;
+      }
       if (request.url === "/app-icons/a.png") {
         response.writeHead(200, { "content-type": "image/png" });
         response.end("png");
@@ -120,6 +137,18 @@ describe("the manifest check as the workflow runs it", () => {
     expect(code).toBe(1);
     expect(out).toContain("::error::The manifest check itself failed:");
   });
+
+  it("does not fail a deployment because the host answered with its proof-of-work challenge", async () => {
+    await start(0, true);
+    // The retry policy's timing is pinned in-process; here only the notice-not-error wiring is.
+    const { code, out } = await runCli(base, manifestListing("app-icons/a.png"), {
+      MANIFEST_CHECK_RETRY_DELAY_MS: "0"
+    });
+    expect(out).not.toContain("::error::");
+    expect(code).toBe(0);
+    expect(out).toContain("::notice::The manifest was answered with the host's proof-of-work challenge in 4 attempts");
+    expect(out).toContain("::notice::The icon app-icons/a.png was answered with the host's proof-of-work challenge");
+  }, 20_000);
 
   it("refuses to run without a site root", async () => {
     const { code, out } = await runCli("");
