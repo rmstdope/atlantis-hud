@@ -191,7 +191,10 @@ export type HexView = {
    * `7235 +1` or `guards`. Null when nothing was stopped here or the badge is off.
    */
   blocked: string | null;
-  /** Whether the hex holds a gateway, the magical passage between levels. */
+  /**
+   * Whether the hex holds a gate: a Gateway structure, the passage between levels, or a Gate the
+   * region's report names, open or closed (`There is a Gate here (Gate 987).`, ah-8ble).
+   */
   gate: boolean;
   /**
    * The hex's coordinates as the map prints them, `33,25` (ah-ezyg), or null while the switch is
@@ -589,7 +592,10 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     lairs: badges.lairs ? structures.lairs : 0,
     battle: badges.battles ? (options.battles?.get(hex.regionId) ?? null) : null,
     blocked: badges.blocked ? (options.blocked?.get(hex.regionId)?.label ?? null) : null,
-    gate: badges.gate && structures.gates > 0,
+    // A Gateway structure, or the region's own gate sentence (ah-8ble): reports name most gates
+    // as `There is a Gate here (Gate 987).` under the hex, and a closed one is still a gate. `??`
+    // because a region stored before the field existed has no `gate` at all.
+    gate: badges.gate && (structures.gates > 0 || (hex.region?.gate ?? null) !== null),
     coords: options.hexCoordinates === true ? `${hex.coordinate.x},${hex.coordinate.y}` : null
   };
 }
