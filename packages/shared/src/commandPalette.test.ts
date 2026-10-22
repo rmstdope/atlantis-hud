@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { aReportRegion } from "@atlantis/core-client";
 import {
   armyCountLabel,
   buildPaletteEntries,
   filterPalette,
+  gatePaletteRows,
   hexNotePaletteRows,
   mageNotePaletteRows,
   mageSheetPaletteAction,
@@ -13,6 +15,7 @@ import {
   type PaletteEntry,
   type PaletteInput
 } from "./commandPalette";
+import type { GateMemory } from "./gateMemory";
 import type { HexNode } from "./hexMapModel";
 import { structurePaletteLabel } from "./structureLabel";
 
@@ -1014,5 +1017,177 @@ describe("mageSheetPaletteAction (ah-mlls.8)", () => {
       expect(filterPalette(empty, query)).toHaveLength(1);
     }
     expect(filterPalette(empty, "no mages")).toHaveLength(0);
+  });
+});
+
+/** A hex whose own report printed `gate`, or none; `null` region when the report does not cover it. */
+function gateHex(
+  regionId: string,
+  label: string,
+  gate: string | null | undefined,
+  knowledge: HexNode["knowledge"] = "current",
+  lastSeenTurn: number | null = 71
+): HexNode {
+  return {
+    ...node(regionId, label, null, knowledge, lastSeenTurn),
+    region: gate === undefined ? null : aReportRegion({ regionId, gate })
+  };
+}
+
+describe("gatePaletteRows (ah-uni7j)", () => {
+  const none: GateMemory = new Map();
+
+  it("reads Gate, the number, then the hex's own label", () => {
+    const hexes = [gateHex("1:36,4", "mountain (36,4) in Slounspifra", "There is a Gate here (Gate 987).")];
+    expect(gatePaletteRows(hexes, none, 71)).toEqual([
+      { regionId: "1:36,4", label: "Gate 987 · mountain (36,4) in Slounspifra", number: 987 }
+    ]);
+  });
+
+  it("shows the number without the total a game prints", () => {
+    const hexes = [gateHex("1:22,9", "forest (22,9) in Elmwood", "There is a Gate here (Gate 12 of 150).")];
+    expect(gatePaletteRows(hexes, none, 71)).toEqual([
+      { regionId: "1:22,9", label: "Gate 12 · forest (22,9) in Elmwood", number: 12 }
+    ]);
+  });
+
+  it("reads a closed gate as Gate (closed)", () => {
+    const hexes = [gateHex("1:8,20", "swamp (8,20) in Mire", "There is a closed Gate here.")];
+    expect(gatePaletteRows(hexes, none, 71)).toEqual([
+      { regionId: "1:8,20", label: "Gate (closed) · swamp (8,20) in Mire", number: null }
+    ]);
+  });
+
+  it("orders gates by number, lowest first, with closed gates after every numbered one", () => {
+    const hexes = [
+      gateHex("1:8,20", "swamp (8,20) in Mire", "There is a closed Gate here."),
+      gateHex("1:2,4", "tundra (2,4) in Frostmere", "There is a Gate here (Gate 987)."),
+      gateHex("1:12,34", "plain (12,34) in Hope", "There is a Gate here (Gate 3)."),
+      gateHex("1:9,9", "swamp (9,9) in Fen", "There is a closed Gate here."),
+      gateHex("1:36,4", "mountain (36,4) in Slounspifra", "There is a Gate here (Gate 12).")
+    ];
+    expect(gatePaletteRows(hexes, none, 71).map((row) => row.label)).toEqual([
+      "Gate 3 · plain (12,34) in Hope",
+      "Gate 12 · mountain (36,4) in Slounspifra",
+      "Gate 987 · tundra (2,4) in Frostmere",
+      "Gate (closed) · swamp (8,20) in Mire",
+      "Gate (closed) · swamp (9,9) in Fen"
+    ]);
+  });
+
+  it("lists a gate an earlier report showed, with the turn it was seen in", () => {
+    const hexes = [gateHex("1:2,4", "tundra (2,4) in Frostmere", null)];
+    const memory: GateMemory = new Map([
+      ["1:2,4", { sentence: "There is a Gate here (Gate 987).", turn: 68 }]
+    ]);
+    expect(gatePaletteRows(hexes, memory, 71)).toEqual([
+      { regionId: "1:2,4", label: "Gate 987 · tundra (2,4) in Frostmere", number: 987, lastSeenTurn: 68 }
+    ]);
+  });
+
+  it("forgets a gate a newer report shows is gone", () => {
+    const hexes = [gateHex("1:2,4", "tundra (2,4) in Frostmere", null)];
+    const memory: GateMemory = new Map([["1:2,4", { sentence: null, turn: 70 }]]);
+    expect(gatePaletteRows(hexes, memory, 71)).toEqual([]);
+  });
+
+  it("gives a stale hex's own sighting the turn the hex was last seen", () => {
+    const hexes = [
+      gateHex("1:2,4", "tundra (2,4) in Frostmere", "There is a Gate here (Gate 987).", "stale", 64)
+    ];
+    expect(gatePaletteRows(hexes, none, 71)).toEqual([
+      { regionId: "1:2,4", label: "Gate 987 · tundra (2,4) in Frostmere", number: 987, lastSeenTurn: 64 }
+    ]);
+  });
+
+  it("offers nothing when no gate is known", () => {
+    expect(gatePaletteRows([], none, 71)).toEqual([]);
+    expect(gatePaletteRows([gateHex("1:1,1", "plain (1,1) in Hope", null)], none, 71)).toEqual([]);
+    expect(gatePaletteRows([gateHex("1:1,1", "plain (1,1) in Hope", undefined)], none, 71)).toEqual([]);
+  });
+});
+
+describe("gate rows in the palette (ah-uni7j)", () => {
+  /** Gates as `gatePaletteRows` hands them over, already in number order. */
+  const gates: NonNullable<PaletteInput["gates"]> = [
+    { regionId: "1:30,18", label: "Gate 1 · desert (30,18) in Sarn", number: 1, run: noop },
+    { regionId: "1:12,3", label: "Gate 5 · plain (12,3) in Hope", number: 5, run: noop },
+    { regionId: "1:36,4", label: "Gate 10 · mountain (36,4) in Slounspifra", number: 10, run: noop },
+    { regionId: "1:22,9", label: "Gate 12 · forest (22,9) in Elmwood", number: 12, run: noop },
+    {
+      regionId: "1:2,4",
+      label: "Gate 21 · tundra (2,4) in Frostmere",
+      number: 21,
+      lastSeenTurn: 78,
+      run: noop
+    },
+    { regionId: "1:8,20", label: "Gate (closed) · swamp (8,20) in Mire", number: null, run: noop }
+  ];
+  const palette = () =>
+    build({
+      ownUnits: [{ unitId: "14355", name: "Scouts", run: noop }],
+      settlements: [{ regionId: "1:12,34", label: "Akroitos [city] · plain (12,34) in Hope", run: noop }],
+      factions: [{ factionId: "10", name: "Thane's Ring", own: false, merged: false, attitude: null, run: noop }],
+      regions: [{ regionId: "1:12,34", label: "plain (12,34) in Hope", run: noop }],
+      gates
+    });
+  const gateLabels = (rows: PaletteEntry[]) =>
+    rows.filter((row) => row.kind === "gate").map((row) => row.label);
+
+  it("lists the gates with nothing typed, after the settlements and ahead of the factions", () => {
+    const kinds = filterPalette(palette(), "").map((row) => row.kind);
+    expect(kinds).toEqual(["unit", "settlement", "gate", "gate", "gate", "gate", "gate", "gate", "faction", "region"]);
+  });
+
+  it("carries a remembered gate's turn onto its row", () => {
+    expect(palette().find((row) => row.label.startsWith("Gate 21"))?.lastSeenTurn).toBe(78);
+  });
+
+  it("lists every gate for `gate`, in number order with the closed one last", () => {
+    expect(gateLabels(filterPalette(palette(), "gate"))).toEqual(gates.map((gate) => gate.label));
+  });
+
+  it("finds every gate whose number holds the digits, the exact number leading the gates", () => {
+    const labels = gateLabels(filterPalette(palette(), "1"));
+    expect(labels[0]).toBe("Gate 1 · desert (30,18) in Sarn");
+    for (const number of ["Gate 10 ", "Gate 12 ", "Gate 21 "]) {
+      expect(labels.some((label) => label.startsWith(number))).toBe(true);
+    }
+  });
+
+  it("puts the exact number ahead of a gate whose place holds the same digits", () => {
+    const shown = filterPalette(palette(), "12");
+    expect(gateLabels(shown)[0]).toBe("Gate 12 · forest (22,9) in Elmwood");
+    // The other kinds keep their places: only the gates are reordered among themselves.
+    const unlifted = palette().map((row) => ({ ...row, leadsKindOn: undefined }));
+    expect(shown.map((row) => row.kind)).toEqual(
+      filterPalette(unlifted, "12").map((row) => row.kind)
+    );
+    expect(gateLabels(filterPalette(unlifted, "12"))[0]).toBe("Gate 5 · plain (12,3) in Hope");
+  });
+
+  it("never lifts the exact gate above a better-fitting row of another kind", () => {
+    const rows = build({
+      ownUnits: [{ unitId: "12", name: "12th Lancers", run: noop }],
+      gates
+    });
+    expect(filterPalette(rows, "12")[0]?.kind).toBe("unit");
+  });
+
+  it("finds a closed gate by `closed`, and by no number", () => {
+    expect(gateLabels(filterPalette(palette(), "closed"))).toEqual([
+      "Gate (closed) · swamp (8,20) in Mire"
+    ]);
+    expect(gateLabels(filterPalette(palette(), "987"))).toEqual([]);
+  });
+
+  it("finds a gate by its province", () => {
+    expect(gateLabels(filterPalette(palette(), "frostmere"))).toEqual([
+      "Gate 21 · tundra (2,4) in Frostmere"
+    ]);
+  });
+
+  it("reads `gate` as the kind word, unknown to every other row", () => {
+    expect(palette().filter((row) => row.kind === "gate")).toHaveLength(gates.length);
   });
 });

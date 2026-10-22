@@ -283,3 +283,26 @@ describe("the mage sheet row with no mages (ah-mlls.8)", () => {
     expect(row).toContain('aria-selected="true"');
   });
 });
+
+describe("a palette row for a gate (ah-uni7j)", () => {
+  const gate: PaletteEntry = {
+    id: "gate-1:2,4",
+    kind: "gate",
+    label: "Gate 987 · tundra (2,4) in Frostmere",
+    lastSeenTurn: 78,
+    run: noop
+  };
+
+  it("carries the kind word gate, after the remembered turn", () => {
+    expect(kindLabel(gate)).toBe("gate");
+    const row = rowOf(draw([gate]), "Gate 987 · tundra (2,4) in Frostmere");
+    const seen = row.indexOf("last seen turn 78");
+    expect(seen).toBeGreaterThan(-1);
+    expect(row.indexOf(">gate<")).toBeGreaterThan(seen);
+  });
+
+  it("cuts a long label at its end rather than widening the palette", () => {
+    const row = rowOf(draw([gate]), "Gate 987 · tundra (2,4) in Frostmere");
+    expect(row).toMatch(/<span class="[^"]*truncate[^"]*">Gate 987 · tundra/);
+  });
+});

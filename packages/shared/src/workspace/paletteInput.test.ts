@@ -169,6 +169,42 @@ describe("assemblePaletteInput (ah-1xl5)", () => {
     expect(calls).toEqual(["openFaction null", "openFaction 10"]);
   });
 
+  it("lists every known gate, remembered ones included, choosing one selects its hex (ah-uni7j)", () => {
+    const hexes = [
+      aHexNode({
+        regionId: "1:36,4",
+        label: "mountain (36,4) in Slounspifra",
+        region: aReportRegion({ regionId: "1:36,4", gate: "There is a Gate here (Gate 987)." })
+      }),
+      aHexNode({
+        regionId: "1:2,4",
+        label: "tundra (2,4) in Frostmere",
+        region: aReportRegion({ regionId: "1:2,4", gate: null })
+      })
+    ];
+    const gates = new Map([["1:2,4", { sentence: "There is a Gate here (Gate 12).", turn: 68 }]]);
+    const { doors: d, calls } = doors();
+    const rows = assemblePaletteInput(world({ hexes, currentTurn: 70, gates }), d).gates ?? [];
+    expect(rows.map(({ label, lastSeenTurn }) => [label, lastSeenTurn])).toEqual([
+      ["Gate 12 · tundra (2,4) in Frostmere", 68],
+      ["Gate 987 · mountain (36,4) in Slounspifra", undefined]
+    ]);
+    rows[1]?.run();
+    expect(calls).toEqual(["selectHex 1:36,4"]);
+  });
+
+  it("lists a report's own gate when no gate memory is given (ah-uni7j)", () => {
+    const hexes = [
+      aHexNode({
+        regionId: "1:36,4",
+        label: "mountain (36,4) in Slounspifra",
+        region: aReportRegion({ regionId: "1:36,4", gate: "There is a closed Gate here." })
+      })
+    ];
+    const rows = assemblePaletteInput(world({ hexes, currentTurn: 70 }), doors().doors).gates ?? [];
+    expect(rows.map((row) => row.label)).toEqual(["Gate (closed) · mountain (36,4) in Slounspifra"]);
+  });
+
   it("lists settlements with the turn a stale one was seen, choosing one selects its hex", () => {
     const settlement = { name: "Mudwick", size: "village" };
     const hexes = [
