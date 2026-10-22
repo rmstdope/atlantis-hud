@@ -95,6 +95,9 @@ pub fn merge_regions(existing: &ReportRegion, incoming: &ReportRegion) -> Report
         exits: union_by(&existing.exits, &incoming.exits, |exit| {
             exit.direction.clone()
         }),
+        // Only a faction with Gate Lore there is shown the gate (data/skills `gate lore [GATE] 1`),
+        // so the ally's sentence fills a gap rather than contradicting the viewer's silence.
+        gate: existing.gate.clone().or_else(|| incoming.gate.clone()),
         structures: union_by(&existing.structures, &incoming.structures, |structure| {
             structure.structure_id.clone()
         }),
@@ -196,7 +199,9 @@ fn merge_into_sightings(
         //
         // A stored sighting from an earlier turn contributes its geography and economy to the
         // merge but none of its units: the merged row is stamped with the later turn, and would
-        // otherwise vouch for units nobody has seen since - a dead unit of ours included.
+        // otherwise vouch for units nobody has seen since - a dead unit of ours included. Nor its
+        // gate line: that is the earlier turn's fact, and the gate memory already remembers it as
+        // such (`ah-r5fg`), so carrying it would show it as printed this turn.
         let merged = match previous
             .and_then(|sighting| stored_region(sighting).map(|region| (sighting, region)))
         {
@@ -204,6 +209,7 @@ fn merge_into_sightings(
                 let base = if sighting.last_seen_turn < turn_number {
                     ReportRegion {
                         units: Vec::new(),
+                        gate: None,
                         ..stored_region
                     }
                 } else {
@@ -810,6 +816,35 @@ mod tests {
             "the viewer already had the hex"
         );
         assert_eq!(outcome.sightings[0].last_seen_turn, 40);
+    }
+
+    /// Only a faction with Gate Lore there is shown the gate (data/skills `gate lore [GATE] 1`), so
+    /// within one turn the ally's sentence fills the viewer's silence (`ah-r5fg`).
+    #[test]
+    fn a_same_turn_allys_gate_fills_the_viewers_silence() {
+        let mine = region();
+        let mut theirs = region();
+        theirs.gate = Some("There is a Gate here (Gate 987).".to_owned());
+
+        assert_eq!(
+            merge_regions(&mine, &theirs).gate.as_deref(),
+            Some("There is a Gate here (Gate 987).")
+        );
+    }
+
+    /// An earlier turn's gate is not this turn's fact: a merge stamped with a later turn must not
+    /// carry it, or the pane shows it as printed this turn rather than remembered (`ah-r5fg`).
+    #[test]
+    fn a_later_turns_merge_carries_no_gate_an_earlier_sighting_held() {
+        let mut mine = region();
+        mine.gate = Some("There is a Gate here (Gate 987).".to_owned());
+        let stored = vec![sighting_of(&mine, 70)];
+
+        let outcome = merge_report_into_sightings(&stored, &report_of(vec![region()]), 71);
+
+        let payload: ReportRegion =
+            serde_json::from_str(&outcome.sightings[0].payload_json).unwrap();
+        assert_eq!(payload.gate, None);
     }
 
     #[test]

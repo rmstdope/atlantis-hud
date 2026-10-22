@@ -112,6 +112,7 @@ export function aReportRegion(overrides: Partial<ReportRegion> = {}): ReportRegi
     wanted: [],
     forSale: [],
     exits: [],
+    gate: null,
     structures: [],
     units: [],
     ...overrides

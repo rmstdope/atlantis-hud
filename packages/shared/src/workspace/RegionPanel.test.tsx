@@ -9,6 +9,7 @@ import type {
 } from "@atlantis/core-client";
 import { aReportRegion, aReportUnit, aStructure } from "@atlantis/core-client";
 import type { GameDataEntry, GameDataIndex } from "../gameData";
+import type { RememberedGate } from "../gateMemory";
 import type { RememberedResource } from "../resourceMemory";
 import { SURFACE, type HexNode } from "../hexMapModel";
 import { aHexNode } from "../testing/builders";
@@ -703,5 +704,75 @@ describe("the region panel's Blocked section", () => {
 
   it("has no Blocked section when nothing was blocked", () => {
     expect(draw()).not.toContain('data-section="blocked"');
+  });
+});
+
+describe("the region panel's Gate section (ah-r5fg)", () => {
+  beforeEach(() => {
+    resetWorkspaceStore();
+    resetHexNotesStore();
+  });
+
+  const SENTENCE = "There is a Gate here (Gate 987).";
+  const drawGate = (gate: string | null, rememberedGate?: RememberedGate) =>
+    renderToStaticMarkup(
+      <RegionPanel
+        hex={{ ...HEX, region: { ...HEX.region!, gate } }}
+        client={CLIENT}
+        game={GAME}
+        turn={82}
+        rememberedGate={rememberedGate}
+      />
+    );
+  /** The section's heading, as `Section` writes it. */
+  const HEADING = ">Gate</p>";
+
+  it("writes this turn's gate sentence word for word, directly above Exits", () => {
+    const markup = drawGate(SENTENCE);
+
+    expect(markup).toContain(HEADING);
+    expect(markup).toContain(`<p class="m-0 text-ink">${SENTENCE}</p>`);
+    const gateAt = markup.indexOf(HEADING);
+    const exitsAt = markup.indexOf(">Exits</p>");
+    expect(gateAt).toBeLessThan(exitsAt);
+    // Directly above: between the two headings there is the Gate heading's close and one line.
+    expect(markup.slice(gateAt, exitsAt).split("</p>")).toHaveLength(3);
+  });
+
+  it("writes a gate remembered from an earlier turn dim and italic, naming the turn in the hover", () => {
+    const markup = drawGate(null, { sentence: SENTENCE, turn: 78 });
+
+    expect(markup).toContain(HEADING);
+    expect(markup).toContain(
+      `<p class="m-0 italic text-ink-dim" title="Seen in turn 78&#x27;s report; this turn&#x27;s report cannot show gates here.">${SENTENCE}</p>`
+    );
+  });
+
+  it("shows a stale hex only what its own sighting printed", () => {
+    const staleHex = (gate: string | null) =>
+      renderToStaticMarkup(
+        <RegionPanel
+          hex={{ ...HEX, knowledge: "stale", lastSeenTurn: 80, ageInTurns: 2, region: { ...HEX.region!, gate } }}
+          client={CLIENT}
+          game={GAME}
+          turn={82}
+          rememberedGate={{ sentence: SENTENCE, turn: 78 }}
+        />
+      );
+
+    expect(staleHex(null)).not.toContain(HEADING);
+    expect(staleHex(SENTENCE)).toContain(`<p class="m-0 text-ink">${SENTENCE}</p>`);
+  });
+
+    it("has no Gate heading when no gate is known, or the memory was cleared", () => {
+    expect(drawGate(null)).not.toContain(HEADING);
+    expect(drawGate(null, { sentence: null, turn: 82 })).not.toContain(HEADING);
+  });
+
+  it("is not interactive", () => {
+    const markup = drawGate(SENTENCE);
+    const section = markup.slice(markup.indexOf(HEADING), markup.indexOf(">Exits</p>"));
+
+    expect(section).not.toMatch(/<a |<button|tabindex/u);
   });
 });

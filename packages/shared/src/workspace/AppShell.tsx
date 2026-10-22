@@ -1019,6 +1019,8 @@ export function AppShell({
   const resourceMemory = useResourceMemoryStore((state) => state.memory);
   /** Every race the stored turns saw for sale, for the game data dialog's terrain pages. */
   const recruitSightings = useResourceMemoryStore((state) => state.recruits);
+  /** The gates earlier stored turns showed, for the Region pane's Gate section (ah-r5fg). */
+  const gateMemory = useResourceMemoryStore((state) => state.gates);
   /** Which header popover is open - one at a time, by construction. Dialogs keep their own flags. */
   const [openPopover, setOpenPopover] = useState<HeaderPopoverId | null>(null);
   /** Which faction's Forget is armed in the mage-sheets popover, or null (ah-lyg6.1.3). */
@@ -6295,6 +6297,7 @@ export function AppShell({
                 onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId)}
                 gameData={gameData}
                 remembered={rememberedFor(resourceMemory, hex?.regionId ?? "")}
+                rememberedGate={gateMemory.get(hex?.regionId ?? "")}
                 onOpenGameData={
                   gameData === null ? undefined : (entryId) => setGameDataOpen({ entryId })
                 }

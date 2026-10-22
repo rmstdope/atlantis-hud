@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { Coordinate, CoreClient, MapLevel, OpenedGame, OrderDiagnostic } from "@atlantis/core-client";
 import { structureEntryId, type GameDataIndex } from "../gameData";
 import { resourceChecksOf, type ResourceCheck } from "../resourceChecks";
+import { gateLineOf, rememberedGateTitle, type RememberedGate } from "../gateMemory";
 import type { RememberedResource } from "../resourceMemory";
 import { abbreviateDirection, levelClause, regionIdOf, type HexNode } from "../hexMapModel";
 import { structureLabelParts } from "../structureLabel";
@@ -44,6 +45,7 @@ export function RegionPanel({
   onSelectUnit,
   gameData = null,
   remembered,
+  rememberedGate,
   onOpenGameData,
   blocked = []
 }: {
@@ -92,6 +94,11 @@ export function RegionPanel({
    * Empty when nothing is remembered, which is what a shell that does not pass it gets.
    */
   remembered?: ReadonlyMap<string, RememberedResource>;
+  /**
+   * The newest gate verdict an earlier turn settled for this hex (`ah-r5fg`), shown when the region
+   * on screen printed no gate line of its own. Absent when nothing is remembered.
+   */
+  rememberedGate?: RememberedGate;
   /** Absent while the ruleset has not loaded; nothing is then linked. */
   onOpenGameData?: (entryId: string) => void;
 }) {
@@ -127,6 +134,7 @@ export function RegionPanel({
   // No `useMemo`: this component returns early above (`if (!hex)`), so a hook here would break the
   // rules of hooks. The computation is a handful of array walks over one hex.
   const checks = region === null ? [] : resourceChecksOf(region, gameData, remembered, turn);
+  const gate = gateLineOf(region, rememberedGate, turn, stale);
 
   return (
     <CollapsiblePanel
@@ -273,6 +281,23 @@ export function RegionPanel({
               ))}
             </Section>
           ) : null}
+
+          {/*
+            The report's own sentence, word for word, so no game's wording needs translating. One
+            remembered from an earlier report is written dim and italic, as this pane writes any fact
+            the shown report did not print, with the turn in the hover (`ah-r5fg`).
+          */}
+          {gate === null ? null : (
+            <Section title="Gate">
+              {gate.seenInTurn === null ? (
+                <p className="m-0 text-ink">{gate.sentence}</p>
+              ) : (
+                <p className="m-0 italic text-ink-dim" title={rememberedGateTitle(gate.seenInTurn)}>
+                  {gate.sentence}
+                </p>
+              )}
+            </Section>
+          )}
 
           <Section title="Exits">
             {region.exits.length === 0 ? (
