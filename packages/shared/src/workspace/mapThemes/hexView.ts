@@ -191,7 +191,10 @@ export type HexView = {
    * `7235 +1` or `guards`. Null when nothing was stopped here or the badge is off.
    */
   blocked: string | null;
-  /** Whether the hex holds a gateway, the magical passage between levels. */
+  /**
+   * Whether the hex holds a gate: a Gateway structure, the passage between levels, or a Gate the
+   * region's report names, open or closed (`There is a Gate here (Gate 987).`, ah-8ble).
+   */
   gate: boolean;
   /**
    * The hex's coordinates as the map prints them, `33,25` (ah-ezyg), or null while the switch is
