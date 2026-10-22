@@ -12,12 +12,16 @@
  * It also holds the races every stored turn saw offered for sale (`recruits`, ah-yu3j.1), for the
  * game data dialog's terrain pages. A second thing earlier turns showed, folded in the same walk so
  * that no turn is parsed twice; it is invalidated exactly when the resource verdicts are.
+ *
+ * And the gates earlier reports showed (`gates`, ah-r5fg), a third fold of the same walk for the
+ * same reason. Gates need no catalogue, but riding this walk means they wait for it like the rest.
  */
 
 import { create } from "zustand";
 import type { CoreClient, OpenedGame, ParsedReport } from "@atlantis/core-client";
 
 import type { GameDataIndex } from "./gameData";
+import { mergedGateMemory, NO_GATE_MEMORY, withGateTurn, type GateMemory } from "./gateMemory";
 import {
   mergedRecruitSightings,
   NO_RECRUIT_SIGHTINGS,
@@ -40,6 +44,8 @@ export type ResourceMemoryState = {
   memory: ResourceMemory;
   /** Every race seen for sale, by region, in any turn of the game (ah-yu3j.1). */
   recruits: RecruitSightings;
+  /** The newest gate verdict for every hex any stored turn settled (ah-r5fg). */
+  gates: GateMemory;
   /**
    * How many stored turns the last scan could not read. Kept because it costs nothing; shown
    * nowhere, there being no surface for it that the navigator has agreed to.
@@ -71,6 +77,7 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
   status: "idle",
   memory: NO_RESOURCE_MEMORY,
   recruits: NO_RECRUIT_SIGHTINGS,
+  gates: NO_GATE_MEMORY,
   unreadTurns: 0,
   scanRun: 0,
 
@@ -82,11 +89,12 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
       status: "scanning",
       memory: NO_RESOURCE_MEMORY,
       recruits: NO_RECRUIT_SIGHTINGS,
+      gates: NO_GATE_MEMORY,
       unreadTurns: 0,
       scanRun: run
     });
 
-    const { memory, recruits, unreadTurns } = await scanStoredTurns(client, game, index);
+    const { memory, recruits, gates, unreadTurns } = await scanStoredTurns(client, game, index);
 
     // A game switch, or a second scan started because the ruleset changed, leaves a late result for
     // a state that has moved on.
@@ -99,6 +107,7 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
       status: "ready",
       memory: mergedMemory(memory, state.memory),
       recruits: mergedRecruitSightings(recruits, state.recruits),
+      gates: mergedGateMemory(gates, state.gates),
       unreadTurns
     }));
   },
@@ -109,7 +118,8 @@ export const useResourceMemoryStore = create<ResourceMemoryState>()((set, get) =
     }
     set((state) => ({
       memory: withTurn(state.memory, report, turn, index),
-      recruits: withRecruitTurn(state.recruits, report, index)
+      recruits: withRecruitTurn(state.recruits, report, index),
+      gates: withGateTurn(state.gates, report, turn)
     }));
   },
 
@@ -134,12 +144,22 @@ export async function scanStoredTurns(
   client: Pick<CoreClient, "listImportedTurns" | "loadImportedTurn" | "parseReportFull">,
   game: OpenedGame,
   index: GameDataIndex | null
-): Promise<{ memory: ResourceMemory; recruits: RecruitSightings; unreadTurns: number }> {
+): Promise<{
+  memory: ResourceMemory;
+  recruits: RecruitSightings;
+  gates: GateMemory;
+  unreadTurns: number;
+}> {
   // Nothing can be judged without the catalogue, and `AppShell` scans while the ruleset is still
   // fetching - so without this the whole walk runs, parsing every stored turn over IPC, to hand
   // back nothing and be re-run the moment the ruleset lands.
   if (index === null) {
-    return { memory: NO_RESOURCE_MEMORY, recruits: NO_RECRUIT_SIGHTINGS, unreadTurns: 0 };
+    return {
+      memory: NO_RESOURCE_MEMORY,
+      recruits: NO_RECRUIT_SIGHTINGS,
+      gates: NO_GATE_MEMORY,
+      unreadTurns: 0
+    };
   }
 
   const gameId = game.manifest.metadata.gameId;
@@ -149,11 +169,17 @@ export async function scanStoredTurns(
     summaries = await client.listImportedTurns(game.databasePath, gameId);
   } catch (error) {
     console.warn("could not list this game's stored turns for resource verdicts", error);
-    return { memory: NO_RESOURCE_MEMORY, recruits: NO_RECRUIT_SIGHTINGS, unreadTurns: 0 };
+    return {
+      memory: NO_RESOURCE_MEMORY,
+      recruits: NO_RECRUIT_SIGHTINGS,
+      gates: NO_GATE_MEMORY,
+      unreadTurns: 0
+    };
   }
 
   let memory: ResourceMemory = NO_RESOURCE_MEMORY;
   let recruits: RecruitSightings = NO_RECRUIT_SIGHTINGS;
+  let gates: GateMemory = NO_GATE_MEMORY;
   let unreadTurns = 0;
   for (const { key } of summaries) {
     try {
@@ -170,13 +196,14 @@ export async function scanStoredTurns(
       const report = await client.parseReportFull(record.rawReport);
       memory = withTurn(memory, report, key.turnNumber, index);
       recruits = withRecruitTurn(recruits, report, index);
+      gates = withGateTurn(gates, report, key.turnNumber);
     } catch (error) {
       console.warn(`could not read turn ${key.turnNumber}'s resource verdicts`, error);
       unreadTurns += 1;
     }
   }
 
-  return { memory, recruits, unreadTurns };
+  return { memory, recruits, gates, unreadTurns };
 }
 
 const DEFAULT_STATE = {
@@ -184,6 +211,7 @@ const DEFAULT_STATE = {
   status: "idle" as const,
   memory: NO_RESOURCE_MEMORY,
   recruits: NO_RECRUIT_SIGHTINGS,
+  gates: NO_GATE_MEMORY,
   unreadTurns: 0,
   scanRun: 0
 };

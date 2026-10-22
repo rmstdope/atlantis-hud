@@ -3,6 +3,7 @@ import { aParsedReport, aReportRegion, aReportUnit } from "@atlantis/core-client
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GameDataEntry, GameDataIndex } from "./gameData";
+import { NO_GATE_MEMORY } from "./gateMemory";
 import { NO_RECRUIT_SIGHTINGS, racesSeenIn } from "./recruitSightings";
 import { NO_RESOURCE_MEMORY, rememberedFor } from "./resourceMemory";
 import {
@@ -134,6 +135,7 @@ describe("scanStoredTurns (ah-tgtp)", () => {
     await expect(scanStoredTurns(core, game(), anIndex())).resolves.toEqual({
       memory: NO_RESOURCE_MEMORY,
       recruits: NO_RECRUIT_SIGHTINGS,
+      gates: NO_GATE_MEMORY,
       unreadTurns: 0
     });
   });
@@ -228,5 +230,39 @@ describe("recruit sightings in the same scan (ah-yu3j.1)", () => {
 
     useResourceMemoryStore.getState().clear();
     expect(useResourceMemoryStore.getState().recruits).toBe(NO_RECRUIT_SIGHTINGS);
+  });
+});
+
+describe("gate memory in the same scan (ah-r5fg)", () => {
+  const SENTENCE = "There is a Gate here (Gate 987).";
+  const gated = aParsedReport({ regions: [aReportRegion({ terrain: "swamp", gate: SENTENCE })] });
+  const silent = aParsedReport({ regions: [aReportRegion({ terrain: "swamp" })] });
+
+  it("remembers a gate an earlier stored turn printed, parsing each turn once", async () => {
+    const parseReportFull = vi.fn().mockResolvedValueOnce(gated).mockResolvedValueOnce(silent);
+    const reader = client({
+      listImportedTurns: vi.fn().mockResolvedValue([summary("3", 78), summary("3", 82)]),
+      parseReportFull
+    });
+
+    const { gates } = await scanStoredTurns(reader, game(), anIndex());
+
+    expect(parseReportFull).toHaveBeenCalledTimes(2);
+    expect(gates.get(hexId)).toEqual({ sentence: SENTENCE, turn: 78 });
+  });
+
+  it("lands the scan's gates in the store, folds the turn on screen in, and clears with the rest", async () => {
+    const reader = client({
+      listImportedTurns: vi.fn().mockResolvedValue([summary("3", 78)]),
+      parseReportFull: vi.fn().mockResolvedValue(gated)
+    });
+    await useResourceMemoryStore.getState().scan(reader, game(), anIndex());
+    expect(useResourceMemoryStore.getState().gates.get(hexId)).toEqual({ sentence: SENTENCE, turn: 78 });
+
+    useResourceMemoryStore.getState().foldIn("aug-2026", gated, 82, anIndex());
+    expect(useResourceMemoryStore.getState().gates.get(hexId)).toEqual({ sentence: SENTENCE, turn: 82 });
+
+    useResourceMemoryStore.getState().clear();
+    expect(useResourceMemoryStore.getState().gates).toBe(NO_GATE_MEMORY);
   });
 });
