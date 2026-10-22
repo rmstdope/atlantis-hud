@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A gate remembered on the map</title>
+<style>
+:root{--ground:#10151c;--panel:#171d26;--edge:#26303d;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 60px}
+main,header{max-width:1100px;margin:0 auto}
+h1{font-size:23px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);font-size:14px;margin-top:8px;max-width:90ch}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:20px;margin-top:22px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card h3{font-size:16px}.card h3 em{color:var(--brass);font-style:normal;font-size:11px;letter-spacing:1.6px;margin-right:8px}
+.rec{color:var(--ok);font-size:12px}
+.hexrow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.hw{text-align:center;font:10.5px 'Helvetica Neue',Arial,sans-serif;color:var(--ink-dim);width:96px}
+.hw b{display:block;color:var(--ink);font-size:11px;font-weight:normal;margin-top:3px}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}.notes li.con::before{content:"\2212  ";color:var(--danger)}
+.tip{font:11px 'Helvetica Neue',Arial,sans-serif;background:#2a3340;border:1px solid #3c4a5a;color:var(--ink);padding:4px 7px;border-radius:4px;display:inline-block}
+</style></head><body>
+<header>
+<h1>A gate seen once, <span>after the mage has left</span></h1>
+<p>Agreed already: a gate the player has seen stays known until a report that <i>could</i> see gates there says otherwise. The Region pane already shows a remembered gate in dim italics with a hover naming the turn. The open question is the <b>map</b>: does a remembered gate look the same as one seen this turn?</p>
+<p>Each row shows the same four hexes: <b>1</b> gate seen this turn &middot; <b>2</b> gate remembered (mage left) &middot; <b>3</b> a mage came back and saw no gate (cleared) &middot; <b>4</b> the whole hex is an old sighting (fogged as today).</p>
+</header>
+<main><div class="cards">
+
+<div class="card">
+<h3><em>A</em> The same mark, always <span class="rec">&mdash; chosen</span></h3>
+<div class="hexrow">
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/><ellipse cx="43" cy="50" rx="13" ry="17" fill="none" stroke="#d9a441" stroke-width="3"/><ellipse cx="43" cy="50" rx="5" ry="8" fill="#d9a441" opacity=".55"/></svg><b>1 seen now</b>Gate 987</div>
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/><ellipse cx="43" cy="50" rx="13" ry="17" fill="none" stroke="#d9a441" stroke-width="3"/><ellipse cx="43" cy="50" rx="5" ry="8" fill="#d9a441" opacity=".55"/></svg><b>2 remembered</b>identical</div>
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/></svg><b>3 cleared</b>no mark</div>
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/><ellipse cx="43" cy="50" rx="13" ry="17" fill="none" stroke="#d9a441" stroke-width="3"/><ellipse cx="43" cy="50" rx="5" ry="8" fill="#d9a441" opacity=".55"/><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#10151c" opacity=".5"/></svg><b>4 old hex</b>fog, as today</div>
+</div>
+<ul class="notes">
+<li>A gate is geography, like an exit or a road &mdash; and those look the same whether seen this turn or remembered.</li>
+<li>Nothing new to learn on the map; the Region pane carries the &ldquo;seen in turn 78&rdquo; detail.</li>
+<li class="con">From the map alone you cannot tell which gates your mages are standing on right now.</li>
+</ul>
+</div>
+
+<div class="card">
+<h3><em>B</em> A remembered gate is drawn faded</h3>
+<div class="hexrow">
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/><ellipse cx="43" cy="50" rx="13" ry="17" fill="none" stroke="#d9a441" stroke-width="3"/><ellipse cx="43" cy="50" rx="5" ry="8" fill="#d9a441" opacity=".55"/></svg><b>1 seen now</b>Gate 987</div>
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/><g opacity=".42"><ellipse cx="43" cy="50" rx="13" ry="17" fill="none" stroke="#d9a441" stroke-width="3" stroke-dasharray="4 3"/><ellipse cx="43" cy="50" rx="5" ry="8" fill="#d9a441" opacity=".55"/></g></svg><b>2 remembered</b>faded, dashed</div>
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/></svg><b>3 cleared</b>no mark</div>
+<div class="hw"><svg width="86" height="96" viewBox="0 0 86 96"><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#1d2a1f" stroke="#3c4a52"/><g opacity=".42"><ellipse cx="43" cy="50" rx="13" ry="17" fill="none" stroke="#d9a441" stroke-width="3" stroke-dasharray="4 3"/><ellipse cx="43" cy="50" rx="5" ry="8" fill="#d9a441" opacity=".55"/></g><polygon points="43,4 82,26 82,70 43,92 4,70 4,26" fill="#10151c" opacity=".5"/></svg><b>4 old hex</b>faded + fog</div>
+</div>
+<ul class="notes">
+<li>Matches the Region pane, where a remembered gate is already dim.</li>
+<li>Shows at a glance which gates are confirmed this turn.</li>
+<li class="con">The first map mark with two looks; every map style has to draw the faded one, and on a fogged hex it nearly disappears (hex 4).</li>
+</ul>
+</div>
+
+</div></main></body></html>
