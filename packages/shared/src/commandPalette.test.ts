@@ -1166,6 +1166,28 @@ describe("gate rows in the palette (ah-uni7j)", () => {
     expect(gateLabels(filterPalette(unlifted, "12"))[0]).toBe("Gate 5 · plain (12,3) in Hope");
   });
 
+  it("lifts a one-digit exact number over a lower gate whose place holds the digit", () => {
+    const rows = build({
+      gates: [
+        { regionId: "1:2,18", label: "Gate 1 · desert (2,18) in Sarn", number: 1, run: noop },
+        { regionId: "1:30,8", label: "Gate 2 · plain (30,8) in Hope", number: 2, run: noop }
+      ]
+    });
+    expect(gateLabels(filterPalette(rows, "2"))).toEqual([
+      "Gate 2 · plain (30,8) in Hope",
+      "Gate 1 · desert (2,18) in Sarn"
+    ]);
+  });
+
+  it("does not match a gate by the total its game prints", () => {
+    const rows = build({
+      gates: [
+        { regionId: "1:22,9", label: "Gate 12 · forest (22,9) in Elmwood", number: 12, run: noop }
+      ]
+    });
+    expect(gateLabels(filterPalette(rows, "150"))).toEqual([]);
+  });
+
   it("never lifts the exact gate above a better-fitting row of another kind", () => {
     const rows = build({
       ownUnits: [{ unitId: "12", name: "12th Lancers", run: noop }],
