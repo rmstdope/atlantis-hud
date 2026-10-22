@@ -671,6 +671,28 @@ describe("structures, split by what they mean rather than counted together", () 
     expect(view.shafts).toBe(1);
   });
 
+  it("lights the gate for a Gate the report names, with no Gateway structure (ah-8ble)", () => {
+    // `There is a Gate here (Gate 987).` is a line of the region, not a `+` structure: it is how
+    // neworigins-3.0.0-g3-f42-t82.rep names the Gate at (36,4), and the badge drew nothing for it.
+    const gated = hex({
+      knowledge: "current",
+      region: region({ gate: "There is a Gate here (Gate 987)." })
+    });
+
+    expect(viewOf(gated).gate).toBe(true);
+    expect(viewOf(gated, { badges: { gate: false } }).gate).toBe(false);
+  });
+
+  it("lights the gate for a closed Gate too, which the report prints without a number", () => {
+    const closed = hex({
+      knowledge: "current",
+      region: region({ gate: "There is a closed Gate here." })
+    });
+
+    expect(viewOf(closed).gate).toBe(true);
+    expect(viewOf(closed, { badges: { gate: false } }).gate).toBe(false);
+  });
+
   it("counts an unvisited hex as holding nothing, rather than guessing", () => {
     const view = viewOf(hex({ knowledge: "named" }));
 

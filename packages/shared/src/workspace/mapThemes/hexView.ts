@@ -589,7 +589,10 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     lairs: badges.lairs ? structures.lairs : 0,
     battle: badges.battles ? (options.battles?.get(hex.regionId) ?? null) : null,
     blocked: badges.blocked ? (options.blocked?.get(hex.regionId)?.label ?? null) : null,
-    gate: badges.gate && structures.gates > 0,
+    // A Gateway structure, or the region's own gate sentence (ah-8ble): reports name most gates
+    // as `There is a Gate here (Gate 987).` under the hex, and a closed one is still a gate. `??`
+    // because a region stored before the field existed has no `gate` at all.
+    gate: badges.gate && (structures.gates > 0 || (hex.region?.gate ?? null) !== null),
     coords: options.hexCoordinates === true ? `${hex.coordinate.x},${hex.coordinate.y}` : null
   };
 }
