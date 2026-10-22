@@ -1978,7 +1978,8 @@ export function AppShell({
           mac: isMacPlatform(),
           hexNotes,
           studyPlans,
-          plannerGroups: plannerGroupRows
+          plannerGroups: plannerGroupRows,
+          gates: gateMemory
         },
         {
           // The dock's focus effect needs the rows rendered, as the dossier's "show their units"
@@ -2026,6 +2027,7 @@ export function AppShell({
       hexNotes,
       studyPlans,
       plannerGroupRows,
+      gateMemory,
       armies,
       unitsById,
       offersProduction,

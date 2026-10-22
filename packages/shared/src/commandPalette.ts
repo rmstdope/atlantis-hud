@@ -5,6 +5,7 @@
 
 import type { HexNoteRecord, StudyPlanRecord } from "@atlantis/core-client";
 import { orderEntryId, type GameDataEntry } from "./gameData";
+import { gateLineOf, type GateMemory } from "./gateMemory";
 import type { HexNode } from "./hexMapModel";
 import type { KnownFaction } from "./paletteFactions";
 
@@ -20,6 +21,11 @@ export type PaletteEntryKind =
    * hex's: the hex row carries no settlement name, so typing a town's name finds exactly one row.
    */
   | "settlement"
+  /**
+   * One gate the player knows of (ah-uni7j), numbered or closed, with the hex it stands in. Its own
+   * kind rather than `structure`: the report gives a gate a line of its own, not a building's.
+   */
+  | "gate"
   /**
    * One structure standing in the world - `Soggy Saw Mill [1]`, not the dictionary's `Mine`.
    *
@@ -92,6 +98,12 @@ export type PaletteEntry = {
    * learns why Send is off; never highlighted, never run.
    */
   unavailable?: string;
+  /**
+   * A query that, typed on its own, moves this row to the front of its own kind (ah-uni7j): a
+   * gate's number, so typing `12` leads the gates with Gate 12 rather than with a gate standing at
+   * (12,3). Never shown, and never lifts the row past another kind (`filterPalette`).
+   */
+  leadsKindOn?: string;
   run: () => void;
 };
 
@@ -135,6 +147,8 @@ export type PaletteInput = {
   }>;
   /** Every settlement on the known map, labelled by `settlementPaletteRows`. */
   settlements?: Array<{ regionId: string; label: string; lastSeenTurn?: number; run: () => void }>;
+  /** Every gate the player knows of, placed and labelled by `gatePaletteRows`. */
+  gates?: Array<GatePaletteRow & { run: () => void }>;
   /** Every faction the loaded reports know, in `paletteFactions` order. */
   factions?: Array<KnownFaction & { run: () => void }>;
   regions?: Array<{ regionId: string; label: string; run: () => void }>;
@@ -215,6 +229,16 @@ export function buildPaletteEntries(input: PaletteInput): PaletteEntry[] {
       label: settlement.label,
       lastSeenTurn: settlement.lastSeenTurn,
       run: settlement.run
+    })),
+    // Gates with the other places, right after the towns and ahead of the factions and hexes
+    // (ah-uni7j), already in number order.
+    ...(input.gates ?? []).map<PaletteEntry>((gate) => ({
+      id: `gate-${gate.regionId}`,
+      kind: "gate",
+      label: gate.label,
+      ...(gate.lastSeenTurn === undefined ? {} : { lastSeenTurn: gate.lastSeenTurn }),
+      ...(gate.number === null ? {} : { leadsKindOn: String(gate.number) }),
+      run: gate.run
     })),
     // Right after the towns and cities and ahead of the hexes, so a dozen factions are a short
     // scroll away with nothing typed rather than behind hundreds of hexes (ah-mlls.3).
@@ -353,6 +377,60 @@ export function settlementPaletteRows(
         : { regionId: hex.regionId, label }
     ];
   });
+}
+
+/** A gate palette row as `gatePaletteRows` places it; `number` is null for a closed gate. */
+export type GatePaletteRow = {
+  regionId: string;
+  label: string;
+  number: number | null;
+  lastSeenTurn?: number;
+};
+
+/** The gate's number in its sentence, `(Gate 12)` or `(Gate 12 of 150)`; the total is never read. */
+const GATE_NUMBER = /\(Gate (\d+)(?: of \d+)?\)/;
+
+/**
+ * One palette row per gate the player knows of (ah-uni7j): `Gate 987 · mountain (36,4) in
+ * Slounspifra`, or `Gate (closed) · swamp (8,20) in Mire` for the numberless form. The place is
+ * always there because a gate's number says nothing about where it is (data/GATE: "there is no
+ * correlation between the Gate number and the Gate's location").
+ *
+ * Which hexes have one is `gateLineOf`'s, the rule the map's Gates badge and the Region pane's Gate
+ * section already share, so a gate only an earlier report showed is listed and one a newer report
+ * shows gone is not. A Gateway structure is not one of these Gates and keeps its structure row.
+ *
+ * In number order, lowest first, closed gates after every numbered one, the map's hex order
+ * between equals. A remembered gate carries the turn whose report showed it; a stale hex's own
+ * sighting carries the turn the hex was last seen, as a settlement there does.
+ */
+export function gatePaletteRows(
+  hexes: readonly HexNode[],
+  gates: GateMemory,
+  currentTurn: number | null
+): GatePaletteRow[] {
+  const rows = hexes.flatMap<GatePaletteRow>((hex) => {
+    const stale = hex.knowledge === "stale";
+    const line = gateLineOf(hex.region ?? null, gates.get(hex.regionId), currentTurn, stale);
+    if (line === null) {
+      return [];
+    }
+    const found = GATE_NUMBER.exec(line.sentence);
+    const number = found ? Number(found[1]) : null;
+    const label = `${number === null ? "Gate (closed)" : `Gate ${number}`} · ${hex.label}`;
+    const lastSeenTurn =
+      line.seenInTurn ??
+      (hex.knowledge !== "current" &&
+      currentTurn !== null &&
+      hex.lastSeenTurn !== null &&
+      hex.lastSeenTurn < currentTurn
+        ? hex.lastSeenTurn
+        : null);
+    const row: GatePaletteRow = { regionId: hex.regionId, label, number };
+    return [lastSeenTurn === null ? row : { ...row, lastSeenTurn }];
+  });
+  const order = (row: GatePaletteRow) => row.number ?? Number.MAX_SAFE_INTEGER;
+  return rows.sort((a, b) => order(a) - order(b));
 }
 
 /**
@@ -518,7 +596,10 @@ export function filterPalette(entries: readonly PaletteEntry[], query: string): 
     : scored;
 
   // Stable, so entries of equal fit keep `buildPaletteEntries`' reading order.
-  const byFit = [...strong].sort((a, b) => a.fit - b.fit).map((s) => s.entry);
+  const byFit = leadKinds(
+    [...strong].sort((a, b) => a.fit - b.fit).map((s) => s.entry),
+    needle
+  );
 
   // Rule 3. Walking an already fit-sorted list and taking the first of each kind yields the
   // representatives *in fit order* for free - so the best match overall is still the first row.
@@ -534,6 +615,27 @@ export function filterPalette(entries: readonly PaletteEntry[], query: string): 
     }
   }
   return [...leading, ...rest];
+}
+
+/**
+ * Rows whose `leadsKindOn` is exactly the query moved to the front of their kind (ah-uni7j): the
+ * kind's rows are dealt back into the slots that kind already held, so every other kind's row keeps
+ * its place. Rule 3 then gives the lifted row its kind's seat.
+ */
+function leadKinds(rows: PaletteEntry[], needle: string): PaletteEntry[] {
+  if (!rows.some((row) => row.leadsKindOn === needle)) {
+    return rows;
+  }
+  const lifted = new Set(rows.filter((row) => row.leadsKindOn === needle).map((row) => row.kind));
+  const queues = new Map<PaletteEntryKind, PaletteEntry[]>();
+  for (const kind of lifted) {
+    const ofKind = rows.filter((row) => row.kind === kind);
+    queues.set(kind, [
+      ...ofKind.filter((row) => row.leadsKindOn === needle),
+      ...ofKind.filter((row) => row.leadsKindOn !== needle)
+    ]);
+  }
+  return rows.map((row) => queues.get(row.kind)?.shift() ?? row);
 }
 
 /**

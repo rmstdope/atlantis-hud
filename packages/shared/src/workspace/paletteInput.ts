@@ -17,6 +17,7 @@ import type {
 } from "@atlantis/core-client";
 import {
   buildPaletteEntries,
+  gatePaletteRows,
   hexNotePaletteRows,
   mageNotePaletteRows,
   mageSheetPaletteAction,
@@ -26,6 +27,7 @@ import {
   type PaletteInput
 } from "../commandPalette";
 import type { GameDataEntry } from "../gameData";
+import { NO_GATE_MEMORY, type GateMemory } from "../gateMemory";
 import type { HexNode } from "../hexMapModel";
 import { paletteFactions } from "../paletteFactions";
 import type { ThemeName } from "../settingsStore";
@@ -67,6 +69,11 @@ export type PaletteWorld = {
   studyPlans: readonly StudyPlanRecord[];
   /** The study planner's groups, for which mages a note may be found on. */
   plannerGroups: Parameters<typeof mageNotePaletteRows>[1];
+  /**
+   * The gates earlier reports showed, from `resourceMemoryStore` (ah-uni7j). Absent means nothing
+   * remembered: a hex's own report still lists its gate.
+   */
+  gates?: GateMemory;
 };
 
 /** A key dialog the palette opens, as AppShell's `showOnlyKeyDialog` takes it. */
@@ -151,6 +158,12 @@ export function assemblePaletteInput(world: PaletteWorld, doors: PaletteDoors): 
     ),
     // A settlement goes to its hex exactly as the hex's own row does (ah-mlls.2).
     settlements: settlementPaletteRows(hexes, world.currentTurn).map((row) => ({
+      ...row,
+      run: () => doors.selectHex(row.regionId)
+    })),
+    // Every gate the player knows of, this turn's and remembered ones, by the rule the map's
+    // Gates badge uses; choosing one selects its hex as the hex's own row does (ah-uni7j).
+    gates: gatePaletteRows(hexes, world.gates ?? NO_GATE_MEMORY, world.currentTurn).map((row) => ({
       ...row,
       run: () => doors.selectHex(row.regionId)
     })),

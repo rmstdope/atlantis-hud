@@ -26,6 +26,7 @@ const OWN_UNIT = "18642";
 const OTHER_OWN_UNIT = "13401";
 const F42_T40 = readReport("g3f42t40");
 const F42_T42 = readReport("g3f42t42");
+const F42_T82 = readReport("g3f42t82");
 const HISTORICAL_F42_T40 = F42_T40.replace(
   "+ Bog [1] : Bog, closed to player units.",
   `+ Bog [1] : Bog, closed to player units.
@@ -115,6 +116,31 @@ test("the palette finds a settlement by name and goes to its hex", async ({ page
 
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
+});
+
+/** ah-uni7j: a gate has a palette row of its own, found by its number, that selects its hex. */
+test("the palette finds a gate by number and selects its hex", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Gate palette smoke");
+  await expect(page.getByTestId("app-header")).toBeVisible();
+  await page.setInputFiles('input[type="file"]', {
+    name: "f42-t82.rep",
+    mimeType: "text/plain",
+    buffer: Buffer.from(F42_T82, "utf8")
+  });
+  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*83\b/);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("987");
+  // Picked by kind, not position: units and hexes holding the digits may lead the list.
+  const row = page.getByTestId("palette-item").filter({ hasText: /gate$/i });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Gate 987 · mountain (36,4) in Slounspifra");
+  await row.click();
+
+  await expect(page.getByTestId("command-palette")).toHaveCount(0);
+  await expect(page.getByTestId("panel-region")).toContainText("(36,4)");
+  await expect(page.getByTestId("panel-region")).toContainText("There is a Gate here (Gate 987).");
 });
 
 test("the palette finds historical units and map objects", async ({ page }) => {
