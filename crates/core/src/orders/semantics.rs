@@ -63015,6 +63015,62 @@ BUILD
         }
     }
 
+    /// `ah-a51z`: `newage trident rules/economy_transport` (and `newage arcanum`) lets a
+    /// quartermaster "TRANSPORT items to any unit within 2 hexes" and "to another quartermaster up
+    /// to 3 hexes distant". The navigator ruled (2026-10-22) that a quartermaster owning no
+    /// Caravanserai is "any unit" within 2 hexes, so a hex-mate holding the skill is delivered to
+    /// with no warning, while one three hexes off still needs its own Caravanserai.
+    #[test]
+    fn a_new_age_transport_to_a_quartermaster_owning_no_caravanserai_goes_within_two_hexes() {
+        let mut home = shipping_quartermaster();
+        home.units.push(with_skill(unit("901"), "QUAM", 1));
+        let near = region_at("1:0,4", 0, 4, vec![with_skill(unit("902"), "QUAM", 1)]);
+        let far = region_at("1:0,6", 0, 6, vec![with_skill(unit("903"), "QUAM", 1)]);
+        for (world, json) in [
+            (
+                "Trident",
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            ),
+            (
+                "Arcanum",
+                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            ),
+        ] {
+            let rules = Ruleset::from_json(json).expect("the committed New Age ruleset loads");
+            let review = |orders: &str| {
+                review_turn(
+                    &report(vec![home.clone(), near.clone(), far.clone()]),
+                    orders,
+                    Some(&rules),
+                    with_map(),
+                )
+            };
+            let refusals = |review: &TurnReview| {
+                review
+                    .findings
+                    .iter()
+                    .filter(|finding| finding.code == codes::TRANSPORT_TARGET_REFUSED)
+                    .count()
+            };
+            let baseline = review("unit 900\n");
+            // A hex-mate, and the last hex of the flat reach.
+            for target in ["901", "902"] {
+                let delivered = review(&format!("unit 900\nTRANSPORT {target} 100 SILV\n"));
+                assert_eq!(refusals(&delivered), 0, "{world}: {:?}", delivered.findings);
+                assert_eq!(
+                    shipment_silver(&delivered, target).at_month_end,
+                    shipment_silver(&baseline, target)
+                        .at_month_end
+                        .map(|silver| silver + 100),
+                    "{world}: 100 reached {target}"
+                );
+            }
+
+            let distant = review("unit 900\nTRANSPORT 903 100 SILV\n");
+            assert_eq!(refusals(&distant), 1, "{world}: {:?}", distant.findings);
+        }
+    }
+
     /// `ah-7j90`: the order line's refusal keeps its words and gains the hint whatever the amount
     /// form, since DISTRIBUTE carries SILV. `ALL` names no amount here, so the hint names the goods
     /// by their code instead of a "them" with nothing to refer to (`ah-q3bp`).
