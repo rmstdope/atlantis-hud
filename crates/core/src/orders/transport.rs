@@ -2043,6 +2043,25 @@ mod tests {
         assert_eq!(judged("903"), Acceptance::NotCaravanseraiOwner);
     }
 
+    /// `ah-a51z` follow-up review: with the sender's hex unknown nothing is measured, so the
+    /// target is judged as ah-4kcg judges an ordinary one with no measurement - as any unit.
+    #[test]
+    fn a_new_age_transport_to_a_quartermaster_owning_no_caravanserai_from_an_unknown_hex_goes() {
+        let mut shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("903", at(facts(true, true, false, true), hex(0, 6))),
+            ],
+            &[],
+        );
+        shipping.transport_to_anyone = true;
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", None, "903");
+        assert_eq!(judged.acceptance, Acceptance::Eligible);
+        assert_eq!(judged.measured, None);
+    }
+
     /// `ah-a51z` review, finding 2: another faction's quartermaster owning no Caravanserai is any
     /// unit within 2 hexes too, and like any other faction's unit only its attitude stays unknown
     /// (`rules/com_attitudes`).
