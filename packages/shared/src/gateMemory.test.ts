@@ -66,30 +66,38 @@ describe("gateMemory (ah-r5fg)", () => {
 
 describe("gateLineOf (ah-r5fg)", () => {
   it("shows the shown region's own sentence as current", () => {
-    expect(gateLineOf(aReportRegion({ gate: SENTENCE }), undefined, 82)).toEqual({
+    expect(gateLineOf(aReportRegion({ gate: SENTENCE }), undefined, 82, false)).toEqual({
       sentence: SENTENCE,
       seenInTurn: null
     });
   });
 
   it("shows a remembered gate with the turn it was seen", () => {
-    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, 82)).toEqual({
+    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, 82, false)).toEqual({
       sentence: SENTENCE,
       seenInTurn: 78
     });
   });
 
   it("shows nothing for a cleared memory, a hex with no region, or no gate at all", () => {
-    expect(gateLineOf(aReportRegion(), { sentence: null, turn: 82 }, 82)).toBeNull();
-    expect(gateLineOf(null, { sentence: SENTENCE, turn: 78 }, 82)).toBeNull();
-    expect(gateLineOf(aReportRegion(), undefined, 82)).toBeNull();
+    expect(gateLineOf(aReportRegion(), { sentence: null, turn: 82 }, 82, false)).toBeNull();
+    expect(gateLineOf(null, { sentence: SENTENCE, turn: 78 }, 82, false)).toBeNull();
+    expect(gateLineOf(aReportRegion(), undefined, 82, false)).toBeNull();
   });
 
   it("does not show an older turn what a later one taught", () => {
-    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, 70)).toBeNull();
-    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, null)).toEqual({
+    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, 70, false)).toBeNull();
+    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, null, false)).toEqual({
       sentence: SENTENCE,
       seenInTurn: 78
+    });
+  });
+
+  it("leaves a stale hex to its own sighting: the as-of-turn banner covers it", () => {
+    expect(gateLineOf(aReportRegion(), { sentence: SENTENCE, turn: 78 }, 82, true)).toBeNull();
+    expect(gateLineOf(aReportRegion({ gate: SENTENCE }), undefined, 82, true)).toEqual({
+      sentence: SENTENCE,
+      seenInTurn: null
     });
   });
 

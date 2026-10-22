@@ -748,7 +748,23 @@ describe("the region panel's Gate section (ah-r5fg)", () => {
     );
   });
 
-  it("has no Gate heading when no gate is known, or the memory was cleared", () => {
+  it("shows a stale hex only what its own sighting printed", () => {
+    const staleHex = (gate: string | null) =>
+      renderToStaticMarkup(
+        <RegionPanel
+          hex={{ ...HEX, knowledge: "stale", lastSeenTurn: 80, ageInTurns: 2, region: { ...HEX.region!, gate } }}
+          client={CLIENT}
+          game={GAME}
+          turn={82}
+          rememberedGate={{ sentence: SENTENCE, turn: 78 }}
+        />
+      );
+
+    expect(staleHex(null)).not.toContain(HEADING);
+    expect(staleHex(SENTENCE)).toContain(`<p class="m-0 text-ink">${SENTENCE}</p>`);
+  });
+
+    it("has no Gate heading when no gate is known, or the memory was cleared", () => {
     expect(drawGate(null)).not.toContain(HEADING);
     expect(drawGate(null, { sentence: null, turn: 82 })).not.toContain(HEADING);
   });

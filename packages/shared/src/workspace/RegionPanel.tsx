@@ -134,7 +134,7 @@ export function RegionPanel({
   // No `useMemo`: this component returns early above (`if (!hex)`), so a hook here would break the
   // rules of hooks. The computation is a handful of array walks over one hex.
   const checks = region === null ? [] : resourceChecksOf(region, gameData, remembered, turn);
-  const gate = gateLineOf(region, rememberedGate, turn);
+  const gate = gateLineOf(region, rememberedGate, turn, stale);
 
   return (
     <CollapsiblePanel

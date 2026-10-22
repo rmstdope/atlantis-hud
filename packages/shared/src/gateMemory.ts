@@ -85,11 +85,16 @@ export type GateLine = {
  * The region's own sentence wins. Failing that, a remembered gate - unless it was learnt after the
  * turn being viewed, which `resourceChecks.ts` refuses for the same reason; a report with no turn
  * number has nothing better to go on and uses it.
+ *
+ * A stale hex - one this turn's report does not cover - shows its own sighting's sentence and
+ * nothing remembered: the pane's "as of turn N" banner covers everything there, gate included, as
+ * the acceptance agrees, and the remembered hover speaks of this turn's report.
  */
 export function gateLineOf(
   region: ReportRegion | null,
   remembered: RememberedGate | undefined,
-  viewedTurn: number | null
+  viewedTurn: number | null,
+  stale: boolean
 ): GateLine | null {
   if (region === null) {
     return null;
@@ -100,6 +105,7 @@ export function gateLineOf(
     return { sentence: own, seenInTurn: null };
   }
   if (
+    stale ||
     remembered === undefined ||
     remembered.sentence === null ||
     (viewedTurn !== null && remembered.turn > viewedTurn)
