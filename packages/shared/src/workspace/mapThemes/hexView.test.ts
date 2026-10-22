@@ -876,3 +876,43 @@ describe("preparing a whole layer", () => {
     expect(views.map((view) => view.key)).toEqual(["a", "b"]);
   });
 });
+
+describe("a remembered gate (ah-jkzaq)", () => {
+  // data/GATE: a report prints a hex's gate only while one of our Gate Lore mages is there, so the
+  // map keeps a gate an earlier report showed until a report that could see it says otherwise.
+  const SEEN = "There is a Gate here (Gate 987).";
+  const remembered = (sentence: string | null, turn: number) => new Map([["1:7,53", { sentence, turn }]]);
+  const current = hex({ knowledge: "current", regionId: "1:7,53", region: region() });
+
+  it("lights a gate an earlier report showed, once the mage has left", () => {
+    const gates = remembered(SEEN, 78);
+
+    expect(viewOf(current, { gates, viewedTurn: 82 }).gate).toBe(true);
+    expect(viewOf(current, { gates, viewedTurn: 82, badges: { gate: false } }).gate).toBe(false);
+  });
+
+  it("draws nothing for a gate a Gate Lore unit found gone", () => {
+    expect(viewOf(current, { gates: remembered(null, 82), viewedTurn: 82 }).gate).toBe(false);
+  });
+
+  it("adds nothing from memory to a stale hex, which shows its own sighting only", () => {
+    const stale = hex({ knowledge: "stale", regionId: "1:7,53", region: region() });
+
+    expect(viewOf(stale, { gates: remembered(SEEN, 78), viewedTurn: 82 }).gate).toBe(false);
+  });
+
+  it("ignores a gate learnt after the turn on screen", () => {
+    expect(viewOf(current, { gates: remembered(SEEN, 85), viewedTurn: 82 }).gate).toBe(false);
+  });
+
+  it("draws this turn's sentence over a memory that says the gate was gone", () => {
+    const replaced = hex({
+      knowledge: "current",
+      regionId: "1:7,53",
+      region: region({ gate: "There is a closed Gate here." })
+    });
+
+    expect(viewOf(replaced, { gates: remembered(null, 78), viewedTurn: 82 }).gate).toBe(true);
+    expect(viewOf(replaced).gate).toBe(true);
+  });
+});
