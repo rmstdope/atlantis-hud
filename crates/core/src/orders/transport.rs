@@ -1138,18 +1138,34 @@ impl Shipping {
         // within 2 hexes (`newage trident rules/economy_transport`: "Quartermasters may also
         // TRANSPORT items to any unit within 2 hexes"); only past them does the longer reach
         // between quartermasters ask for its Caravanserai. The navigator's ruling, `ah-a51z`.
+        // Only a distance the map proves past the 2 hexes refuses it: one it cannot settle states
+        // neither answer, so the target is judged as any unit and the arrival left unmeasured
+        // below, and one nobody measured is judged as ah-4kcg's ordinary target is.
+        let flat_arrival = measured.map(|measured| {
+            arrival(
+                Reach::Local,
+                measured.from,
+                measured.to,
+                self.geometry,
+                &self.shown,
+            )
+        });
         let any_unit_within_flat_reach = skips_target_test
             && order == ShipmentOrder::Transport
             && target_qm
-            && measured.is_some_and(|measured| {
-                arrival(
-                    Reach::Local,
-                    measured.from,
-                    measured.to,
-                    self.geometry,
-                    &self.shown,
-                ) == Arrival::Certain
-            });
+            && facts.is_some_and(|facts| !facts.caravanserai_owner)
+            && !matches!(flat_arrival, Some(Arrival::TooFar(_)));
+        let measured = match measured {
+            Some(measured)
+                if any_unit_within_flat_reach && flat_arrival == Some(Arrival::Unmeasured) =>
+            {
+                Some(Measured {
+                    arrival: Arrival::Unmeasured,
+                    ..measured
+                })
+            }
+            measured => measured,
+        };
         let acceptance = match acceptance(skips_target_test, facts) {
             _ if sender_not_quartermaster => Acceptance::SenderNotQuartermaster,
             _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
@@ -2025,6 +2041,52 @@ mod tests {
         };
         assert_eq!(judged("902"), Acceptance::Eligible);
         assert_eq!(judged("903"), Acceptance::NotCaravanseraiOwner);
+    }
+
+    /// `ah-a51z` review, finding 2: another faction's quartermaster owning no Caravanserai is any
+    /// unit within 2 hexes too, and like any other faction's unit only its attitude stays unknown
+    /// (`rules/com_attitudes`).
+    #[test]
+    fn a_new_age_transport_to_a_foreign_quartermaster_owning_no_caravanserai_waits_on_its_attitude()
+    {
+        let mut shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("902", at(facts(false, true, false, true), hex(0, 4))),
+            ],
+            &[],
+        );
+        shipping.transport_to_anyone = true;
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "902");
+        assert_eq!(judged.acceptance, Acceptance::AcceptanceUnknown);
+    }
+
+    /// `ah-a51z` review, finding 1: whether a quartermaster owning no Caravanserai accepts now
+    /// turns on the 2 hexes, so a distance the map cannot settle (`Arrival::Unmeasured`) settles
+    /// neither the delivery nor the refusal - here three hexes at most, which the longer reach
+    /// between quartermasters would call certain.
+    #[test]
+    fn a_new_age_transport_to_a_quartermaster_owning_no_caravanserai_at_an_unmeasured_distance_is_unmeasured(
+    ) {
+        let mut shipping = shipping(
+            &[("900", 1)],
+            vec![
+                ("900", at(facts(true, true, true, true), hex(0, 0))),
+                ("903", at(facts(true, true, false, true), hex(0, 6))),
+            ],
+            &[],
+        );
+        shipping.transport_to_anyone = true;
+        shipping.geometry = None;
+
+        let judged = shipping.judge(ShipmentOrder::Transport, "900", Some(hex(0, 0)), "903");
+        assert_eq!(judged.acceptance, Acceptance::Eligible);
+        assert_eq!(
+            judged.measured.map(|measured| measured.arrival),
+            Some(Arrival::Unmeasured)
+        );
     }
 
     /// `ah-1d3i` review, finding 4: a TRANSPORT from a Caravanserai owner to another faction's
