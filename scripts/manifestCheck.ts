@@ -10,6 +10,12 @@ import { fileURLToPath } from "node:url";
  * a coin flip and three consecutive releases reported a healthy deployment as broken. The policy
  * below is the whole of the fix; it lives here rather than in the workflow's shell because this is
  * where it can be tested.
+ *
+ * Since v0.30.0 the same host also answers with a proof-of-work challenge (ah-gktt): a 503 HTML page
+ * whose script a browser runs to earn a cookie. A script cannot pass it without getting around the
+ * host's bot protection, which this check does not do. A challenge is therefore reported as "could
+ * not be checked from here" and does not fail the deploy. That the site serves this build is proved
+ * separately by `servedBuild.ts`, which runs on the page at `/`.
  */
 
 /** The path this check fetches, relative to the site root. */
@@ -21,8 +27,24 @@ export const ATTEMPTS = 4;
 /** How long to wait between attempts, in milliseconds. The host's own `retry-after: 5`. */
 export const RETRY_DELAY_MS = 5_000;
 
-/** A status code, or 0 for a request that never got one (DNS, connection, timeout). */
+/**
+ * A status code, 0 for a request that never got one (DNS, connection, timeout), or `CHALLENGED` for
+ * an answer that was the host's proof-of-work page rather than the file asked for.
+ */
 export type Status = number;
+
+/** The status recorded for an answer that was the host's proof-of-work challenge, whatever its code. */
+export const CHALLENGED: Status = -1;
+
+/**
+ * Whether a response body is one.com's proof-of-work challenge page.
+ *
+ * Recognised by its `onehop-proof-of-work-id` meta tag, which the page carries for the browser
+ * script to read; the title ("POW") and the 503 are too generic to identify it on their own.
+ */
+export function isChallengePage(body: string): boolean {
+  return body.includes('name="onehop-proof-of-work-id"');
+}
 
 /** Fetches one URL and reports its status. Injected so the policy can be tested without a network. */
 export type StatusFetcher = (url: string) => Promise<Status>;
@@ -49,13 +71,14 @@ export function manifestUrl(site: string): string {
 }
 
 /**
- * Whether a status is worth asking again about: 429, any 5xx, or 0.
+ * Whether a status is worth asking again about: 429, any 5xx, 0, or a challenge (the host lets an
+ * occasional request through unchallenged).
  *
  * Deliberately narrower than "any error". A 404 or a 403 is a manifest that is genuinely not being
  * served, and waiting fifteen seconds to say so buys nothing - failing at once is the clearer signal.
  */
 export function isRetryable(status: Status): boolean {
-  return status === 0 || status === 429 || (status >= 500 && status < 600);
+  return status === 0 || status === CHALLENGED || status === 429 || (status >= 500 && status < 600);
 }
 
 /** Asks for the manifest under the retry policy. */
@@ -77,6 +100,23 @@ export async function checkServed(url: string, fetchStatus: StatusFetcher, sleep
     if (attempt < ATTEMPTS) await sleep(RETRY_DELAY_MS);
   }
   return { ok: false, status, attempts: ATTEMPTS };
+}
+
+/** Whether a failed verdict failed only because every attempt ended on the host's challenge. */
+export function wasChallenged(verdict: ManifestVerdict): boolean {
+  return !verdict.ok && verdict.status === CHALLENGED;
+}
+
+/**
+ * The `::notice::` text for a URL every attempt at which ended on the host's challenge, without the
+ * prefix. `what` is "The manifest" or "The icon <path>".
+ */
+export function challengeNotice(what: string, verdict: ManifestVerdict): string {
+  const attempts = verdict.attempts > 1 ? `all ${verdict.attempts} attempts` : "the only attempt";
+  return (
+    `${what} was answered with the host's proof-of-work challenge on ${attempts}, so it could not be ` +
+    "checked from here. A browser passes that challenge; this is not a failure of the deployment."
+  );
 }
 
 /**
@@ -146,8 +186,13 @@ export async function fetchStatus(url: string): Promise<Status> {
     // Captured before the drain: a body read that fails on a healthy answer must not turn a known
     // status into the status-less 0, which would be retried as though nothing had been learned.
     const status = response.status;
-    await response.arrayBuffer();
-    return status;
+    const html = response.headers.get("content-type")?.includes("text/html") ?? false;
+    if (!html) {
+      await response.arrayBuffer();
+      return status;
+    }
+    // Only an HTML answer can be the challenge; none of the files this checks is HTML.
+    return isChallengePage(await response.text()) ? CHALLENGED : status;
   } catch {
     return 0;
   }
@@ -177,7 +222,9 @@ function runCli(site: string | undefined, manifestFile: string | undefined): voi
     .then(async (verdict) => {
       const notice = successNotice(verdict);
       if (notice !== null) process.stdout.write(`::notice::${notice}\n`);
-      if (!verdict.ok) {
+      if (wasChallenged(verdict)) {
+        process.stdout.write(`::notice::${challengeNotice("The manifest", verdict)}\n`);
+      } else if (!verdict.ok) {
         process.stdout.write(`::error::${failureMessage(verdict)}\n`);
         process.exitCode = 1;
         return;
@@ -188,7 +235,9 @@ function runCli(site: string | undefined, manifestFile: string | undefined): voi
         const icon = await checkServed(siteUrl(site, path), fetchStatus, sleep);
         const iconNotice = iconSuccessNotice(path, icon);
         if (iconNotice !== null) process.stdout.write(`::notice::${iconNotice}\n`);
-        if (!icon.ok) {
+        if (wasChallenged(icon)) {
+          process.stdout.write(`::notice::${challengeNotice(`The icon ${path}`, icon)}\n`);
+        } else if (!icon.ok) {
           process.stdout.write(`::error::${iconFailureMessage(path, icon)}\n`);
           process.exitCode = 1;
         }

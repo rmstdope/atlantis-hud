@@ -189,5 +189,9 @@ jobs:
             echo "::error::$site/ answered, but the page served is not this build - no manifest link in it."
             exit 1
           fi
+          # The page at / is the proof that this build is what the domain serves: the host answers the
+          # manifest and icons with a proof-of-work challenge a script cannot pass (ah-gktt), which
+          # the manifest check reports as a notice rather than a failure.
+          pnpm exec tsx scripts/servedBuild.ts page.html apps/web/dist/index.html
           pnpm exec tsx scripts/manifestCheck.ts "$site" apps/web/dist/manifest.webmanifest
           echo "::notice::Published to $site"
