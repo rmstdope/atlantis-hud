@@ -6183,6 +6183,8 @@ export function AppShell({
           notes={hexNotes}
           battles={battleHexIds}
           blocked={blockedHexIds}
+          gates={gateMemory}
+          viewedTurn={parsed?.header.turnNumber ?? null}
           theme={getMapTheme(mapThemeId)}
           level={level}
           selectedRegionId={selectedRegionId}

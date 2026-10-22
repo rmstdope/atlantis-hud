@@ -18,6 +18,7 @@ import type { ReportRegion, ReportUnit, StructureInfo } from "@atlantis/core-cli
 import type { HexKnowledge, HexNode } from "../../hexMapModel";
 import type { BattleInvolvement } from "../battles";
 import type { BlockedHex } from "../blockedHexes";
+import { gateLineOf, type GateMemory } from "../../gateMemory";
 import { worldOf } from "../mapViewport";
 import {
   hexPaint,
@@ -193,7 +194,8 @@ export type HexView = {
   blocked: string | null;
   /**
    * Whether the hex holds a gate: a Gateway structure, the passage between levels, or a Gate the
-   * region's report names, open or closed (`There is a Gate here (Gate 987).`, ah-8ble).
+   * region's report names, open or closed (`There is a Gate here (Gate 987).`, ah-8ble), or one an
+   * earlier report named on a hex this turn's report still covers (ah-jkzaq).
    */
   gate: boolean;
   /**
@@ -323,6 +325,13 @@ export type HexViewOptions = {
   water?: WaterTerrains;
   /** Print each hex's coordinates (ah-ezyg); off when absent, so tools and tests see no change. */
   hexCoordinates?: boolean;
+  /**
+   * The gates earlier reports showed, from `resourceMemoryStore` (ah-jkzaq). Absent means nothing
+   * remembered - a tool or a test - and a hex lights its gate only for its own report's sentence.
+   */
+  gates?: GateMemory;
+  /** The turn on screen, so a gate learnt after it is not drawn; absent or null uses the memory as is. */
+  viewedTurn?: number | null;
 };
 
 /** The shared fade scaled by a theme's damping, to three decimals - the one place this arithmetic lives. */
@@ -592,10 +601,18 @@ export function buildHexView(hex: HexNode, options: HexViewOptions): HexView {
     lairs: badges.lairs ? structures.lairs : 0,
     battle: badges.battles ? (options.battles?.get(hex.regionId) ?? null) : null,
     blocked: badges.blocked ? (options.blocked?.get(hex.regionId)?.label ?? null) : null,
-    // A Gateway structure, or the region's own gate sentence (ah-8ble): reports name most gates
-    // as `There is a Gate here (Gate 987).` under the hex, and a closed one is still a gate. `??`
-    // because a region stored before the field existed has no `gate` at all.
-    gate: badges.gate && (structures.gates > 0 || (hex.region?.gate ?? null) !== null),
+    // A Gateway structure, or the gate the Region pane's Gate section shows (ah-8ble, ah-jkzaq):
+    // the region's own sentence, or one an earlier report showed and nothing since has contradicted.
+    // One rule for map and pane, so a stale hex shows its own sighting only, as the pane does.
+    gate:
+      badges.gate &&
+      (structures.gates > 0 ||
+        gateLineOf(
+          hex.region ?? null,
+          options.gates?.get(hex.regionId),
+          options.viewedTurn ?? null,
+          hex.knowledge === "stale"
+        ) !== null),
     coords: options.hexCoordinates === true ? `${hex.coordinate.x},${hex.coordinate.y}` : null
   };
 }

@@ -79,6 +79,7 @@ import {
 } from "./mapThemes/hexView";
 import type { BattleInvolvement } from "./battles";
 import type { BlockedHex } from "./blockedHexes";
+import type { GateMemory } from "../gateMemory";
 import { BlockedHatchPattern, BlockedLabels, BlockedRings } from "./mapThemes/blockedLayer";
 import { BiomeSymbolDefs, BiomeSymbolLayer } from "./mapThemes/BiomeSymbolLayer";
 import { drawsBiomeSymbols } from "./mapThemes/biomeSymbols";
@@ -422,6 +423,13 @@ type MapCanvasProps = {
    */
   blocked?: ReadonlyMap<string, BlockedHex>;
   /**
+   * The gates earlier reports showed, from `resourceMemoryStore` (ah-jkzaq): a hex keeps its gate
+   * mark after the Gate Lore mage that saw it has left. Absent means nothing remembered.
+   */
+  gates?: GateMemory;
+  /** The turn on screen, so a gate remembered from a later turn is not drawn. */
+  viewedTurn?: number | null;
+  /**
    * How to draw a hex. Everything theme-specific lives behind this: the map itself knows about
    * geometry, interaction and the route overlay, and nothing about parchment or bevels.
    */
@@ -664,6 +672,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
     notes = [],
     battles,
     blocked,
+    gates,
+    viewedTurn = null,
     theme,
     level,
     selectedRegionId,
@@ -760,6 +770,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       badges,
       battles,
       blocked,
+      gates,
+      viewedTurn,
       fogDamping: theme.fogDamping,
       hexCoordinates
     }),
@@ -772,6 +784,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
       badges,
       battles,
       blocked,
+      gates,
+      viewedTurn,
       theme.fogDamping,
       hexCoordinates
     ]
