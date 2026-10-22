@@ -9,6 +9,7 @@ import {
   challengeNotice,
   checkManifest,
   checkServed,
+  cliRetryDelay,
   failureMessage,
   fetchStatus,
   iconFailureMessage,
@@ -228,11 +229,31 @@ describe("the host's proof-of-work challenge (ah-gktt)", () => {
     expect(wasChallenged(verdict)).toBe(false);
   });
 
+  it.each([
+    { answers: [CHALLENGED, CHALLENGED, CHALLENGED, 429], status: CHALLENGED, why: "a closing 429 is noise" },
+    { answers: [CHALLENGED, 0, 429, 0], status: CHALLENGED, why: "dropped requests are noise" },
+    { answers: [503, 503, 503, CHALLENGED], status: 503, why: "a closing challenge cannot hide plain 503s" },
+    { answers: [CHALLENGED, 502, CHALLENGED, CHALLENGED], status: 502, why: "one plain 5xx is the server failing" },
+    { answers: [429, 429, 429, 429], status: 429, why: "no challenge is the old policy" }
+  ])("reports $answers as $status: $why", async ({ answers, status }) => {
+    const verdict = await checkServed("https://example.test/x", scriptedFetcher(answers).fetch, () =>
+      Promise.resolve()
+    );
+    expect(verdict).toEqual({ ok: false, status, attempts: ATTEMPTS });
+  });
+
   it("says what could not be checked, and that it is not a failure", () => {
     expect(challengeNotice("The manifest", { ok: false, status: CHALLENGED, attempts: 4 })).toBe(
-      "The manifest was answered with the host's proof-of-work challenge on all 4 attempts, so it could not be " +
+      "The manifest was answered with the host's proof-of-work challenge in 4 attempts, so it could not be " +
         "checked from here. A browser passes that challenge; this is not a failure of the deployment."
     );
+  });
+
+  it("lets the CLI's retry delay be shortened for tests, and only to a usable value", () => {
+    expect(cliRetryDelay({})).toBe(RETRY_DELAY_MS);
+    expect(cliRetryDelay({ MANIFEST_CHECK_RETRY_DELAY_MS: "0" })).toBe(0);
+    expect(cliRetryDelay({ MANIFEST_CHECK_RETRY_DELAY_MS: "soon" })).toBe(RETRY_DELAY_MS);
+    expect(cliRetryDelay({ MANIFEST_CHECK_RETRY_DELAY_MS: "-1" })).toBe(RETRY_DELAY_MS);
   });
 });
 
@@ -297,6 +318,10 @@ describe("the deploy workflow", () => {
     const build = yaml.indexOf("pnpm exec tsx scripts/servedBuild.ts page.html apps/web/dist/index.html");
     expect(build).toBeGreaterThan(-1);
     expect(build).toBeLessThan(yaml.indexOf("pnpm exec tsx scripts/manifestCheck.ts"));
+  });
+
+  it("fetches / past the host's cache, so the page compared is the one just uploaded (ah-gktt)", () => {
+    expect(yaml).toContain(`--max-time 30 "$site/?build=$GITHUB_SHA"`);
   });
 
   it("leaves the page fetch and its wording alone", () => {

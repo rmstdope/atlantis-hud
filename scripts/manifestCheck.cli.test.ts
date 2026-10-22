@@ -27,10 +27,14 @@ const root = fileURLToPath(new URL("..", import.meta.url));
  * transform error and the deploy step would have failed on every release. This suite is what makes
  * that visible.
  */
-async function runCli(site: string, manifestFile?: string): Promise<{ code: number; out: string }> {
+async function runCli(
+  site: string,
+  manifestFile?: string,
+  env: NodeJS.ProcessEnv = {}
+): Promise<{ code: number; out: string }> {
   const args = ["exec", "tsx", script, site, ...(manifestFile === undefined ? [] : [manifestFile])];
   try {
-    const { stdout } = await run("pnpm", args, { cwd: root });
+    const { stdout } = await run("pnpm", args, { cwd: root, env: { ...process.env, ...env } });
     return { code: 0, out: stdout };
   } catch (error) {
     const failure = error as { code?: number; stdout?: string; stderr?: string };
@@ -136,18 +140,19 @@ describe("the manifest check as the workflow runs it", () => {
 
   it("does not fail a deployment because the host answered with its proof-of-work challenge", async () => {
     await start(0, true);
-    const { code, out } = await runCli(base, manifestListing("app-icons/a.png"));
+    // The retry policy's timing is pinned in-process; here only the notice-not-error wiring is.
+    const { code, out } = await runCli(base, manifestListing("app-icons/a.png"), {
+      MANIFEST_CHECK_RETRY_DELAY_MS: "0"
+    });
     expect(out).not.toContain("::error::");
     expect(code).toBe(0);
-    expect(out).toContain(
-      "::notice::The manifest was answered with the host's proof-of-work challenge on all 4 attempts"
-    );
+    expect(out).toContain("::notice::The manifest was answered with the host's proof-of-work challenge in 4 attempts");
     expect(out).toContain("::notice::The icon app-icons/a.png was answered with the host's proof-of-work challenge");
-  }, 120_000);
+  }, 20_000);
 
   it("refuses to run without a site root", async () => {
     const { code, out } = await runCli("");
     expect(code).toBe(1);
     expect(out).toContain("::error::Usage:");
   }, 20_000);
-}, 120_000);
+}, 60_000);

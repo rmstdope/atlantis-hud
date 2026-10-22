@@ -28,6 +28,17 @@ export const ATTEMPTS = 4;
 export const RETRY_DELAY_MS = 5_000;
 
 /**
+ * The delay the CLI uses: `RETRY_DELAY_MS`, unless `MANIFEST_CHECK_RETRY_DELAY_MS` names another.
+ * Exists so the subprocess tests need not spend real seconds on the host's retry-after.
+ */
+export function cliRetryDelay(env: NodeJS.ProcessEnv): number {
+  const given = Number(env.MANIFEST_CHECK_RETRY_DELAY_MS);
+  return env.MANIFEST_CHECK_RETRY_DELAY_MS !== undefined && Number.isFinite(given) && given >= 0
+    ? given
+    : RETRY_DELAY_MS;
+}
+
+/**
  * A status code, 0 for a request that never got one (DNS, connection, timeout), or `CHALLENGED` for
  * an answer that was the host's proof-of-work page rather than the file asked for.
  */
@@ -85,37 +96,59 @@ export function isRetryable(status: Status): boolean {
 export async function checkManifest(
   site: string,
   fetchStatus: StatusFetcher,
-  sleep: Sleeper
+  sleep: Sleeper,
+  delayMs: number = RETRY_DELAY_MS
 ): Promise<ManifestVerdict> {
-  return checkServed(manifestUrl(site), fetchStatus, sleep);
+  return checkServed(manifestUrl(site), fetchStatus, sleep, delayMs);
 }
 
-/** Asks for one URL up to `ATTEMPTS` times, sleeping `RETRY_DELAY_MS` between retryable answers. */
-export async function checkServed(url: string, fetchStatus: StatusFetcher, sleep: Sleeper): Promise<ManifestVerdict> {
+/**
+ * Asks for one URL up to `ATTEMPTS` times, sleeping `delayMs` between retryable answers.
+ *
+ * When every attempt was retryable, the verdict's status is not simply the last answer (ah-gktt):
+ * - a plain 5xx on any attempt is the server failing, and is what is reported, so a closing
+ *   challenge cannot hide it;
+ * - otherwise any challenge makes the verdict `CHALLENGED`, since 429s and dropped requests are
+ *   the host's noise around it rather than evidence that the file is missing;
+ * - otherwise the last status, as before.
+ */
+export async function checkServed(
+  url: string,
+  fetchStatus: StatusFetcher,
+  sleep: Sleeper,
+  delayMs: number = RETRY_DELAY_MS
+): Promise<ManifestVerdict> {
   let status: Status = 0;
+  let serverError: Status | null = null;
+  let challenged = false;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     status = await fetchStatus(url);
     if (status === 200) return { ok: true, status, attempts: attempt };
     if (!isRetryable(status)) return { ok: false, status, attempts: attempt };
-    if (attempt < ATTEMPTS) await sleep(RETRY_DELAY_MS);
+    if (status === CHALLENGED) challenged = true;
+    else if (status >= 500) serverError = status;
+    if (attempt < ATTEMPTS) await sleep(delayMs);
   }
-  return { ok: false, status, attempts: ATTEMPTS };
+  const reported = serverError ?? (challenged ? CHALLENGED : status);
+  return { ok: false, status: reported, attempts: ATTEMPTS };
 }
 
-/** Whether a failed verdict failed only because every attempt ended on the host's challenge. */
+/**
+ * Whether a failed verdict failed only on the host's challenge: at least one attempt was challenged,
+ * and the rest were 429s or dropped requests (see `checkServed`).
+ */
 export function wasChallenged(verdict: ManifestVerdict): boolean {
   return !verdict.ok && verdict.status === CHALLENGED;
 }
 
 /**
- * The `::notice::` text for a URL every attempt at which ended on the host's challenge, without the
- * prefix. `what` is "The manifest" or "The icon <path>".
+ * The `::notice::` text for a URL that `wasChallenged`, without the prefix. `what` is "The manifest"
+ * or "The icon <path>".
  */
 export function challengeNotice(what: string, verdict: ManifestVerdict): string {
-  const attempts = verdict.attempts > 1 ? `all ${verdict.attempts} attempts` : "the only attempt";
   return (
-    `${what} was answered with the host's proof-of-work challenge on ${attempts}, so it could not be ` +
-    "checked from here. A browser passes that challenge; this is not a failure of the deployment."
+    `${what} was answered with the host's proof-of-work challenge in ${verdict.attempts} attempts, so it ` +
+    "could not be checked from here. A browser passes that challenge; this is not a failure of the deployment."
   );
 }
 
@@ -187,12 +220,16 @@ export async function fetchStatus(url: string): Promise<Status> {
     // status into the status-less 0, which would be retried as though nothing had been learned.
     const status = response.status;
     const html = response.headers.get("content-type")?.includes("text/html") ?? false;
-    if (!html) {
-      await response.arrayBuffer();
+    try {
+      if (!html) {
+        await response.arrayBuffer();
+        return status;
+      }
+      // Only an HTML answer can be the challenge; none of the files this checks is HTML.
+      return isChallengePage(await response.text()) ? CHALLENGED : status;
+    } catch {
       return status;
     }
-    // Only an HTML answer can be the challenge; none of the files this checks is HTML.
-    return isChallengePage(await response.text()) ? CHALLENGED : status;
   } catch {
     return 0;
   }
@@ -218,7 +255,8 @@ function runCli(site: string | undefined, manifestFile: string | undefined): voi
     return;
   }
   const sleep: Sleeper = (ms) => new Promise<void>((done) => setTimeout(done, ms));
-  void checkManifest(site, fetchStatus, sleep)
+  const delayMs = cliRetryDelay(process.env);
+  void checkManifest(site, fetchStatus, sleep, delayMs)
     .then(async (verdict) => {
       const notice = successNotice(verdict);
       if (notice !== null) process.stdout.write(`::notice::${notice}\n`);
@@ -232,7 +270,7 @@ function runCli(site: string | undefined, manifestFile: string | undefined): voi
       if (manifestFile === undefined) return;
       const paths = iconPaths(readFileSync(manifestFile, "utf8"));
       for (const path of paths) {
-        const icon = await checkServed(siteUrl(site, path), fetchStatus, sleep);
+        const icon = await checkServed(siteUrl(site, path), fetchStatus, sleep, delayMs);
         const iconNotice = iconSuccessNotice(path, icon);
         if (iconNotice !== null) process.stdout.write(`::notice::${iconNotice}\n`);
         if (wasChallenged(icon)) {
