@@ -62970,8 +62970,14 @@ BUILD
         let mut home = shipping_quartermaster();
         home.units.push(unit("901"));
         for (world, json) in [
-            ("Trident", atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON),
-            ("Arcanum", atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON),
+            (
+                "Trident",
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            ),
+            (
+                "Arcanum",
+                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            ),
         ] {
             let rules = Ruleset::from_json(json).expect("the committed New Age ruleset loads");
             let review = |orders: &str| {
@@ -62994,12 +63000,16 @@ BUILD
             let baseline = review("unit 900\n");
             assert_eq!(
                 shipment_silver(&transported, "900").at_month_end,
-                shipment_silver(&baseline, "900").at_month_end.map(|silver| silver - 100),
+                shipment_silver(&baseline, "900")
+                    .at_month_end
+                    .map(|silver| silver - 100),
                 "{world}: 100 left 900"
             );
             assert_eq!(
                 shipment_silver(&transported, "901").at_month_end,
-                shipment_silver(&baseline, "901").at_month_end.map(|silver| silver + 100),
+                shipment_silver(&baseline, "901")
+                    .at_month_end
+                    .map(|silver| silver + 100),
                 "{world}: 100 reached 901"
             );
         }
