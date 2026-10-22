@@ -37,6 +37,36 @@ fn silver_at_month_end(review: &TurnReview, unit: &str) -> Option<i64> {
         .and_then(|silver| silver.at_month_end)
 }
 
+/// One finding's code, hex, unit, line and sentence.
+type Read = (String, String, Option<String>, Option<usize>, String);
+
+/// Every finding, as a person reads it, with the order's word read as TRANSPORT: a sentence may
+/// name the line by the word it was written with (`ah-lis2`), and the word's own span with it.
+fn findings(review: &TurnReview) -> Vec<Read> {
+    review
+        .findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.code.to_string(),
+                finding.region_id.clone(),
+                finding.unit_id.clone(),
+                finding.line,
+                finding.message.replace("DISTRIBUTE", "TRANSPORT"),
+            )
+        })
+        .collect()
+}
+
+/// Every unit's silver at the month's end.
+fn forecast(review: &TurnReview) -> Vec<(String, Option<i64>)> {
+    review
+        .silver
+        .iter()
+        .map(|silver| (silver.unit_id.clone(), silver.at_month_end))
+        .collect()
+}
+
 /// The verifier's case at forest (2,18): quartermaster 3178 owns no Caravanserai, and its
 /// 100 silver for 2579 is delivered whichever word the line is written with.
 #[test]
@@ -55,4 +85,7 @@ fn an_arcanum_distribute_from_3178_to_2579_is_delivered_as_its_transport_is() {
     assert!(delivered.is_some(), "2579's month end is a figure");
     assert_eq!(silver_at_month_end(&transported, "2579"), delivered);
     assert_eq!(silver_at_month_end(&distributed, "2579"), delivered);
+    // The same findings and the same forecast, everywhere and not only on this line.
+    assert_eq!(findings(&distributed), findings(&transported));
+    assert_eq!(forecast(&distributed), forecast(&transported));
 }

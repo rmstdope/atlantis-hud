@@ -658,8 +658,9 @@ fn accepted_as_any_unit(facts: &TargetFacts) -> Acceptance {
 /// while two quartermasters use the sender skill's longer reach. That longer reach is TRANSPORT's
 /// alone: the engine's `CheckTransportOrders` measures every DISTRIBUTE against `LOCAL_TRANSPORT`
 /// (`ah-4g2l`), although `rules/transport` calls the two orders one. The engine source at hand is
-/// New Origins'; the New Age worlds' rules text says the same as New Origins' (`newage trident
-/// rules distribute`), so they are assumed to share the engine's behaviour too.
+/// New Origins', and only New Origins keeps the difference: in the New Age worlds DISTRIBUTE "has
+/// the same meaning and syntax" as TRANSPORT (`newage trident rules/distribute`), so `judge_on`
+/// hands this a TRANSPORT there (`ah-i71ku`).
 pub(crate) fn reach_for(
     order: ShipmentOrder,
     sender_is_quartermaster: bool,
@@ -1098,7 +1099,8 @@ impl Shipping {
         // The long reach is the transport structure's owner's alone: `CheckTransportOrders` gives
         // anyone else `LOCAL_TRANSPORT` and refuses a TRANSPORT beyond it ("Recipient ... is too
         // far away."), so a quartermaster that owns none ships like anybody (`ah-1jl9`). A
-        // DISTRIBUTE never gets it: that branch asks for `o->type == O_TRANSPORT` (`ah-4g2l`).
+        // DISTRIBUTE never gets it in New Origins: that branch asks for `o->type == O_TRANSPORT`
+        // (`ah-4g2l`).
         let reach = reach_for(
             order,
             sender_can_distribute,
@@ -1128,16 +1130,17 @@ impl Shipping {
             _ => None,
         };
         // A quartermaster that owns no Caravanserai can neither DISTRIBUTE nor ship past the flat
-        // reach; either refusal is its own, not the target's (`ah-1jl9`). A DISTRIBUTE is refused
-        // whoever its target is: `CheckTransportOrders` asks its issuer for a transport structure
-        // unconditionally (`ah-g4bz`).
+        // reach; either refusal is its own, not the target's (`ah-1jl9`). In New Origins a
+        // DISTRIBUTE is refused whoever its target is: `CheckTransportOrders` asks its issuer for a
+        // transport structure unconditionally (`ah-g4bz`).
         let sender_without_caravanserai = sender_qm && !sender_can_distribute;
-        // A DISTRIBUTE's issuer must hold the skill whatever the target (`ah-lis2`) - when the
-        // catalogue names a quartermaster skill for our report to show. `CheckTransportOrders`
-        // asks about the target's existence, its attitude and the distance before it asks this,
-        // but each of those only refuses a refusal already certain here, so this answer comes
-        // first on purpose: it is the one the player can act on, and it turns what would be a
-        // gap in the report (an unshown or foreign target) into the certainty it is.
+        // In New Origins a DISTRIBUTE's issuer must hold the skill whatever the target
+        // (`ah-lis2`) - when the catalogue names a quartermaster skill for our report to show.
+        // `CheckTransportOrders` asks about the target's existence, its attitude and the distance
+        // before it asks this, but each of those only refuses a refusal already certain here, so
+        // this answer comes first on purpose: it is the one the player can act on, and it turns
+        // what would be a gap in the report (an unshown or foreign target) into the certainty it
+        // is.
         let sender_not_quartermaster =
             order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
         // In New Origins only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks
@@ -2032,11 +2035,6 @@ mod tests {
         );
     }
 
-    /// `ah-a51z`: `newage trident rules/economy_transport` (and `newage arcanum`) reads
-    /// "Quartermasters may also TRANSPORT items to any unit within 2 hexes ... and may TRANSPORT
-    /// items to another quartermaster up to 3 hexes distant". The navigator ruled (2026-10-22) that
-    /// a quartermaster owning no Caravanserai is "any unit" within 2 hexes, and that beyond them it
-    /// still needs the Caravanserai the longer reach between quartermasters asks for.
     /// `ah-i71ku`: in both New Age worlds "the order DISTRIBUTE can be used in place of TRANSPORT
     /// and has the same meaning and syntax" (`newage arcanum rules/distribute`, `newage trident
     /// rules/distribute`), so every judgement of a DISTRIBUTE line is the one the same line written
@@ -2115,6 +2113,11 @@ mod tests {
         }
     }
 
+    /// `ah-a51z`: `newage trident rules/economy_transport` (and `newage arcanum`) reads
+    /// "Quartermasters may also TRANSPORT items to any unit within 2 hexes ... and may TRANSPORT
+    /// items to another quartermaster up to 3 hexes distant". The navigator ruled (2026-10-22) that
+    /// a quartermaster owning no Caravanserai is "any unit" within 2 hexes, and that beyond them it
+    /// still needs the Caravanserai the longer reach between quartermasters asks for.
     #[test]
     fn a_new_age_transport_to_a_quartermaster_owning_no_caravanserai_goes_within_two_hexes() {
         let mut shipping = shipping(
