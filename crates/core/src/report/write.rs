@@ -548,6 +548,17 @@ mod tests {
         assert_eq!(round_trip(&region, &ExportContent::default()), region);
     }
 
+    /// The gate line is read (`ah-r5fg`) but never written: a shared map has not carried gate
+    /// numbers before, and handing them to an ally is a decision nobody has taken.
+    #[test]
+    fn a_shared_map_does_not_carry_the_gate() {
+        let mut region = region_of(SETTLED);
+        region.gate = Some("There is a Gate here (Gate 987).".to_string());
+        let written = write_region(&region, &ExportContent::default());
+
+        assert!(!written.contains("Gate here"), "{written}");
+    }
+
     /// Every item the export writes - a unit's, a product, a market entry - is written as the
     /// engine's `ItemString` prints it (`../Atlantis/items.cpp`, `market.cpp`, `production.cpp`):
     /// an amount of one bare, never `1 hill dwarf` (`ah-lmfc`).

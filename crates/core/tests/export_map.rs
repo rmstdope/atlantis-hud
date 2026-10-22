@@ -217,6 +217,13 @@ fn every_fixture_exports_a_header_that_reads_back() {
                     .iter()
                     .filter(|region| region.coordinate.z == level)
                     .cloned()
+                    // A shared map has never carried the gate line, and still does not
+                    // (`ah-r5fg` read it; whether an ally is handed gate numbers is a decision
+                    // of its own), so the region read back has none.
+                    .map(|region| ReportRegion {
+                        gate: None,
+                        ..region
+                    })
                     .collect(),
             );
             let after = by_id(reparsed.regions);
