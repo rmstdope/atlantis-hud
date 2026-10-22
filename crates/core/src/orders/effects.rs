@@ -12255,24 +12255,40 @@ mod tests {
 
         /// `ah-4kcg`: the refusal above is New Origins' engine alone. `newage trident
         /// rules/economy_transport` reads "Quartermasters may also TRANSPORT items to any unit
-        /// within 2 hexes", and the navigator ruled the New Age worlds behave as written: the same
-        /// TRANSPORT moves the stone and the item preview raises no issue.
+        /// within 2 hexes" (and `newage arcanum`'s page the same), and the navigator ruled the New
+        /// Age worlds behave as written: the same TRANSPORT moves the stone and the item preview
+        /// raises no issue.
         #[test]
-        fn a_quartermasters_transport_to_an_ordinary_unit_goes_in_trident() {
-            let response = preview_orders_for_remembered_report(
-                &mut ReportCache::new(),
-                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
-                &report_across_two_hexes(),
-                "[]",
-                "unit 6857\nTRANSPORT 5530 5 STON\n",
-            )
-            .expect("the Trident ruleset loads");
+        fn a_quartermasters_transport_to_an_ordinary_unit_goes_in_the_new_age_worlds() {
+            for (world, json) in [
+                (
+                    "Trident",
+                    atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+                ),
+                (
+                    "Arcanum",
+                    atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+                ),
+            ] {
+                let response = preview_orders_for_remembered_report(
+                    &mut ReportCache::new(),
+                    json,
+                    &report_across_two_hexes(),
+                    "[]",
+                    "unit 6857\nTRANSPORT 5530 5 STON\n",
+                )
+                .expect("the New Age ruleset loads");
 
-            let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
-            assert_eq!(held(sender, "STON"), Some(10), "five left 6857");
-            assert!(sender.transport_target_issues.is_empty());
-            let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
-            assert_eq!(held(receiver, "STON"), Some(45), "five arrived at 5530");
+                let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
+                assert_eq!(held(sender, "STON"), Some(10), "{world}: five left 6857");
+                assert!(sender.transport_target_issues.is_empty(), "{world}");
+                let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
+                assert_eq!(
+                    held(receiver, "STON"),
+                    Some(45),
+                    "{world}: five arrived at 5530"
+                );
+            }
         }
 
         /// `ah-7j90`: a DISTRIBUTE carries only what the game transports (`rules/economy_transport`),
@@ -15936,6 +15952,79 @@ mod tests {
                 to_level: None
             })
         );
+    }
+
+    /// `ah-4kcg` review, finding 2: in the New Age worlds a quartermaster owning a Caravanserai may
+    /// TRANSPORT to an ordinary unit, but only "within 2 hexes" (`newage trident
+    /// rules/economy_transport`, the same in `newage arcanum`). Two hexes away the iron goes;
+    /// three away it stays, refused on the sender's own range rather than on the target.
+    #[test]
+    fn a_new_age_quartermasters_transport_to_an_ordinary_unit_stops_at_two_hexes() {
+        let target =
+            "+ Post One [1] : Caravanserai.\n  * Quarterone (901), Foo (1), leader [LEAD]. \
+                      Weight: 10. Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 1 (450).";
+        let ordinary = |target_hex| {
+            let report = reach_report((0, 0), target_hex, (1, 1));
+            assert!(report.contains(target), "the fixture's target is replaced");
+            report.replace(
+                target,
+                "* Plain (901), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
+            )
+        };
+        for (world, json) in [
+            (
+                "Trident",
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+            ),
+            (
+                "Arcanum",
+                atlantis_hud_fixtures::NEWAGE_ARCANUM_RULESET_JSON,
+            ),
+        ] {
+            let preview = |report: &str| {
+                preview_orders_on_map(
+                    &mut ReportCache::new(),
+                    json,
+                    report,
+                    "[]",
+                    "unit 900\nTRANSPORT 901 1 IRON\n",
+                    FLAT_MAP,
+                    "",
+                    super::super::semantics::CheckOptions::default(),
+                )
+                .expect("the New Age ruleset loads")
+            };
+
+            let near = preview(&ordinary((0, 4)));
+            assert_eq!(
+                reach_held(&near, "900", "IRON"),
+                0,
+                "{world}: the iron went"
+            );
+            assert!(
+                reach_unit(&near, "900").transport_target_issues.is_empty(),
+                "{world}"
+            );
+
+            let far = preview(&ordinary((0, 6)));
+            assert_eq!(
+                reach_held(&far, "900", "IRON"),
+                1,
+                "{world}: the iron stayed"
+            );
+            let issues = &reach_unit(&far, "900").transport_target_issues;
+            assert_eq!(issues.len(), 1, "{world}: {issues:?}");
+            assert_eq!(issues[0].reason, TransportTargetReason::TooFarToDistribute);
+            assert_eq!(
+                issues[0].reach,
+                Some(TransportReach {
+                    away: Some(3),
+                    limit: Some(2),
+                    from_level: None,
+                    to_level: None
+                })
+            );
+        }
     }
 
     #[test]

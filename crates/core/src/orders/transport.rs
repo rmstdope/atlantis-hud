@@ -556,10 +556,12 @@ impl ShipmentOrder {
 ///
 /// A quartermaster owning a Caravanserai may DISTRIBUTE to any unit within two hexes: the engine
 /// never asks a DISTRIBUTE's target about skill or structure (`CheckTransportOrders`,
-/// `../Atlantis/runorders.cpp`). Every TRANSPORT, whoever sends it, may go only to a quartermaster
-/// owning a Caravanserai, the transport structure `rules/economy_transport` names - the engine,
-/// not that page's "may also TRANSPORT items to any unit", by the navigator's choice (`ah-1d3i`).
-/// Either target must be at least FRIENDLY to the sender.
+/// `../Atlantis/runorders.cpp`). In New Origins every TRANSPORT, whoever sends it, may go only to
+/// a quartermaster owning a Caravanserai, the transport structure `rules/economy_transport` names -
+/// the engine, not that page's "may also TRANSPORT items to any unit", by the navigator's choice
+/// (`ah-1d3i`). In the New Age worlds a TRANSPORT from a Caravanserai owner is judged as its
+/// DISTRIBUTE, as that page says (`ah-4kcg`). Either target must be at least FRIENDLY to the
+/// sender.
 ///
 /// Only the first two are ours to settle. `rules/com_attitudes` prints the attitudes *we* declare
 /// toward other factions, never theirs toward us, so a foreign target that passes both structural
@@ -574,9 +576,9 @@ pub(crate) enum Acceptance {
     NotQuartermaster,
     NotCaravanseraiOwner,
     /// The sender is a quartermaster that owns no Caravanserai when the shipments run, and the
-    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT beyond the flat reach. A
-    /// TRANSPORT to a unit that is no quartermaster is the target's refusal whoever sends it
-    /// (`ah-1d3i`).
+    /// shipment needs one: every DISTRIBUTE (`ah-g4bz`), and a TRANSPORT beyond the flat reach. In
+    /// New Origins a TRANSPORT to a unit that is no quartermaster is the target's refusal whoever
+    /// sends it (`ah-1d3i`).
     /// `CheckTransportOrders` blames the sender for a DISTRIBUTE ("Unit does not own transport
     /// structure.") and the distance for a TRANSPORT ("Recipient ... is too far away.", its range
     /// capped at `LOCAL_TRANSPORT`); the sentence names the sender's missing Caravanserai for
@@ -598,7 +600,8 @@ pub(crate) fn acceptance(skips_target_test: bool, facts: Option<&TargetFacts>) -
         return Acceptance::EligibilityUnknown;
     };
     if skips_target_test && !facts.quartermaster {
-        // A DISTRIBUTE from a Caravanserai owner is what makes an ordinary target eligible. The
+        // A DISTRIBUTE from a Caravanserai owner, or in the New Age worlds its TRANSPORT
+        // (`ah-4kcg`), is what makes an ordinary target eligible. The
         // report can settle that immediately for our unit; a foreign target's attitude stays
         // unknown because `rules/com_attitudes` only reports our attitudes toward others.
         return if facts.own && facts.quartermaster_disclosed {
