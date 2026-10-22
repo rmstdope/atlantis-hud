@@ -177,12 +177,13 @@ describe("the host's proof-of-work challenge (ah-gktt)", () => {
 
   /** Answers the manifest with `body` as text/html under `status`, every time. */
   async function start(status: number, body: string): Promise<void> {
-    server = createServer((_request, response) => {
+    const running = createServer((_request, response) => {
       response.writeHead(status, { "content-type": "text/html; charset=utf-8" });
       response.end(body);
     });
-    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    server = running;
+    await new Promise<void>((done) => running.listen(0, "127.0.0.1", done));
+    base = `http://127.0.0.1:${(running.address() as AddressInfo).port}`;
   }
 
   afterEach(async () => {
