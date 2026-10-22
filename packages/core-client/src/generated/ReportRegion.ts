@@ -18,4 +18,11 @@ race: string | null,
 /**
  * The figure the game prints after the peasant count.
  */
-taxBase: number | null, wages: string | null, maxWages: number | null, entertainment: number | null, products: Array<ItemAmount>, wanted: Array<MarketItem>, forSale: Array<MarketItem>, exits: Array<RegionExit>, structures: Array<StructureInfo>, units: Array<ReportUnit>, };
+taxBase: number | null, wages: string | null, maxWages: number | null, entertainment: number | null, products: Array<ItemAmount>, wanted: Array<MarketItem>, forSale: Array<MarketItem>, exits: Array<RegionExit>, 
+/**
+ * The report's gate sentence, word for word (`There is a Gate here (Gate 987).`), when it
+ * printed one. The game prints it only to a faction with a Gate Lore unit there (data/skills
+ * `gate lore [GATE] 1`), so `None` means "not printed", never "no gate". Defaulted so a
+ * sighting stored before the field existed still reads (`ah-r5fg`).
+ */
+gate: string | null, structures: Array<StructureInfo>, units: Array<ReportUnit>, };

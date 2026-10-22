@@ -82,6 +82,7 @@ pub fn parse_region_header(body: &str) -> Option<ReportRegion> {
         wanted: Vec::new(),
         for_sale: Vec::new(),
         exits: Vec::new(),
+        gate: None,
         structures: Vec::new(),
         units: Vec::new(),
     };
@@ -390,6 +391,17 @@ fn unread_unit_on_map(line: &LogicalLine, read: UnitRead) -> UnreadableLine {
     }
 }
 
+/// Reads the line a region prints when the faction can see a gate there, verbatim.
+///
+/// The engine writes three forms (`aregion.cpp`, `WriteReport`): `There is a Gate here (Gate N).`,
+/// `There is a Gate here (Gate N of M).` and `There is a closed Gate here.` The sentence is kept as
+/// printed, so no game's wording needs translating (`ah-r5fg`).
+fn parse_gate_line(body: &str) -> Option<String> {
+    let sentence = body.trim();
+    (sentence.starts_with("There is a ") && sentence.contains(" Gate here"))
+        .then(|| sentence.to_owned())
+}
+
 pub fn parse_region_block(
     header: &LogicalLine,
     rest: &[LogicalLine],
@@ -468,6 +480,11 @@ pub fn parse_region_block(
                 continue;
             }
             in_exits = false;
+        }
+
+        if let Some(sentence) = parse_gate_line(body) {
+            region.gate = Some(sentence);
+            continue;
         }
 
         apply_economy_line(&mut region, body);
@@ -938,5 +955,35 @@ mod tests {
             .find(|unit| unit.unit_id == "5812")
             .expect("outer unit");
         assert_eq!(outer.structure_id, None);
+    }
+
+    /// The engine's three gate sentences (`aregion.cpp`, `WriteReport`): a numbered gate, one
+    /// that also prints the total when gate numbers are not dispersed, and a closed gate.
+    #[test]
+    fn reads_the_gate_sentence_verbatim() {
+        for sentence in [
+            "There is a Gate here (Gate 987).",
+            "There is a Gate here (Gate 12 of 150).",
+            "There is a closed Gate here.",
+        ] {
+            let source = format!(
+                "mountain (36,4) in Slounspifra.\n\nExits:\n  North : mountain (36,2) in Slounspifra.\n\n{sentence}\n\n* Robin Hood (1162), The Disinherited Knights (42), leader [LEAD].\n"
+            );
+            let lines = unwrap_lines(&source);
+            let region = parse_region_block(&lines[0], &lines[1..], &mut Vec::new())
+                .expect("region should parse");
+            assert_eq!(region.gate.as_deref(), Some(sentence));
+            assert_eq!(region.exits.len(), 1);
+            assert_eq!(region.units.len(), 1);
+        }
+    }
+
+    #[test]
+    fn a_region_without_a_gate_line_has_none() {
+        let source = "mountain (36,4) in Slounspifra.\n\nExits:\n  North : mountain (36,2) in Slounspifra.\n";
+        let lines = unwrap_lines(source);
+        let region = parse_region_block(&lines[0], &lines[1..], &mut Vec::new())
+            .expect("region should parse");
+        assert_eq!(region.gate, None);
     }
 }

@@ -95,6 +95,9 @@ pub fn merge_regions(existing: &ReportRegion, incoming: &ReportRegion) -> Report
         exits: union_by(&existing.exits, &incoming.exits, |exit| {
             exit.direction.clone()
         }),
+        // Only a faction with Gate Lore there is shown the gate (data/skills `gate lore [GATE] 1`),
+        // so the ally's sentence fills a gap rather than contradicting the viewer's silence.
+        gate: existing.gate.clone().or_else(|| incoming.gate.clone()),
         structures: union_by(&existing.structures, &incoming.structures, |structure| {
             structure.structure_id.clone()
         }),

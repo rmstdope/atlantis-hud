@@ -392,6 +392,12 @@ pub struct ReportRegion {
     pub wanted: Vec<MarketItem>,
     pub for_sale: Vec<MarketItem>,
     pub exits: Vec<Exit>,
+    /// The report's gate sentence, word for word (`There is a Gate here (Gate 987).`), when it
+    /// printed one. The game prints it only to a faction with a Gate Lore unit there (data/skills
+    /// `gate lore [GATE] 1`), so `None` means "not printed", never "no gate". Defaulted so a
+    /// sighting stored before the field existed still reads (`ah-r5fg`).
+    #[serde(default)]
+    pub gate: Option<String>,
     pub structures: Vec<Structure>,
     pub units: Vec<ReportUnit>,
 }

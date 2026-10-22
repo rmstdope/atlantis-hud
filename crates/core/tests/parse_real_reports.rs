@@ -739,3 +739,16 @@ fn turn_74_keeps_its_preamble_past_events_that_name_a_hex() {
         "an annihilation event is not a region the report describes"
     );
 }
+
+/// `mountain (36,4)` prints `There is a Gate here (Gate 987).` after its exits, and it is the only
+/// region of the turn that does (`ah-r5fg`).
+#[test]
+fn the_large_turn_reads_its_one_gate_word_for_word() {
+    let parsed = parse_regions(LARGE_TURN);
+    let gated: Vec<(&str, &str)> = parsed
+        .regions
+        .iter()
+        .filter_map(|region| Some((region.region_id.as_str(), region.gate.as_deref()?)))
+        .collect();
+    assert_eq!(gated, vec![("1:36,4", "There is a Gate here (Gate 987).")]);
+}
