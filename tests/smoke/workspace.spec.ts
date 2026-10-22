@@ -1296,6 +1296,8 @@ test("the trade chip lists routes and flies the map to one", async ({ page }) =>
   await expect(panel).toHaveCount(0);
   // The route starts from (36,4), so that hex - not (0,48) - is what selecting the row lands on.
   await expect(page.getByTestId("panel-region")).toContainText("(36,4)");
+  // ah-r5fg: the report prints this hex's gate, and the Region pane says so in its own words.
+  await expect(page.getByTestId("panel-region")).toContainText("There is a Gate here (Gate 987).");
 });
 
 /**
