@@ -847,6 +847,12 @@ pub(crate) struct Shipping {
     /// Kept apart from `may_learn` because `rules/transport` asks the target for both, and a month
     /// that can mend only one leaves a target failing both refused (`ah-xbnu`).
     may_own: std::collections::BTreeSet<String>,
+    /// Whether a quartermaster owning a Caravanserai may TRANSPORT to a unit that is no
+    /// quartermaster, as it may DISTRIBUTE. The New Age worlds do as `rules/economy_transport`
+    /// says ("Quartermasters may also TRANSPORT items to any unit within 2 hexes", `newage trident`
+    /// and `newage arcanum`); New Origins does as its engine does, which asks every TRANSPORT's
+    /// target (`CheckTransportOrders`, `ah-1d3i`). The navigator's ruling, `ah-4kcg`.
+    transport_to_anyone: bool,
 }
 
 impl Shipping {
@@ -868,6 +874,7 @@ impl Shipping {
             month_end: options.month_end.clone(),
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
+            transport_to_anyone: ruleset.is_new_age(),
         }
     }
 
@@ -1108,12 +1115,14 @@ impl Shipping {
         // gap in the report (an unshown or foreign target) into the certainty it is.
         let sender_not_quartermaster =
             order == ShipmentOrder::Distribute && !sender_qm && self.quartermasters.skill_known();
-        // Only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks every
-        // TRANSPORT's target for the quartermaster skill and a transport structure, whoever sends
-        // it, so a TRANSPORT to an ordinary unit is the target's refusal even from a quartermaster
-        // owning a Caravanserai. The navigator chose the engine over `rules/economy_transport`'s
-        // "may also TRANSPORT items to any unit" (`ah-1d3i`).
-        let skips_target_test = sender_can_distribute && order == ShipmentOrder::Distribute;
+        // In New Origins only a DISTRIBUTE skips the target's own test: `CheckTransportOrders` asks
+        // every TRANSPORT's target for the quartermaster skill and a transport structure, whoever
+        // sends it, so a TRANSPORT to an ordinary unit is the target's refusal even from a
+        // quartermaster owning a Caravanserai. The navigator chose the engine over
+        // `rules/economy_transport`'s "may also TRANSPORT items to any unit" there (`ah-1d3i`), and
+        // the page over the engine in the New Age worlds (`ah-4kcg`).
+        let skips_target_test = sender_can_distribute
+            && (order == ShipmentOrder::Distribute || self.transport_to_anyone);
         let acceptance = match acceptance(skips_target_test, facts) {
             _ if sender_not_quartermaster => Acceptance::SenderNotQuartermaster,
             _ if sender_without_caravanserai && order == ShipmentOrder::Distribute => {
@@ -1813,6 +1822,7 @@ mod tests {
                 .collect(),
             may_learn: std::collections::BTreeSet::new(),
             may_own: std::collections::BTreeSet::new(),
+            transport_to_anyone: false,
         }
     }
 

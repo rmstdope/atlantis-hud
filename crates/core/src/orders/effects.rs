@@ -12253,6 +12253,28 @@ mod tests {
             assert_eq!(held(receiver, "STON"), Some(45), "five arrived at 5530");
         }
 
+        /// `ah-4kcg`: the refusal above is New Origins' engine alone. `newage trident
+        /// rules/economy_transport` reads "Quartermasters may also TRANSPORT items to any unit
+        /// within 2 hexes", and the navigator ruled the New Age worlds behave as written: the same
+        /// TRANSPORT moves the stone and the item preview raises no issue.
+        #[test]
+        fn a_quartermasters_transport_to_an_ordinary_unit_goes_in_trident() {
+            let response = preview_orders_for_remembered_report(
+                &mut ReportCache::new(),
+                atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+                &report_across_two_hexes(),
+                "[]",
+                "unit 6857\nTRANSPORT 5530 5 STON\n",
+            )
+            .expect("the Trident ruleset loads");
+
+            let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            assert_eq!(held(sender, "STON"), Some(10), "five left 6857");
+            assert!(sender.transport_target_issues.is_empty());
+            let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(held(receiver, "STON"), Some(45), "five arrived at 5530");
+        }
+
         /// `ah-7j90`: a DISTRIBUTE carries only what the game transports (`rules/economy_transport`),
         /// so a refused TRANSPORT of goods it would not carry anyway says nothing of DISTRIBUTE.
         #[test]
