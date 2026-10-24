@@ -45,6 +45,51 @@ export const REPORTS = {
 
 export type ReportKey = keyof typeof REPORTS;
 
+/**
+ * The turn HUD shows for each New Origins fixture, written down once (ah-iuofk).
+ *
+ * HUD numbers a turn from the report's printed date, January of Year 1 being turn 1 (ah-m6pw) -
+ * which is one above the archive number in the file name (see the README beside the reports). A
+ * walk about some other feature takes its turn from here rather than repeating the number, so a
+ * change to the numbering edits this table, not every walk that happens to mention a turn.
+ *
+ * Plain data, deliberately not computed from the date: computing it here would state the decision a
+ * second time. `browser-core`'s `reportTurns.wasm.test.ts` checks every entry against the real core.
+ */
+export const REPORT_TURNS: { readonly [K in ReportKey]: number } = {
+  g2f42t0: 1,
+  g3f42t1: 2,
+  g3f42t40: 41,
+  g3f42t41: 42,
+  g3f42t42: 43,
+  g3f42t82: 83,
+  g4f17t0: 1,
+  g5f21t0: 1,
+  g5f21t23: 24,
+  g5f21t24: 25,
+  g5f21t25: 26,
+  g5f21t39: 40,
+  g7f39t17: 18,
+  g7f39t18: 19,
+  g7f62t0: 1,
+  g7f62t17: 18,
+  g7f62t18: 19,
+  g7f62t20: 21,
+  g7f95t55: 56,
+  g7f95t70: 71,
+  g7f95t71: 72,
+  g7f95t72: 73,
+  g7f95t74: 75,
+  g8f73t1: 2,
+  g8f73t2: 3,
+  g8f73t71: 72
+};
+
+/** The turn HUD shows for a New Origins fixture; see [`REPORT_TURNS`]. */
+export function reportTurn(key: ReportKey): number {
+  return REPORT_TURNS[key];
+}
+
 /** Absolute path of a fixture on disk - for `setInputFiles` and the like. */
 export function reportPath(key: ReportKey): string {
   return join(__dirname, "..", "..", "..", "tests", "fixtures", "reports", REPORTS[key]);
@@ -68,6 +113,24 @@ export const NEWAGE_ARCANUM_REPORTS = {
 } as const;
 
 export type NewAgeArcanumReportKey = keyof typeof NEWAGE_ARCANUM_REPORTS;
+
+/**
+ * The turn HUD shows for each Arcanum fixture, as [`REPORT_TURNS`] is for New Origins. Here the
+ * keys already carry the server's turn, which happens to be the same number.
+ */
+export const NEWAGE_ARCANUM_REPORT_TURNS: { readonly [K in NewAgeArcanumReportKey]: number } = {
+  f3t2: 2,
+  f3t83: 83,
+  f3t84: 84,
+  f5t2: 2,
+  f5t83: 83,
+  f5t84: 84
+};
+
+/** The turn HUD shows for an Arcanum fixture; see [`NEWAGE_ARCANUM_REPORT_TURNS`]. */
+export function newAgeArcanumReportTurn(key: NewAgeArcanumReportKey): number {
+  return NEWAGE_ARCANUM_REPORT_TURNS[key];
+}
 
 export function newAgeArcanumReportPath(key: NewAgeArcanumReportKey): string {
   return join(__dirname, "..", "..", "..", "tests", "fixtures", "reports", "newage-arcanum", NEWAGE_ARCANUM_REPORTS[key]);
