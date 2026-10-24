@@ -5,9 +5,11 @@ on:
   push:
     branches: [main]
 
-# No default GITHUB_TOKEN scope beyond these two: the `changes` job only ever reads a pull
-# request's file list, and every job checks out the repository read-only.
+# No default GITHUB_TOKEN scope beyond these three: the `changes` job reads a pull request's file
+# list, or on a push to main the last successful run of this workflow (actions) and the compare
+# from its head (contents); every job checks out the repository read-only.
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 
@@ -18,7 +20,9 @@ permissions:
 #
 # `cancel-in-progress` is deliberately conditional. On a pull request, superseding an older run is
 # what we want: only the newest head matters. On `main` it is not - cancelling an in-flight run
-# there could kill the one gating a release, so pushes to main queue behind each other instead.
+# there could kill the one gating a release, so a push to main waits for the run in progress
+# instead. Only one run waits, though: a newer push cancels a run still pending in the group, which
+# is why the `changes` gate diffs a push from the last successful run rather than from its parent.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -32,7 +36,13 @@ jobs:
   # documentation; .claude/ is the fleet's - agent roles, skills and settings, which shape how the
   # agents work and never reach the application; and .github/ is repository configuration, issue
   # templates and the like. Two root files join them, exact-matched: README.md and the CLAUDE.md
-  # symlink path.
+  # symlink path. So do five of the fleet's declarations under .cerebro/, exact-matched by name
+  # (ah-slxi7): roster.conf, agents.conf, requirements.md, test-architecture.md and traps.md, read by
+  # the fleet's own scripts and by people, never by CI. The rest of .cerebro/ is not exempt:
+  # project.conf is read by scripts/runGate.ts and scripts/verificationSkill.test.ts, the cerebro
+  # submodule carries the gate scripts, and a file nobody has named yet runs everything until it is.
+  #
+  # A push to main is judged the same way, on the diff from its old head to its new one.
   #
   # .github/workflows/ is the exception to that exception, and runs everything - see the gate
   # itself below.
@@ -56,17 +66,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # A push (to main) has no pull request file list to read, and nothing has diffed it
-          # against a base - so it always runs everything.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          # Only the two events this workflow triggers on are judged on their diff; anything else
+          # runs everything.
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.event_name }}" != "push" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "native=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # A failed or empty listing also runs everything: this must fail open, since a gate
-          # that fails closed turns an API blip into a merged, untested change.
-          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename' 2>/dev/null) || FILES=""
+          # A failed or empty listing runs everything: this must fail open, since a gate that fails
+          # closed turns an API blip into a merged, untested change.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" --paginate --jq '.[].filename' 2>/dev/null) || FILES=""
+          else
+            # A push (to main) has no pull request file list, so it is listed from the compare of
+            # the head of the last successful CI run on main with this one (ah-slxi7). Before that,
+            # every push ran everything, so a .cerebro/-only housekeeping commit paid the whole
+            # suite whatever this gate said.
+            #
+            # Not from the push's own before sha: a concurrency group keeps one pending run, so a newer
+            # push cancels an older pending one, and a docs-only push diffed from its own parent
+            # would skip a code commit whose run was cancelled - leaving it never tested on main.
+            # From the last success, every commit since then whose run failed or was cancelled is
+            # inside the diff. A success that skipped everything is a safe base too: it only
+            # skipped because its own diff from the success before it was exempt.
+            #
+            # Only a compare that is plainly "ahead" and under the API's 300-file cap (past it, the
+            # list may be truncated) counts; no earlier success, a base that is not an ancestor
+            # (a force push), a truncated list or an API failure all leave FILES empty, which runs
+            # everything.
+            AFTER="${{ github.sha }}"
+            BASE=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty' 2>/dev/null) || BASE=""
+            FILES=""
+            if [ -n "$BASE" ]; then
+              FILES=$(gh api "repos/${{ github.repository }}/compare/${BASE}...${AFTER}" --jq 'if .status == "ahead" and (.files | length) < 300 then .files[].filename else empty end' 2>/dev/null) || FILES=""
+            fi
+          fi
 
           # Two checks rather than one pattern, because POSIX ERE has no negative lookahead and
           # `.github/` is exempt while `.github/workflows/` is not. The workflows are what the gate
@@ -77,13 +112,15 @@ jobs:
           # under docs/, .claude/ or .github/ (workflows carved back out above). Two root files are
           # exempt too, exact-matched rather than as a prefix: README.md and the CLAUDE.md symlink
           # path (a PR that only retargets the symlink lists "CLAUDE.md" itself, not its target).
+          # Five .cerebro/ declarations are exempt the same exact-matched way; see the job comment
+          # for why those five and no more.
           #
           # Anchored on the directory or the whole filename, and the dots escaped: `^docs` would let
           # `docsite/build.ts` skip the suite, an unescaped `.claude` would match `xclaude/`, and an
           # unanchored `README\.md` would let `README.md.ts` skip it too.
           if [ -z "$FILES" ] \
             || echo "$FILES" | grep -q '^\.github/workflows/' \
-            || echo "$FILES" | grep -qvE '^((docs|\.claude|\.github)/|README\.md$|CLAUDE\.md$)'; then
+            || echo "$FILES" | grep -qvE '^((docs|\.claude|\.github)/|README\.md$|CLAUDE\.md$|\.cerebro/(roster\.conf|agents\.conf|requirements\.md|test-architecture\.md|traps\.md)$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
