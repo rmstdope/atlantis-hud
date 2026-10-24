@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  assertShardsCover,
   dependsOnChanges,
   GATE_JOB,
   gateCondition,
@@ -15,6 +16,8 @@ import {
   nativeGateCondition,
   onTriggerBlock,
   REQUIRED_JOBS,
+  SMOKE_CONTEXTS,
+  smokeMatrixContexts,
   stepBlocks
 } from "./ciDocsGate";
 
@@ -417,5 +420,38 @@ describe("the native job's path scope", () => {
 
   it("fails open: an empty file list runs the native job too", () => {
     expect(runsNative([])).toBe(true);
+  });
+});
+
+describe("the smoke matrix", () => {
+  it("reports exactly the contexts the main ruleset requires", () => {
+    // The ruleset names each smoke context, so a matrix change that does not change
+    // SMOKE_CONTEXTS - and, with it, the ruleset - leaves a required check that never reports
+    // and blocks every merge (ah-5qndx).
+    const smoke = jobBlocks(WORKFLOW).get("smoke");
+    if (smoke === undefined) {
+      throw new Error('workflow has no "smoke" job');
+    }
+
+    expect(smokeMatrixContexts(smoke)).toEqual([...SMOKE_CONTEXTS]);
+  });
+
+  it("refuses a smoke matrix line it cannot read, rather than skipping it", () => {
+    // A skipped line is a context the workflow reports and the equality test above never sees -
+    // a block-form entry, or a cross-product key GitHub would combine with `include:`.
+    const job = (matrix: string) =>
+      ["    strategy:", "      matrix:", "        include:", matrix, "    steps:"].join("\n");
+    const entry = "          - { project: web, shardIndex: 1, shardTotal: 1 }";
+
+    expect(smokeMatrixContexts(job(entry))).toEqual(["smoke (web, 1, 1)"]);
+    expect(() => smokeMatrixContexts(job(`${entry}\n          - project: web`))).toThrow(/project: web/u);
+    expect(() => smokeMatrixContexts(job(`${entry}\n        project: [web]`))).toThrow(/project: \[web\]/u);
+  });
+
+  it("covers each project's shards 1..shardTotal exactly once", () => {
+    expect(() => assertShardsCover(SMOKE_CONTEXTS)).not.toThrow();
+    expect(() => assertShardsCover(["smoke (web, 1, 3)", "smoke (web, 3, 3)"])).toThrow(/web/u);
+    expect(() => assertShardsCover(["smoke (web, 1, 2)", "smoke (web, 1, 2)"])).toThrow(/web/u);
+    expect(() => assertShardsCover(["smoke (web, 1, 2)", "smoke (web, 2, 3)"])).toThrow(/web/u);
   });
 });

@@ -201,3 +201,79 @@ export function onTriggerBlock(yaml: string): string {
 
   return body.join("\n");
 }
+
+/**
+ * The smoke contexts the main branch ruleset requires (ruleset `main`, required status checks).
+ * The ruleset names every shard, so this list, the `smoke` job's matrix in `ci.yml` and the
+ * ruleset change together or a required check never reports and every merge blocks; the tooling
+ * suite pins the first two, and the ruleset is edited on GitHub in the same change (ah-5qndx).
+ */
+export const SMOKE_CONTEXTS: readonly string[] = [
+  "smoke (web, 1, 4)",
+  "smoke (web, 2, 4)",
+  "smoke (web, 3, 4)",
+  "smoke (web, 4, 4)",
+  "smoke (desktop-shell, 1, 1)"
+];
+
+/**
+ * The check contexts the `smoke` job's matrix reports, one per `include:` entry written as
+ * `- { project: <p>, shardIndex: <i>, shardTotal: <t> }`, in the order they appear.
+ *
+ * Throws on any other line in the `matrix:` block (comments and blank lines aside) - a block-form
+ * entry or a cross-product key beside `include:` changes what GitHub runs, and skipping it would
+ * hide a context from the comparison with SMOKE_CONTEXTS.
+ */
+export function smokeMatrixContexts(jobBlock: string): string[] {
+  const lines = jobBlock.split("\n");
+  const start = lines.findIndex((line) => /^ {6}matrix:\s*$/u.test(line));
+  if (start === -1) {
+    return [];
+  }
+
+  const entry = /^ {10}- \{\s*project:\s*([a-z-]+),\s*shardIndex:\s*(\d+),\s*shardTotal:\s*(\d+)\s*\}\s*$/u;
+  const contexts: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s*(#.*)?$/u.test(line)) {
+      continue;
+    }
+    if (!/^ {8}/u.test(line)) {
+      break;
+    }
+    const match = line.match(entry);
+    if (match !== null) {
+      contexts.push(`smoke (${match[1]}, ${match[2]}, ${match[3]})`);
+    } else if (!/^ {8}include:\s*$/u.test(line)) {
+      throw new Error(`smoke matrix line not in the one-entry-per-line flow form: ${line.trim()}`);
+    }
+  }
+  return contexts;
+}
+
+/**
+ * Throws unless, for every project, the contexts carry one shardTotal and the indexes 1..shardTotal
+ * exactly once - a gap is a slice of the suite no runner walks, a duplicate one walked twice.
+ */
+export function assertShardsCover(contexts: readonly string[]): void {
+  const byProject = new Map<string, { totals: Set<number>; indexes: number[] }>();
+  for (const context of contexts) {
+    const match = context.match(/^smoke \(([a-z-]+), (\d+), (\d+)\)$/u);
+    if (match === null) {
+      throw new Error(`not a smoke context: ${context}`);
+    }
+    const [, project, index, total] = match;
+    const shards = byProject.get(project) ?? { totals: new Set<number>(), indexes: [] };
+    shards.totals.add(Number(total));
+    shards.indexes.push(Number(index));
+    byProject.set(project, shards);
+  }
+
+  for (const [project, { totals, indexes }] of byProject) {
+    const [total] = [...totals];
+    const expected = Array.from({ length: total }, (_, i) => i + 1);
+    const actual = [...indexes].sort((a, b) => a - b);
+    if (totals.size !== 1 || actual.join(",") !== expected.join(",")) {
+      throw new Error(`${project}: shards ${actual.join(",")} of ${[...totals].join("/")} do not cover 1..${total} once`);
+    }
+  }
+}
