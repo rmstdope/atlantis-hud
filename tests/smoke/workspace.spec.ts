@@ -8,6 +8,7 @@ import {
   expectOrders,
   expectOrdersNot,
   fillOrders,
+  freezeClock,
   importReport,
   loadReport,
   mapTransform,
@@ -1456,6 +1457,11 @@ test("a foreign unit can be inspected but not ordered", async ({ page }) => {
  * tooltips behind it, so the summary is only worth showing once the user has stopped.
  */
 test("resting on a unit row summarises it", async ({ page }) => {
+  // The wait is measured in page time the walk advances itself, not raced against the wall clock:
+  // a real 100 ms sleep let a loaded runner reach the "not yet" check after the tooltip was due
+  // (ah-vvkzr). Installed before the first navigation, and resumed so the report loads normally.
+  await page.clock.install();
+  await page.clock.resume();
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
@@ -1463,15 +1469,19 @@ test("resting on a unit row summarises it", async ({ page }) => {
   await expect(row).toBeVisible();
   const tip = page.getByTestId("unit-tooltip");
 
+  // Held still before the pointer arrives, so no hover timer exists yet for the freeze to fire.
+  await freezeClock(page);
   // The Name cell, not the row's centre: since `ah-rgkk.1` every cell has its own popup, and a
   // row's centre is whichever column happens to sit there.
   await row.locator('td[data-column="name"]').hover();
-  // A third of the wait, taken from the constant itself rather than written out: shortening the
-  // delay must not quietly turn this into a check made after the tooltip was already due.
-  await page.waitForTimeout(HOVER_DELAY_MS / 3);
+  // A moment short of the delay, taken from the constant itself rather than written out: changing
+  // the delay must not quietly turn this into a check made after the tooltip was already due.
+  await page.clock.runFor(HOVER_DELAY_MS - 1);
   await expect(tip).toHaveCount(0);
 
+  await page.clock.runFor(1);
   await expect(tip).toBeVisible();
+  await page.clock.resume();
   await expect(tip).toContainText("Seven of Eight (18642)");
   // Every skill and every item, not the truncated summary the row has room for.
   await expect(tip).toContainText("manipulation MANI");
@@ -6464,6 +6474,10 @@ test("the unit pane shows that unit's events and opens the rest", async ({ page 
  * summary is, and moving along the row is owed no second wait at all (decision **C1**).
  */
 test("resting on a cell opens a popup about that cell", async ({ page }) => {
+  // Page time the walk advances itself, for the reason "resting on a unit row summarises it"
+  // gives (ah-vvkzr).
+  await page.clock.install();
+  await page.clock.resume();
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
@@ -6471,16 +6485,21 @@ test("resting on a cell opens a popup about that cell", async ({ page }) => {
   await expect(row).toBeVisible();
   const popup = page.getByTestId("unit-cell-popup");
 
+  await freezeClock(page);
   await row.locator('td[data-column="items"]').hover();
-  await page.waitForTimeout(HOVER_DELAY_MS / 3);
+  await page.clock.runFor(HOVER_DELAY_MS - 1);
   await expect(popup).toHaveCount(0);
 
+  await page.clock.runFor(1);
   await expect(popup).toBeVisible();
+  await page.clock.resume();
   await expect(popup).toHaveAttribute("data-column", "items");
   await expect(popup).toContainText("Seven of Eight (18642) — items");
 });
 
 test("moving along a row swaps the popup without waiting again", async ({ page }) => {
+  await page.clock.install();
+  await page.clock.resume();
   await loadReport(page);
   await selectHex(page, "1:7,53");
 
@@ -6490,9 +6509,11 @@ test("moving along a row swaps the popup without waiting again", async ({ page }
   await row.locator('td[data-column="items"]').hover();
   await expect(popup).toHaveAttribute("data-column", "items");
 
+  // Held still, so no timer can fire: a swap that waited on one would never arrive. That proves
+  // "no second wait" exactly, where a 100 ms wall-clock budget raced the runner (ah-vvkzr).
+  await freezeClock(page);
   await row.locator('td[data-column="skills"]').hover();
-  // Well inside the delay a first popup would have had to wait out.
-  await expect(popup).toHaveAttribute("data-column", "skills", { timeout: HOVER_DELAY_MS / 3 });
+  await expect(popup).toHaveAttribute("data-column", "skills");
   await expect(popup).toContainText("Seven of Eight (18642) — skills");
 });
 
