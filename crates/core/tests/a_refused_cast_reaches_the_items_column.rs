@@ -14,7 +14,7 @@ use atlantis_hud_core::orders::effects::{
 };
 use atlantis_hud_core::report::orders::extract_orders_template;
 
-mod common;
+use crate::common;
 
 /// One hex and one mage, Ivanhoe (683), whose line carries `items` after its men and `skill`.
 fn report(items: &str, skill: &str) -> String {

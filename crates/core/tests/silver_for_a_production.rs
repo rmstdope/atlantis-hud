@@ -20,7 +20,7 @@ use atlantis_hud_core::orders::silver::ProductionCap;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// One hex, a carpenter with exactly one catapult's materials, and a neighbour to give to.

@@ -15,7 +15,7 @@ use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 const DRAINED: &str = "13403";

@@ -13,7 +13,7 @@ use atlantis_hud_core::orders::request::{validate_orders_request, ValidateOrders
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::OrderValidationResult;
 
-mod common;
+use crate::common;
 
 const CODE: &str = "create-village-refused";
 const NEAR: &str = "village-near-a-settlement";

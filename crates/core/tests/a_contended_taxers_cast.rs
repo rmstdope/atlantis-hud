@@ -23,7 +23,7 @@ use atlantis_hud_core::orders::silver::ProductionCap;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// One hex whose region states a tax base of `pool`, unit 900 a level-1 CRPA mage of ten orcs and

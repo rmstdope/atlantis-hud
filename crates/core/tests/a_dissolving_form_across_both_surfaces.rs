@@ -16,7 +16,7 @@ use atlantis_hud_core::orders::silver::SilverChangeCause;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// One hex with a market selling humans, the first own unit `901` and the former `902`, which

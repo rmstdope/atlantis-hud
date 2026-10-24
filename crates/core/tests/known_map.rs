@@ -7,7 +7,7 @@ use atlantis_hud_core::movement::graph::RememberedRegion;
 use atlantis_hud_core::report::parse_report_full;
 use atlantis_hud_core::report::region::parse_region_header;
 
-mod common;
+use crate::common;
 use common::at;
 
 /// A single-region report at the given turn, with an exit to keep a neighbour company.

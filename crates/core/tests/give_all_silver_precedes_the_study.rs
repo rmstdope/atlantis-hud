@@ -17,7 +17,7 @@ use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// One hex, a studying unit of ten men holding 100 silver, and a neighbour to give to.

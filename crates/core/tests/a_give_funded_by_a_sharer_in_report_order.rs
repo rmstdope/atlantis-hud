@@ -18,7 +18,7 @@ use atlantis_hud_core::orders::effects::{
 use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions};
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::{expect_preview_row, ruleset};
 
 const ORDERS: &str = "unit 4686\nGIVE 4008 14 IRON\nunit 4008\nGIVE 4840 14 IRON\n";

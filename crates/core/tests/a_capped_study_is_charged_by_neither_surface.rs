@@ -17,7 +17,7 @@ use atlantis_hud_core::orders::silver::UnitSilver;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// One hex selling gnolls, and two units of gnolls at combat 5 holding 900 silver each: one that

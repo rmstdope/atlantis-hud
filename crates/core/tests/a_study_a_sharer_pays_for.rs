@@ -13,7 +13,7 @@ use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::trident_ruleset;
 
 const STUDENT: &str = "6017";

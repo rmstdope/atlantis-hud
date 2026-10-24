@@ -12,7 +12,7 @@ use atlantis_hud_core::report::region::parse_structure;
 const RELATIVE_PATH: &str = "../../packages/core-client/src/coreVocabulary.generated.ts";
 const STRUCTURE_KINDS_PATH: &str = "../../packages/core-client/src/structureKinds.generated.ts";
 const REGENERATE: &str =
-    "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test generated_ts";
+    "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test integration generated_ts::";
 
 fn render() -> String {
     let mut out = String::new();

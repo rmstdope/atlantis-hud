@@ -18,7 +18,7 @@ use atlantis_hud_core::orders::semantics::{codes, review_turn, CheckOptions};
 use atlantis_hud_core::orders::silver::SilverChangeCause;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 fn orders(line: &str) -> String {

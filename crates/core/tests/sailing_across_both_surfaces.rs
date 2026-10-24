@@ -17,7 +17,7 @@ use atlantis_hud_core::movement::rules::Ruleset;
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::report::parse_report_full;
 
-mod common;
+use crate::common;
 use common::{ruleset, trident_ruleset};
 
 const ORDERS: &str = "unit 900\nSAIL SE SE\n";

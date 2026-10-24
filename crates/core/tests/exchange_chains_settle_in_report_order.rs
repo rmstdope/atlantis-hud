@@ -16,7 +16,7 @@ use atlantis_hud_core::orders::silver::SilverChangeCause;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// Ivanhoe (683) with horses, Maurice de Bracy (1160) with silver and Cedric (900) with wood, in

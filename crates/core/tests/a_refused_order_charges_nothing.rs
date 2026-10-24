@@ -12,7 +12,7 @@ use atlantis_hud_core::orders::silver::{RefusedSpend, SilverChangeCause, UnitSil
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::{ruleset, without_standing_month_orders};
 
 /// Turn 72's own orders, with `extra` written under Drone.

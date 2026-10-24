@@ -36,7 +36,7 @@ use atlantis_hud_core::orders::silver::{BuyAllCap, SilverChangeCause};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// What this very test measured on `origin/main` before this bead: the hopeful purse, carrying

@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// What the committed turn genuinely contains, per code.

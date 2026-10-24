@@ -16,7 +16,7 @@ use atlantis_hud_core::orders::silver::UnitSilver;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::trident_ruleset;
 
 /// Settlers (900) with 1005 orcs and 102 wagons, enough silver to pay any upkeep, and the

@@ -16,7 +16,7 @@ use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, U
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::report::parse_report_full;
 
-mod common;
+use crate::common;
 
 const REPORT: &str = "Foo (1) Report\n\n\
 mountain (1,1) in Shire, 100 peasants (humans), $500.\n\

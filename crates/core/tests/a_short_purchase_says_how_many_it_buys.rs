@@ -10,7 +10,7 @@ use atlantis_hud_core::orders::silver::{ShortBuy, SilverSpender, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// Seven of Eight (18642), with its `@study obse` line followed by `extra`.

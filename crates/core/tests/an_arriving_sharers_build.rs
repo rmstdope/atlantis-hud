@@ -18,7 +18,7 @@ use atlantis_hud_core::orders::effects::{
 };
 use atlantis_hud_core::report::orders::extract_orders_template;
 
-mod common;
+use crate::common;
 
 const BUILDER: &str = "12624";
 const SHARER: &str = "8333";

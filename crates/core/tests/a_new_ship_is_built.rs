@@ -14,7 +14,7 @@ use atlantis_hud_core::orders::effects::{
     preview_orders_for_remembered_report, NewShipOutcome, OrdersPreviewResponse,
 };
 
-mod common;
+use crate::common;
 use common::expect_preview_row;
 
 fn preview(orders: &str) -> (String, OrdersPreviewResponse) {

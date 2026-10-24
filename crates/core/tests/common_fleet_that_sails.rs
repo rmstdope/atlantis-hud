@@ -8,7 +8,7 @@
 //! sizes a fleet from the hull's own data so a new test cannot repeat that, and the assertion is the
 //! sailing check itself, so a fixture that drifts fails as a broken fixture.
 
-mod common;
+use crate::common;
 
 use common::{assert_fleet_sails, fleet_that_sails};
 

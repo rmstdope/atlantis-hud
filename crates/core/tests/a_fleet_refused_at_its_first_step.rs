@@ -17,7 +17,7 @@ use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, U
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::report::parse_report_full;
 
-mod common;
+use crate::common;
 
 /// The settled plain (1,1), where the longship lies, and the unsettled forest (2,2) SE of it,
 /// which grows no grain. Aboard: the captain (900) and a sailor (901), both on guard, a passenger
