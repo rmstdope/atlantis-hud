@@ -10,7 +10,8 @@ import {
   openOrders,
   ordersInput,
   saveNow,
-  selectHex
+  selectHex,
+  STANDARD_TURN
 } from "./gameSetup";
 
 /**
@@ -73,9 +74,9 @@ test("a game reopens on the turn that was loaded in it", async ({ page }) => {
   await page.reload();
 
   // The turn, the header and the map all come back without the player opening the file again.
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG");
-  await expect(page.getByTestId("app-header")).toContainText("Turn 72");
+  await expect(page.getByTestId("app-header")).toContainText(`Turn ${STANDARD_TURN}`);
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("panel-region")).toContainText("Inholm");
 });
@@ -122,7 +123,7 @@ test("a game reopens on the map view it was left at", async ({ page }) => {
   const left = await mapView(page);
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
 
   // The hex the player was working on comes back selected, and the map does not travel to it: the
   // player had deliberately panned away, and pulling the view back is the reset this is about.
@@ -159,7 +160,7 @@ test("each game keeps its own map view", async ({ page }) => {
   await page.getByTestId("game-indicator").click();
   await page.getByRole("button", { name: "First game", exact: true }).click();
 
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await expect(page.getByTestId("map-world")).toHaveAttribute("transform", first.transform);
 });
 
@@ -226,7 +227,7 @@ test("orders typed into a game are still there after a reload", async ({ page })
   await expect(page.getByTestId("orders-status")).toContainText(SAVED, { timeout: 20_000 });
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await openOrders(page, OWN_UNIT);
 
   await expectOrders(page, /@study combat/u);
@@ -317,7 +318,7 @@ test("a slow ruleset fetch cannot wipe orders typed after an import", async ({ p
   await expectOrders(page, /^@work\n?$/u);
 
   // Both the restore and the import wait on the same fetch, and since ah-6yj2 the import waits
-  // too - so the counts, not "restored turn 72", are what the header settles on. Either way the
+  // too - so the counts, not `restored turn ${STANDARD_TURN}`, are what the header settles on. Either way the
   // fetch has landed and the restore has had its chance to clobber, which is what this walk is
   // about: the words the player typed still stand.
   await expect(page.getByTestId("import-status")).toContainText("11 regions", {
@@ -350,7 +351,7 @@ test("switching to another game and back loses neither the turn nor the orders",
   await page.getByTestId("game-indicator").click();
   await page.getByRole("button", { name: "First game", exact: true }).click();
 
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await openOrders(page, OWN_UNIT);
   await expectOrders(page, /@teach 18642/u);
 });

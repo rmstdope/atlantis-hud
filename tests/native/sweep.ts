@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { readReport, readRuleset } from "@atlantis/fixtures";
+import { readReport, readRuleset, reportTurn } from "@atlantis/fixtures";
 
 /**
  * One table, two readers: `tests/native/binding.spec.ts` drives every entry over real Tauri IPC
@@ -16,6 +16,8 @@ import { readReport, readRuleset } from "@atlantis/fixtures";
  */
 
 const REPORT = readReport("g7f95t71");
+/** The turn HUD stores that report under, from the fixtures rather than written out (ah-iuofk). */
+const REPORT_TURN = reportTurn("g7f95t71");
 /** Another faction, same turn: the one shape `merge_report` accepts. */
 const ALLY_REPORT = readReport("g8f73t71");
 const RULESET = readRuleset();
@@ -196,7 +198,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 72
+      turn_number: REPORT_TURN
     })
   },
   {
@@ -213,7 +215,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 72,
+      turn_number: REPORT_TURN,
       order_text: "@work",
       updated_at: ISO
     })
@@ -224,7 +226,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 72
+      turn_number: REPORT_TURN
     })
   },
   {
@@ -237,7 +239,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       viewer_faction_id: "95",
-      viewer_turn_number: 72,
+      viewer_turn_number: REPORT_TURN,
       raw_report: ALLY_REPORT,
       merged_at: ISO
     })
@@ -248,7 +250,7 @@ export const SWEEP: SweepEntry[] = [
       database_path: context.databasePath,
       game_id: GAME_ID,
       faction_id: "95",
-      turn_number: 72
+      turn_number: REPORT_TURN
     })
   },
   {
@@ -273,7 +275,7 @@ export const SWEEP: SweepEntry[] = [
         regionId: "1:7,53",
         text: "binding sweep",
         onMap: true,
-        turn: 72,
+        turn: REPORT_TURN,
         createdAt: ISO,
         updatedAt: ISO
       }
@@ -311,7 +313,7 @@ export const SWEEP: SweepEntry[] = [
             items: [],
             skills: [],
             men: 1,
-            seenTurn: 72,
+            seenTurn: REPORT_TURN,
             seenAt: ISO
           }
         ],
@@ -357,6 +359,7 @@ export const SWEEP: SweepEntry[] = [
             movement: null,
             structureId: null
           },
+          // turn-literal: any turn will do; the sheet is not tied to a report here
           sheetTurn: 23,
           receivedAt: ISO
         }
@@ -377,6 +380,7 @@ export const SWEEP: SweepEntry[] = [
         {
           factionId: "21",
           unitId: "9001",
+          // turn-literal: any turn will do; the plan is not tied to a report here
           goals: [{ kind: "study", turn: 24, skill: "FORC" }],
           comment: "heading for Gate Lore",
           updatedAt: ISO

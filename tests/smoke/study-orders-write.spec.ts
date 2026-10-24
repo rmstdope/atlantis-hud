@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { expectOrders, expectOrdersNot, fillOrders, loadReport, selectHex, selectUnit } from "./gameSetup";
+import { expectOrders, expectOrdersNot, fillOrders, loadReport, selectHex, selectUnit, STANDARD_TURN } from "./gameSetup";
 
 /**
  * "Put into my orders" (`ah-lyg6.4.2`): the study planner's own-faction orders written into the
@@ -27,7 +27,7 @@ async function openPlannerWithHandWrittenOrders(page: import("@playwright/test")
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-${STANDARD_TURN + 1}`);
   await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
   await page.getByTestId("study-schedule-choice-FORC").click();
@@ -96,7 +96,7 @@ test("a planned cast is written beside the study, and unticking the box leaves i
 }) => {
   await openPlannerWithHandWrittenOrders(page);
   await page.getByTestId("study-planner-view-schedule").click();
-  await page.getByTestId(`study-schedule-cast-${MAGE}-73`).click();
+  await page.getByTestId(`study-schedule-cast-${MAGE}-${STANDARD_TURN + 1}`).click();
   await page.getByTestId("study-schedule-cast-choice-FIRE").click();
   await expect(page.getByTestId("study-schedule-cast-popover")).toHaveCount(0);
   await page.getByTestId("study-planner-view-orders").click();

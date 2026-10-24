@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
+import { readReport, reportTurn } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
@@ -11,7 +11,8 @@ import {
   ordersInput,
   selectHex,
   selectUnit,
-  waitForValidation
+  waitForValidation,
+  turnInHeader
 } from "./gameSetup";
 
 /**
@@ -27,6 +28,10 @@ const OTHER_OWN_UNIT = "13401";
 const F42_T40 = readReport("g3f42t40");
 const F42_T42 = readReport("g3f42t42");
 const F42_T82 = readReport("g3f42t82");
+/** The turns HUD shows for the three reports above, from the fixtures (ah-iuofk). */
+const F42_T40_TURN = reportTurn("g3f42t40");
+const F42_T42_TURN = reportTurn("g3f42t42");
+const F42_T82_TURN = reportTurn("g3f42t82");
 const HISTORICAL_F42_T40 = F42_T40.replace(
   "+ Bog [1] : Bog, closed to player units.",
   `+ Bog [1] : Bog, closed to player units.
@@ -128,7 +133,7 @@ test("the palette finds a gate by number and selects its hex", async ({ page }) 
     mimeType: "text/plain",
     buffer: Buffer.from(F42_T82, "utf8")
   });
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*83\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T82_TURN));
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("987");
@@ -153,7 +158,7 @@ test("the palette finds historical units and map objects", async ({ page }) => {
     mimeType: "text/plain",
     buffer: Buffer.from(F42_T42, "utf8")
   });
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*43\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T42_TURN));
 
   await page.setInputFiles('input[type="file"]', {
     name: "f42-t40.rep",
@@ -164,17 +169,17 @@ test("the palette finds historical units and map objects", async ({ page }) => {
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Historical Scout (99999)");
-  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 41");
+  await expect(page.getByTestId("palette-item").first()).toContainText(`last seen turn ${F42_T40_TURN}`);
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
-  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
+  await expect(page.getByTestId("panel-region")).toContainText(`Last seen turn ${F42_T40_TURN}`);
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Bog [1]");
-  await expect(page.getByTestId("palette-item").first()).toContainText("last seen turn 41");
+  await expect(page.getByTestId("palette-item").first()).toContainText(`last seen turn ${F42_T40_TURN}`);
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
-  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
+  await expect(page.getByTestId("panel-region")).toContainText(`Last seen turn ${F42_T40_TURN}`);
 });
 
 /**
@@ -191,7 +196,7 @@ test("the palette finds a faction by name or number and opens its details", asyn
     mimeType: "text/plain",
     buffer: Buffer.from(F42_T42, "utf8")
   });
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*43\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T42_TURN));
   await page.setInputFiles('input[type="file"]', {
     name: "f42-t40.rep",
     mimeType: "text/plain",
@@ -234,17 +239,17 @@ test("the palette finds a faction by name or number and opens its details", asyn
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Greenhollow");
   await expect(items.first()).toContainText("Greenhollow Traders (58)");
-  await expect(items.first()).toContainText("last seen turn 41");
+  await expect(items.first()).toContainText(`last seen turn ${F42_T40_TURN}`);
   await page.keyboard.press("Enter");
   await expect(dossier).toContainText("Last seen");
   await expect(dossier).toContainText("None of their units is in this turn's report.");
   await expect(dossier).not.toContainText("Seen in");
   await expect(dossier).not.toContainText("in the list");
   const row = dossier.getByTestId(/^dossier-last-seen-/);
-  await expect(row).toContainText("turn 41 · 1 unit");
+  await expect(row).toContainText(`turn ${F42_T40_TURN} · 1 unit`);
   await row.click();
   await expect(dossier).toHaveCount(0);
-  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
+  await expect(page.getByTestId("panel-region")).toContainText(`Last seen turn ${F42_T40_TURN}`);
 });
 
 test("arrowing down a long list keeps the highlight on screen", async ({ page }) => {

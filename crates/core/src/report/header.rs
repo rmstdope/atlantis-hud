@@ -424,6 +424,41 @@ mod tests {
     }
 
     #[test]
+    fn each_month_is_one_turn_and_a_new_year_follows_december() {
+        // The fixtures and the walks name their turns through `REPORT_TURNS` in
+        // `packages/fixtures` (ah-iuofk); this is where the numbering itself is pinned.
+        let months = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ];
+        for (offset, month) in (1..).zip(months) {
+            assert_eq!(
+                turn_number_for(month, 3),
+                Some(24 + offset),
+                "{month}, Year 3"
+            );
+        }
+        assert_eq!(turn_number_for("December", 1), Some(12));
+        assert_eq!(turn_number_for("January", 2), Some(13));
+        assert_eq!(
+            turn_number_for("january", 2),
+            Some(13),
+            "the month is read ignoring case"
+        );
+        assert_eq!(turn_number_for("January", 0), None, "there is no Year 0");
+    }
+
+    #[test]
     fn records_an_attitude_entry_it_could_not_read() {
         let source = concat!(
             "Declared Attitudes (default Neutral):\n",

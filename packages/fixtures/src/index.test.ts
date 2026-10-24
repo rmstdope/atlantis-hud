@@ -5,7 +5,9 @@ import {
   ATLACLIENT_MAPS,
   MAGE_SHEETS,
   NEWAGE_ARCANUM_REPORTS,
+  NEWAGE_ARCANUM_REPORT_TURNS,
   REPORTS,
+  REPORT_TURNS,
   readAtlaClientMap,
   readMageSheet,
   readNewAgeArcanumReport,
@@ -136,6 +138,24 @@ describe("the committed AtlaClient maps", () => {
   it("each key reads its file, which carries AtlaClient's turn stamps", () => {
     for (const key of Object.keys(ATLACLIENT_MAPS) as AtlaClientMapKey[]) {
       expect(readAtlaClientMap(key)).toMatch(/^-{3,};\d+(?:-\d+)?$/m);
+    }
+  });
+});
+
+describe("the turn HUD shows for each report fixture", () => {
+  // The values themselves are checked against the real core in browser-core's
+  // reportTurns.wasm.test.ts; here only that every fixture has one, and nothing else does.
+  it("is declared for every New Origins fixture and for nothing else", () => {
+    expect(Object.keys(REPORT_TURNS).sort()).toEqual(Object.keys(REPORTS).sort());
+    for (const turn of Object.values(REPORT_TURNS)) {
+      expect(Number.isInteger(turn) && turn >= 1).toBe(true);
+    }
+  });
+
+  it("is declared for every New Age Arcanum fixture and for nothing else", () => {
+    expect(Object.keys(NEWAGE_ARCANUM_REPORT_TURNS).sort()).toEqual(Object.keys(NEWAGE_ARCANUM_REPORTS).sort());
+    for (const turn of Object.values(NEWAGE_ARCANUM_REPORT_TURNS)) {
+      expect(Number.isInteger(turn) && turn >= 1).toBe(true);
     }
   });
 });

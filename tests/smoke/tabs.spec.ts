@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { clearGames, createGame, fillOrders, loadReport, openOrders, expectOrders } from "./gameSetup";
+import { clearGames, createGame, fillOrders, loadReport, openOrders, expectOrders, STANDARD_TURN } from "./gameSetup";
 
 /**
  * Several Atlantis HUD tabs wanting the same saved data (ah-2jb3).
@@ -112,7 +112,7 @@ test("a game another tab holds says so, and Try again opens it once the tab lets
   await holder.evaluate(() => window.__held?.close());
   await tryAgain.click();
   await expect(notice).toBeHidden({ timeout: 10_000 });
-  await expect(app.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(app.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
 });
 
 test("the saved games list another tab holds says so", async ({ page, context }) => {
@@ -199,7 +199,7 @@ test.describe("a tab asked to let go", () => {
     await asNewerBuild(page, database);
     await page.getByTestId("storage-stopped-reload").click();
     await expect(page.getByTestId("game-indicator")).toContainText("Midgard");
-    await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+    await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
     await openOrders(page, "18642");
     await expectOrders(page, /@work/u);
   });

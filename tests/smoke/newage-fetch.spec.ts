@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
+import { readReport, reportTurn } from "@atlantis/fixtures";
 
 import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
 
@@ -19,6 +19,13 @@ import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
 const TURN_70 = readReport("g7f95t70");
 const TURN_71 = readReport("g7f95t71");
 const TURN_72 = readReport("g7f95t72");
+/**
+ * The turns HUD shows for those three reports, from the fixtures (ah-iuofk). The world numbers its
+ * turns as the engine does, so the mocked server serves each report under the same number.
+ */
+const T70_TURN = reportTurn("g7f95t70");
+const T71_TURN = reportTurn("g7f95t71");
+const T72_TURN = reportTurn("g7f95t72");
 
 const REPORT_URL = "https://atlantis-newage.com/api/worlds/arcanum/files/report?format=txt";
 
@@ -250,24 +257,24 @@ test("fetches every missing turn in one press and says what happened", async ({ 
   // The world numbers its turns as the engine does, so its turn 73 is that same report.
   await replyWith(page, { status: 200, body: TURN_72 });
   await historyWith(page, {
-    turns: { status: 200, body: JSON.stringify({ available_turns: [71, 72, 73] }) },
+    turns: { status: 200, body: JSON.stringify({ available_turns: [T70_TURN, T71_TURN, T72_TURN] }) },
     reports: {
-      "71": { status: 200, body: TURN_70 },
-      "72": { status: 200, body: TURN_71 }
+      [T70_TURN]: { status: 200, body: TURN_70 },
+      [T71_TURN]: { status: 200, body: TURN_71 }
     }
   });
 
   await fetchWith(page, { scope: "history" });
 
   await expect(page.getByTestId("import-status")).toContainText(
-    "2 turns stored for history; still showing turn 73."
+    `2 turns stored for history; still showing turn ${T72_TURN}.`
   );
   await closeRulesetCheck(page);
 
   const historyCalls = (await httpCalls(page))
     .map((call) => call[2])
     .filter((url) => url.includes("/files/history/") && !url.includes("/turns"));
-  expect(historyCalls.filter((url) => url.includes("/history/73/"))).toEqual([]);
+  expect(historyCalls.filter((url) => url.includes(`/history/${T72_TURN}/`))).toEqual([]);
   expect(historyCalls).toHaveLength(2);
 });
 
@@ -276,10 +283,10 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: TURN_72 });
   await historyWith(page, {
-    turns: { status: 200, body: JSON.stringify({ available_turns: [71, 72, 73] }) },
+    turns: { status: 200, body: JSON.stringify({ available_turns: [T70_TURN, T71_TURN, T72_TURN] }) },
     reports: {
-      "71": { status: 200, body: TURN_70 },
-      "72": { status: 200, body: TURN_71 }
+      [T70_TURN]: { status: 200, body: TURN_70 },
+      [T71_TURN]: { status: 200, body: TURN_71 }
     }
   });
 
@@ -298,7 +305,7 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   // racing the delayed reply - and the line is asserted whole, because `runSummary` says
   // `1 turn stored for history` for a run of one and a substring test would not see it.
   await expect(page.getByTestId("import-status")).toHaveText(
-    "turn 71 stored for history; still showing turn 73."
+    `turn ${T70_TURN} stored for history; still showing turn ${T72_TURN}.`
   );
   await closeRulesetCheck(page);
 
@@ -307,8 +314,8 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   // and not the run's own end-of-run refresh.
   await page.getByTestId("turn-chip").click();
   await expect(page.getByTestId("turn-picker")).toBeVisible();
-  await expect(page.getByTestId("turn-row-71")).toBeVisible();
-  await expect(page.getByTestId("turn-row-73")).toContainText("playing");
+  await expect(page.getByTestId(`turn-row-${T70_TURN}`)).toBeVisible();
+  await expect(page.getByTestId(`turn-row-${T72_TURN}`)).toContainText("playing");
 
   // The proof that the run stopped, and the last thing asserted because it is the only claim here
   // that cannot be satisfied in passing. Every assertion above is about a moment: a run that
@@ -320,7 +327,7 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
     .map((call) => call[2])
     .filter((url) => url.includes("/files/history/") && !url.includes("/turns"));
   expect(historyCalls).toHaveLength(1);
-  expect(historyCalls[0]).toContain("/history/71/");
+  expect(historyCalls[0]).toContain(`/history/${T70_TURN}/`);
 });
 
 test("keeps this turn and says why when the list of earlier turns could not be fetched", async ({
@@ -335,10 +342,10 @@ test("keeps this turn and says why when the list of earlier turns could not be f
   // The report landed, so this is a warning about the listing rather than a failed fetch: the
   // status line carries the warning, and the turn it fetched is the one on screen.
   await expect(page.getByTestId("import-status")).toHaveText(
-    "turn 72 loaded, but Arcanum's list of earlier turns could not be fetched: the world refused the request (500)."
+    `turn ${T71_TURN} loaded, but Arcanum's list of earlier turns could not be fetched: the world refused the request (500).`
   );
   await closeRulesetCheck(page);
-  await expect(page.getByTestId("turn-chip")).toContainText("72");
+  await expect(page.getByTestId("turn-chip")).toContainText(String(T71_TURN));
 });
 
 test("owns the fault when the list of earlier turns cannot be understood", async ({ page }) => {
@@ -352,7 +359,7 @@ test("owns the fault when the list of earlier turns cannot be understood", async
   await fetchWith(page, { scope: "history" });
 
   await expect(page.getByTestId("import-status")).toHaveText(
-    "turn 72 loaded. Atlantis HUD did not understand Arcanum's list of earlier turns, so none were fetched — trying again will not help."
+    `turn ${T71_TURN} loaded. Atlantis HUD did not understand Arcanum's list of earlier turns, so none were fetched — trying again will not help.`
   );
   await closeRulesetCheck(page);
   const historyCalls = (await httpCalls(page))
@@ -366,10 +373,10 @@ test("says calmly when every earlier turn is already loaded", async ({ page }) =
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: TURN_72 });
   await historyWith(page, {
-    turns: { status: 200, body: JSON.stringify({ available_turns: [71, 72, 73] }) },
+    turns: { status: 200, body: JSON.stringify({ available_turns: [T70_TURN, T71_TURN, T72_TURN] }) },
     reports: {
-      "71": { status: 200, body: TURN_70 },
-      "72": { status: 200, body: TURN_71 }
+      [T70_TURN]: { status: 200, body: TURN_70 },
+      [T71_TURN]: { status: 200, body: TURN_71 }
     }
   });
 
@@ -377,14 +384,14 @@ test("says calmly when every earlier turn is already loaded", async ({ page }) =
   // The stand-in answers instantly: wait for the first run's whole line, or the second press
   // races its end.
   await expect(page.getByTestId("import-status")).toHaveText(
-    "2 turns stored for history; still showing turn 73."
+    `2 turns stored for history; still showing turn ${T72_TURN}.`
   );
   await closeRulesetCheck(page);
 
   await fetchWith(page, { scope: "history" });
 
   await expect(page.getByTestId("import-status")).toHaveText(
-    "every earlier turn was already loaded; still showing turn 73."
+    `every earlier turn was already loaded; still showing turn ${T72_TURN}.`
   );
 });
 

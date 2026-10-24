@@ -4,7 +4,9 @@ import { readAtlaClientMap, readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
-  importReport
+  importReport,
+  STANDARD_TURN,
+  turnInHeader
 } from "./gameSetup";
 
 /**
@@ -81,7 +83,7 @@ test("exports the whole known map when nothing was selected", async ({ page }, t
 
   const { text, name } = await exportAndRead(page, testInfo);
 
-  expect(name).toBe("map-turn-72-level-1.txt");
+  expect(name).toBe(`map-turn-${STANDARD_TURN}-level-1.txt`);
   expect(text).toContain("Atlantis Report For:");
   expect(text).toContain("Borg TNG (95)");
   expect(text).toContain("mountain (7,53) in Inhead");
@@ -173,7 +175,7 @@ test("re-imports its own export as a map, and leaves the turn alone", async ({ p
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
 
   // The turn on screen survived, faction and all - which is the whole point of the bead.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 });
 
@@ -213,14 +215,14 @@ test("adds a map export handed over in a batch, and keeps the turn it came with"
   await expect(dialog).toContainText(
     "Nothing added to your map — the map export held nothing new."
   );
-  await expect(dialog).toContainText("Turn 72 is on screen.");
+  await expect(dialog).toContainText(`Turn ${STANDARD_TURN} is on screen.`);
   await expect(dialog).toContainText(`${name} — map export, nothing new to your map`);
 
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   // The turn survived the batch, faction and all.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
   // And the stored report is still the real one. The faction's allowances come from the report's
@@ -247,7 +249,7 @@ test("cancels a map export without writing anything", async ({ page }, testInfo)
 
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
   await expect(page.getByTestId("import-status")).not.toContainText("added to your map");
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
 });
 
 /**
@@ -312,7 +314,9 @@ test("imports a map exported by AtlaClient", async ({ page }) => {
 
   const prompt = page.getByTestId("map-export-prompt");
   await expect(prompt).toBeVisible();
+  // turn-literal: the stamps AtlaClient wrote into its export, not a reading of a report's date
   await expect(prompt).toContainText("is a map exported from AtlaClient on turn 16");
+  // turn-literal: as above
   await expect(prompt).toContainText("29 are older, back to turn 5");
 
   await page.getByTestId("map-export-add").click();
@@ -321,7 +325,7 @@ test("imports a map exported by AtlaClient", async ({ page }) => {
   await expect(page.getByTestId("map-export-prompt")).toHaveCount(0);
 
   // The turn on screen survived, faction and all.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
   // Where the hexes came from, answerable after a reload. The browser adapter files an AtlaClient
@@ -329,6 +333,7 @@ test("imports a map exported by AtlaClient", async ({ page }) => {
   // asserted on the web path - and the row names the source alone, with no `(atlaclient)` suffix.
   await page.getByTestId("merged-factions-chip").click();
   const mergedPanel = page.getByTestId("merged-factions");
+  // turn-literal: the export's own stamp
   await expect(mergedPanel).toContainText("AtlaClient, turn 16");
   await expect(mergedPanel).not.toContainText("(atlaclient)");
   await page.keyboard.press("Escape");

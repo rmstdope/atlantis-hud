@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
-import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
+import { clearGames, closeRulesetCheck, createGame, STANDARD_TURN } from "./gameSetup";
 
 /**
  * Fetch and Send for a New Age world in the web version (ah-oma5).
@@ -117,7 +117,7 @@ test("sends orders from the web and says what the world answered", async ({ page
   await page.getByTestId("newage-send-confirm").click();
 
   await expect(page.getByTestId("newage-send-outcome")).toHaveText(
-    "Orders for turn 72 were saved. The world found nothing wrong with them."
+    `Orders for turn ${STANDARD_TURN} were saved. The world found nothing wrong with them.`
   );
   const upload = world.calls.find((call) => call[1].endsWith("/files/orders"));
   expect(upload?.[0]).toBe("POST");

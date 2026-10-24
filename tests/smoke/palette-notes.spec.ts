@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { loadReport, selectHex } from "./gameSetup";
+import { loadReport, selectHex, STANDARD_TURN } from "./gameSetup";
 
 /**
  * ah-mlls.5: the notes a player wrote - on a hex, or on a mage in the study planner - found by a
@@ -43,7 +43,7 @@ test("a hex note is found by a word on its second line, and choosing it outlines
   await expect(row.getByTestId("palette-note-line")).toHaveText("A seam of quartzite under the ridge.");
   await expect(row.locator("b")).toHaveText("quartz");
   await expect(row.getByTestId("palette-note-place")).toContainText("(7,53)");
-  await expect(row.getByTestId("palette-note-place")).toContainText("· turn 72");
+  await expect(row.getByTestId("palette-note-place")).toContainText(`· turn ${STANDARD_TURN}`);
 
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
