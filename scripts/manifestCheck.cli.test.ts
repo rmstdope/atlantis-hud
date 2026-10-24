@@ -103,11 +103,12 @@ describe("the manifest check as the workflow runs it", () => {
 
   it("survives a throttled first attempt and says which attempt recovered", async () => {
     await start(1);
-    const { code, out } = await runCli(base);
+    // The retry delay itself is pinned in-process; here only the recovery notice's wiring is.
+    const { code, out } = await runCli(base, undefined, { MANIFEST_CHECK_RETRY_DELAY_MS: "0" });
     expect(code).toBe(0);
     expect(out).toContain("::notice::The manifest returned 200 on attempt 2.");
     expect(out).not.toContain("::error::");
-  }, 30_000);
+  });
 
   it("exits 1 and names the status when the manifest is never served", async () => {
     await start(0);
