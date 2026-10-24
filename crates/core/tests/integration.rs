@@ -15,6 +15,7 @@ mod common;
 mod a_build_on_a_sharers_goods;
 mod a_buy_the_purse_paid_in_full_is_not_short;
 mod a_capped_study_is_charged_by_neither_surface;
+mod a_cast_creation_on_a_real_turn;
 mod a_contended_taxers_buy_all;
 mod a_contended_taxers_cast;
 mod a_contended_taxers_numbered_buy;

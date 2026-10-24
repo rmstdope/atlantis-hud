@@ -10,7 +10,7 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, CreatedItem};
 use atlantis_hud_core::report::orders::extract_orders_template;
 
-mod common;
+use crate::common;
 
 #[test]
 fn a_level_two_wolf_lore_cast_summons_one_to_eight_wolves() {
