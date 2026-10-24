@@ -257,6 +257,36 @@ mod a_hex_that_shares {
         assert_eq!(capped_by, Some(ProductionCap::Materials));
         assert_eq!(wanted, 39, "what its skill and tools alone could make");
     }
+
+    /// The other half of the same settlement, moved here from the smoke suite (`ah-sybfj`):
+    /// `MinersA (5105)` shares, so it lends the smith the iron it holds - `rules/share`, "resources
+    /// for production" - and its own template `@PRODUCE IRON` mines the same amount back. Its month
+    /// nets to nothing, so the ITEMS surface has no change to show on its row.
+    #[test]
+    fn the_supplier_that_mines_back_what_it_lent_nets_to_nothing() {
+        const MINER: &str = "5105";
+        let text = atlantis_hud_fixtures::G3_F42_T42.text;
+        let template = extract_orders_template(text)
+            .map(|template| template.text)
+            .unwrap_or_default();
+        let orders = format!("{template}\nunit {SMITH}\nPRODUCE sword\n");
+
+        let response = preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            atlantis_hud_fixtures::RULESET_JSON,
+            text,
+            "[]",
+            &orders,
+        )
+        .expect("the ruleset loads");
+
+        let miner = common::preview_row(text, &response, MINER);
+        assert!(
+            miner.is_none_or(|row| row.changes.is_empty()),
+            "the miner's month nets to nothing, so no field of its row is a projection: {:?}",
+            miner.map(|row| &row.changes)
+        );
+    }
 }
 
 // --- a gift of the whole purse precedes the manufacture (`ah-m7su`) ----------------------------
