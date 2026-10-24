@@ -161,4 +161,4 @@ R53 The web app installs as an app and opens its workspace with the network cut.
 R54 On the desktop, exports go through the system save dialog rather than a browser download.
     Proven by: tests/smoke/desktop-shell.spec.ts "an orders export goes through the save dialog, with no browser download"
 R55 Each release has a desktop app that installs and runs on macOS, Windows and Linux.
-    Proven by: nothing yet
+    Proven by: .github/workflows/release.yml "Launch the built bundle and check its window opens (R55)", in the macos, linux and windows jobs (scripts/desktopLaunchCheck.ts)
