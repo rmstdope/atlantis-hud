@@ -1077,28 +1077,27 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   /** E3: two or more picked is what draws the bulk line and stands the header trigger down. */
   const bulk = pick.ids.size >= 2;
 
-  /**
-   * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
-   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing
-   * (ah-1lac review), until the effect below forgets it (ah-91i4).
-   */
-  const armyListOpen = armyListShown(menu, {
+  /** The remembered menu worth keeping: `menu` while its list is drawn, `null` otherwise. */
+  const keptMenu = rememberedMenu(menu, {
     canEditArmies,
     hasSelection: selectedUnit !== null,
     bulk,
     acting: acting.length,
     hasTurn: currentTurn !== null
   });
+  /**
+   * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
+   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing
+   * (ah-1lac review), until the effect below forgets it (ah-91i4).
+   */
+  const armyListOpen = keptMenu !== null;
 
-  // A list that is not drawn is forgotten (ah-91i4). A control that could not draw it - a
-  // right-click with no game open, or on a report naming no turn - and a header list whose unit a
-  // filter has hidden would otherwise keep `menu` set, and the list would appear by itself, with no
-  // new click, the moment its condition came to hold again.
+  // A list that is not drawn is forgotten (ah-91i4); the rule, and why, is `rememberedMenu`.
   useEffect(() => {
-    if (menu !== null && !armyListOpen) {
-      setMenu(null);
+    if (menu !== keptMenu) {
+      setMenu(keptMenu);
     }
-  }, [menu, armyListOpen]);
+  }, [menu, keptMenu]);
 
   // A list opening, from any of its controls, closes the popup and drops a wait still counting
   // (ah-1lac), so nothing is drawn over the list and nothing reopens, at a spot the pointer has
@@ -1758,15 +1757,21 @@ const byMouse = (event: PointerEvent<HTMLElement>) => event.pointerType === "mou
  */
 type MenuAnchor = { at: "header" } | { at: "bulk" } | { at: "pointer"; point: Point };
 
+/** What each of the Add to army list's three controls draws it under (`armyListShown`). */
+type ArmyListConditions = {
+  canEditArmies: boolean;
+  hasSelection: boolean;
+  bulk: boolean;
+  acting: number;
+  hasTurn: boolean;
+};
+
 /**
  * Whether the Add to army list `menu` names is actually drawn (ah-1lac): the header's needs a
  * selected unit, the bulk line's needs two or more picked, and the right-click one needs rows to
  * act on and a report naming a turn - and every one needs a game to edit. Exported for its test.
  */
-export function armyListShown(
-  menu: MenuAnchor | null,
-  can: { canEditArmies: boolean; hasSelection: boolean; bulk: boolean; acting: number; hasTurn: boolean }
-): boolean {
+export function armyListShown(menu: MenuAnchor | null, can: ArmyListConditions): boolean {
   if (menu === null || !can.canEditArmies) {
     return false;
   }
@@ -1778,6 +1783,19 @@ export function armyListShown(
     case "pointer":
       return can.acting > 0 && can.hasTurn;
   }
+}
+
+/**
+ * The menu worth remembering: `menu` itself while its Add to army list is drawn, `null` otherwise
+ * (ah-91i4). A control that could not draw the list - a right-click with no game open, or on a
+ * report naming no turn - and a header list whose unit a filter has hidden are forgotten, so the
+ * list never appears by itself, with no new click, the moment its condition comes to hold again.
+ */
+export function rememberedMenu(
+  menu: MenuAnchor | null,
+  can: ArmyListConditions
+): MenuAnchor | null {
+  return armyListShown(menu, can) ? menu : null;
 }
 
 /**

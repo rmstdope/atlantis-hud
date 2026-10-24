@@ -26,7 +26,7 @@ import { renderWithStoreState, restoreStoresForTest, setStoreStateForTest } from
 import { resetWorkspaceStore, useWorkspaceStore } from "../workspaceStore";
 import { useArmiesStore } from "../armiesStore";
 import { structuresByRegionOf } from "../structureLabel";
-import { armyListShown, UnitTableDock } from "./UnitTableDock";
+import { armyListShown, rememberedMenu, UnitTableDock } from "./UnitTableDock";
 import { FOREIGN_SOURCE, OWN_SOURCE } from "./unitSource";
 
 /**
@@ -3110,5 +3110,45 @@ describe("armyListShown (ah-1lac)", () => {
   it("is closed for the header with nothing selected, and the bulk line with under two picked", () => {
     expect(armyListShown({ at: "header" }, { ...all, hasSelection: false })).toBe(false);
     expect(armyListShown({ at: "bulk" }, { ...all, bulk: false })).toBe(false);
+  });
+});
+
+describe("rememberedMenu (ah-91i4)", () => {
+  // A list that is not drawn is forgotten, so it cannot appear by itself, with no new click, the
+  // moment its condition comes to hold again.
+  const all = { canEditArmies: true, hasSelection: true, bulk: true, acting: 2, hasTurn: true };
+  const pointer = { at: "pointer" as const, point: { x: 0, y: 0 } };
+
+  it("keeps a drawn list, the same anchor for each control", () => {
+    const header = { at: "header" as const };
+    const bulk = { at: "bulk" as const };
+    expect(rememberedMenu(header, all)).toBe(header);
+    expect(rememberedMenu(bulk, all)).toBe(bulk);
+    expect(rememberedMenu(pointer, all)).toBe(pointer);
+  });
+
+  it("has nothing to remember with no menu", () => {
+    expect(rememberedMenu(null, all)).toBeNull();
+  });
+
+  it("forgets a right-click with no game open", () => {
+    expect(rememberedMenu(pointer, { ...all, canEditArmies: false })).toBeNull();
+  });
+
+  it("forgets a right-click on a report naming no turn", () => {
+    expect(rememberedMenu(pointer, { ...all, hasTurn: false })).toBeNull();
+  });
+
+  it("forgets a header list whose unit a filter hid, and a bulk list under two picked", () => {
+    expect(rememberedMenu({ at: "header" }, { ...all, hasSelection: false })).toBeNull();
+    expect(rememberedMenu({ at: "bulk" }, { ...all, bulk: false })).toBeNull();
+  });
+
+  it("leaves nothing that draws a list once a hidden one's condition holds again", () => {
+    // What the component keeps across the hidden spell is this function's answer; drawing from it
+    // when the filter lifts must show nothing. Applying the answer to state is the effect's job,
+    // which only the smoke walk in tests/smoke/armies.spec.ts can observe (traps: no jsdom here).
+    const keptWhileHidden = rememberedMenu({ at: "header" }, { ...all, hasSelection: false });
+    expect(armyListShown(keptWhileHidden, all)).toBe(false);
   });
 });
