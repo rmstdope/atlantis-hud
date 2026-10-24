@@ -602,6 +602,10 @@ test("turning Order OCD on tidies the unit already on screen", async ({ page }) 
   await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
 });
 
+// The Order OCD walks below prove the editor's wiring - Enter, the dedent of a finished closer,
+// the caret, undo, the tidy's clock. Which depth a line gets is `orderIndent`'s decision and is
+// pinned in `orderIndent.test.ts` (`lineDepths`, `indentBlock`, `contentChanges`); a walk whose
+// only claim is a depth belongs there, not here (ah-qh338).
 test("with Order OCD on, Enter opens the next line at the block's depth", async ({ page }) => {
   await openEditor(page);
   await enableOrderOcd(page);
@@ -616,15 +620,6 @@ test("with Order OCD on, Enter opens the next line at the block's depth", async 
   // `work` is still being typed - nothing has ended it - so it is not shouted yet, exactly as this
   // setting has always behaved; `FORM` above it was ended by a space and is.
   await expectOrders(page, /^TURN\n FORM 1\n {2}work/);
-});
-
-test("opening a unit with Order OCD on re-indents its whole block", async ({ page }) => {
-  await openEditor(page);
-  await fillOrders(page, "turn\nform 1\nstudy combat\nend\nendturn");
-  await enableOrderOcd(page);
-
-  // Each closer sits with its opener, so the pair brackets the indented run.
-  await expectOrders(page, /^TURN\n[ \u00a0]FORM 1\n[ \u00a0]{2}STUDY COMBAT\n[ \u00a0]END\nENDTURN/);
 });
 
 test("trailing blank lines survive Enter and collapse when the tidy next runs", async ({ page }) => {
@@ -717,20 +712,6 @@ test("the caret lands on the new line after a dedent, not offset by the spaces r
   );
 });
 
-test("with Order OCD on, ENDTURN at the outermost level stays at the margin", async ({ page }) => {
-  await openEditor(page);
-  await enableOrderOcd(page);
-  await selectUnit(page, OWN_UNIT);
-
-  await fillOrders(page, "");
-  await ordersInput(page).click();
-  await page.keyboard.type("turn\nwork\nendturn");
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("Enter");
-
-  await expectOrders(page, /^TURN\n[ \u00a0]WORK\nENDTURN\n$/);
-});
-
 test("with Order OCD on, one undo hands back the closer exactly as it was typed", async ({
   page
 }) => {
@@ -751,22 +732,6 @@ test("with Order OCD on, one undo hands back the closer exactly as it was typed"
   // lowercase and at the indentation it was typed at.
   await ordersInput(page).press("ControlOrMeta+z");
   await expectOrders(page, /^TURN\n[ \u00a0]FORM 1\n[ \u00a0]{2}MOVE N\n[ \u00a0]{2}end$/);
-});
-
-test("with Order OCD on, a stray closer with no opener stays where it is", async ({ page }) => {
-  await openEditor(page);
-  await enableOrderOcd(page);
-  await selectUnit(page, OWN_UNIT);
-
-  await fillOrders(page, "");
-  await ordersInput(page).click();
-  await page.keyboard.type("work\nend");
-  await page.keyboard.press("Escape");
-  await page.keyboard.press("Enter");
-
-  // A closer that matches nothing changes no depth (`orderIndent`), so the running depth is 0 and
-  // the line is already where it belongs.
-  await expectOrders(page, /^WORK\nEND\n$/);
 });
 
 /**
