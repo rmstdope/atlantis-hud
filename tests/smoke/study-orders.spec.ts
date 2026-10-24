@@ -23,7 +23,7 @@ test("the Orders tab writes next turn's study orders and saves them", async ({ p
 
   await page.keyboard.press("F4");
   await page.getByTestId("study-planner-view-schedule").click();
-  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);
+  const cell = page.getByTestId(`study-schedule-cell-${MAGE}-${STANDARD_TURN + 1}`);
   await cell.click();
   await expect(page.getByTestId("study-schedule-popover")).toBeVisible();
   await page.getByTestId("study-schedule-choice-FORC").click();

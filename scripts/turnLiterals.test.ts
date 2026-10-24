@@ -25,10 +25,13 @@ describe("a turn literal", () => {
       'expect(name).toBe("map-turn-72-level-1.txt");',
       'expect(download.suggestedFilename()).toMatch(/^mages-.+-turn-72\\.txt$/u);',
       '  { defaultPath: "orders-turn-72.txt", filters: [] }',
-      '  ["write", "/fake/orders-turn-72.txt", expect.any(Number)]'
+      '  ["write", "/fake/orders-turn-72.txt", expect.any(Number)]',
+      "const cell = page.getByTestId(`study-schedule-cell-${MAGE}-73`);",
+      'await page.getByTestId("study-schedule-remove-74").click();',
+      'await expect($(\'[data-testid="app-header"]\')).toHaveText(expect.stringContaining("72"));'
     ].join("\n");
 
-    expect(turnLiterals("a.spec.ts", text).map((found) => found.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(turnLiterals("a.spec.ts", text).map((found) => found.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   });
 
   it("is not found in a comment, a file name or an interpolated turn", () => {
@@ -40,7 +43,8 @@ describe("a turn literal", () => {
       "  */",
       'await importReport(page, "turn-71.rep", report);',
       'await choose(page, "orders-turn-71.txt", ORDERS);',
-      "await expect(status).toContainText(`restored turn ${STANDARD_TURN}`);"
+      "await expect(status).toContainText(`restored turn ${STANDARD_TURN}`);",
+      "await page.getByTestId(`study-schedule-cell-12878-${STANDARD_TURN + 1}`).hover();"
     ].join("\n");
 
     expect(turnLiterals("a.spec.ts", text)).toEqual([]);

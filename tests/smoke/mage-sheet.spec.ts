@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { readMageSheet, readReport } from "@atlantis/fixtures";
+import { readMageSheet, readReport, reportTurn } from "@atlantis/fixtures";
 import { clearGames, createGame, importReport, STANDARD_TURN } from "./gameSetup";
 
 /**
@@ -13,6 +13,12 @@ import { clearGames, createGame, importReport, STANDARD_TURN } from "./gameSetup
 const TURN_71 = readReport("g7f95t71");
 /** An ally's report for the same turn: the workspace the sheet is read back into. */
 const ALLY_REPORT = readReport("g8f73t71");
+/**
+ * The turns HUD reads from Mantzikert's two sheets. A sheet carries its report's own header, so
+ * its turn is that report's - June and July of Year 2 (ah-iuofk).
+ */
+const MANTZIKERT_OLDER_TURN = reportTurn("g7f39t17");
+const MANTZIKERT_NEWER_TURN = reportTurn("g7f39t18");
 
 test("writes every mage out as a sheet an ally can read", async ({ page }, testInfo) => {
   await clearGames(page);
@@ -198,30 +204,24 @@ test("asks what to do with mages a newer sheet leaves out", async ({ page }) => 
     "that is your own faction's mage sheet"
   );
 
-  // The turns below are the ones the committed sheets print on their second line, not a reading of
-  // a report's date, so a renumbering reaches them only by regenerating the sheets.
   await importReport(page, "mages-Mantzikert-turn-17.txt", readMageSheet("g7f39t17"));
   await expect(page.getByTestId("import-status")).toContainText(
-    // turn-literal: printed by the g7f39t17 sheet
-    "4 mages from Mantzikert (39), turn 18, taken in"
+    `4 mages from Mantzikert (39), turn ${MANTZIKERT_OLDER_TURN}, taken in`
   );
 
   await importReport(page, "mages-Mantzikert-turn-18.txt", readMageSheet("g7f39t18trimmed"));
   await expect(page.getByTestId("missing-mages-prompt")).toBeVisible();
   await expect(page.getByTestId("missing-mages-question")).toHaveText(
-    // turn-literal: printed by the g7f39t17 and g7f39t18trimmed sheets
-    "Mantzikert (39)'s turn 19 sheet leaves out 3 mages that its turn 18 sheet had:"
+    `Mantzikert (39)'s turn ${MANTZIKERT_NEWER_TURN} sheet leaves out 3 mages that its turn ${MANTZIKERT_OLDER_TURN} sheet had:`
   );
   await expect(page.getByTestId("missing-mages-list")).toContainText("Bey (1447)");
-  // turn-literal: printed by the g7f39t17 sheet
-  await expect(page.getByTestId("missing-mages-list")).toContainText("last seen turn 18");
+  await expect(page.getByTestId("missing-mages-list")).toContainText(`last seen turn ${MANTZIKERT_OLDER_TURN}`);
 
   await page.getByTestId("missing-mages-keep").click();
   await expect(page.getByTestId("missing-mages-prompt")).toHaveCount(0);
   // An em dash, not a hyphen - `mageSheetStatus` writes one.
   await expect(page.getByTestId("import-status")).toContainText(
-    // turn-literal: printed by the g7f39t17 and g7f39t18trimmed sheets
-    "2 mages from Mantzikert (39), turn 19, taken in — 3 kept from turn 18, now stale"
+    `2 mages from Mantzikert (39), turn ${MANTZIKERT_NEWER_TURN}, taken in — 3 kept from turn ${MANTZIKERT_OLDER_TURN}, now stale`
   );
 });
 

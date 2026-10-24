@@ -11,8 +11,10 @@ import { join } from "node:path";
  *
  * A line is flagged when it is code rather than a comment and holds `turn <digits>`,
  * `turn-row-<digits>`, a `Turn\s*<digits>` pattern, a turn field set to or compared with a number (`turn_number: 72`), a comparison's `⇄ 71`, an
- * asserted file name HUD writes from the turn (`orders-turn-72.txt`)
- * or a bare number asked of the header or the turn chip. A number that is not HUD's date-derived turn
+ * asserted file name HUD writes from the turn (`orders-turn-72.txt`), a study-planner test id
+ * ending in its turn,
+ * or a bare number asked of the header or the turn chip. Line by line, so a selector and its
+ * assertion split over two lines are not seen together; the walks keep them on one. A number that is not HUD's date-derived turn
  * at all - an AtlaClient export's own stamp, a server's turn id a walk mocks - is marked on its own
  * line, or the line above, with `turn-literal:` and the reason.
  */
@@ -33,8 +35,10 @@ const LITERAL = new RegExp(
     // a file name HUD writes from the turn, asserted: orders-turn-72.txt, map-turn-72-level-1.txt
     String.raw`(?:expect|toBe|toMatch|defaultPath).*-turn-\d+(?:\\?\.txt|-level)`,
     String.raw`"/[^"]*-turn-\d+\.txt"`,
-    // the header or the turn chip asked for a bare number
-    String.raw`"(?:app-header|turn-chip)"\)\)?\.(?:not\.)?toContainText\("\d+"\)`
+    // a study-planner test id ending in its turn: study-schedule-cell-${MAGE}-73, …-remove-74
+    String.raw`study-schedule-(?:cell|cast|turn|remove|insert)-(?:[^"\x60]*-)?\d+["\x60]`,
+    // the header or the turn chip asked for a bare number, in Playwright's words or WebdriverIO's
+    String.raw`(?:app-header|turn-chip)\W[^;]*(?:toContainText|stringContaining)\("\d+"\)`
   ].join("|"),
   "u"
 );
