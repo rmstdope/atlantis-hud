@@ -280,6 +280,17 @@ mod a_hex_that_shares {
         )
         .expect("the ruleset loads");
 
+        let swords: i64 = common::expect_preview_row(text, &response, SMITH)
+            .produced
+            .iter()
+            .filter(|produced| produced.tag == "SWOR")
+            .map(|produced| produced.amount)
+            .sum();
+        assert_eq!(
+            swords, 36,
+            "the smith still forges from the miner's lent iron"
+        );
+
         let miner = common::preview_row(text, &response, MINER);
         assert!(
             miner.is_none_or(|row| row.changes.is_empty()),
