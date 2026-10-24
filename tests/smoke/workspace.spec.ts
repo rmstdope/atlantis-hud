@@ -429,17 +429,6 @@ test("the faction chip opens the faction view", async ({ page }) => {
   await expect(panel).toContainText("Fon (8)");
 });
 
-test("the faction view closes on Escape", async ({ page }) => {
-  await loadReport(page);
-
-  await page.getByTestId("faction-chip").click();
-  await expect(page.getByTestId("faction-panel")).toBeVisible();
-
-  await page.keyboard.press("Escape");
-
-  await expect(page.getByTestId("faction-panel")).toHaveCount(0);
-});
-
 test("the faction view closes on an outside press", async ({ page }) => {
   await loadReport(page);
 
@@ -4225,14 +4214,6 @@ test("a unit named in the region pane's problems is a way to select it", async (
  * where the user is put, and that closing puts them back where they were - the whole of the bead,
  * and browser-only because `packages/shared` has no jsdom and so runs no effects.
  */
-test("opening a header popover moves focus to the panel", async ({ page }) => {
-  await loadReport(page);
-
-  await page.getByTestId("turn-report-chip").click();
-
-  await expect(page.getByTestId("turn-report")).toBeFocused();
-});
-
 test("closing the panel with Escape puts focus back on the chip", async ({ page }) => {
   await loadReport(page);
 
@@ -4297,17 +4278,6 @@ test("every header popover takes focus when it opens", async ({ page }) => {
     await page.keyboard.press("Escape");
     await expect(page.getByTestId(panel), chip).toHaveCount(0);
   }
-});
-
-test("the turn report panel closes on Escape", async ({ page }) => {
-  await loadReport(page);
-
-  await page.getByTestId("turn-report-chip").click();
-  await expect(page.getByTestId("turn-report")).toBeVisible();
-
-  await page.keyboard.press("Escape");
-
-  await expect(page.getByTestId("turn-report")).toHaveCount(0);
 });
 
 /**
