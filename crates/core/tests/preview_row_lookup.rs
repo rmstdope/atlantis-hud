@@ -6,7 +6,7 @@ use atlantis_hud_core::orders::effects::{
     preview_orders_for_remembered_report, OrdersPreviewResponse,
 };
 
-mod common;
+use crate::common;
 use common::{expect_preview_row, preview_row};
 
 /// The smiths (900) hold 500 silver; the hands (901) hold none.

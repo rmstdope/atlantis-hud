@@ -9,7 +9,7 @@ use atlantis_hud_core::cache::ReportCache;
 use atlantis_hud_core::orders::effects::{preview_orders_for_remembered_report, UnitPreviewStatus};
 use atlantis_hud_core::report::orders::extract_orders_template;
 
-mod common;
+use crate::common;
 
 const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const G5_F21_T24: &str = atlantis_hud_fixtures::G5_F21_T24.text;

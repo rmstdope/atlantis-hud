@@ -19,7 +19,7 @@ use atlantis_hud_core::orders::silver::{SilverChangeCause, SilverSpender, UnitSi
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// The report's own orders template, with `edits` applied in turn - each must find its text.

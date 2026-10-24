@@ -16,7 +16,7 @@ use atlantis_hud_core::orders::request::{validate_orders_request, ValidateOrders
 use atlantis_hud_core::orders::semantics::{check_turn, CheckOptions};
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::{expect_preview_row, preview_row, ruleset};
 
 fn the_report() -> String {

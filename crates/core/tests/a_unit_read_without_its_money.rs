@@ -15,7 +15,7 @@ use atlantis_hud_core::orders::silver::{SilverDoubt, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// The fixture whose two units this file cuts short, as its own text.

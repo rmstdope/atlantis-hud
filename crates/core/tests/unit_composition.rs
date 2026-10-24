@@ -15,7 +15,7 @@ const TURN_71: &str = atlantis_hud_fixtures::G7_F95_T71.text;
 const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 const TURN_42: &str = atlantis_hud_fixtures::G3_F42_T42.text;
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// A ruleset that is still perfectly valid but whose catalogue has drifted away from the report.

@@ -44,7 +44,7 @@ so keep variants distinct as words, not as punctuation.
 ## Regenerating
 
 ```bash
-UPDATE_MAGE_SHEET_FIXTURES=1 cargo test -p atlantis-hud-core --test mage_sheet_fixtures
+UPDATE_MAGE_SHEET_FIXTURES=1 cargo test -p atlantis-hud-core --test integration mage_sheet_fixtures::
 ```
 
 Then run it again without the variable and see it pass. A failure of that test with the variable

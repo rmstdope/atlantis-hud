@@ -18,7 +18,7 @@ use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview
 use atlantis_hud_core::orders::silver::{SilverChangeCause, UnitSilver};
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 
 /// The jungle hex as the report showed it, cut to our own units: three sharers with no silver,
 /// and four faction-mates put on `SHARE 0` this month - two holding silver (4868, 4862), a leader

@@ -17,7 +17,7 @@ use atlantis_hud_core::orders::silver::SilverChangeCause;
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 
 fn template(text: &str) -> String {
     extract_orders_template(text)

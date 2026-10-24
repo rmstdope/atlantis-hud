@@ -14,7 +14,7 @@ use atlantis_hud_core::orders::silver::{SilverDoubt, UnitSilver};
 use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// One hex: a one-man thief of ours, a unit of ours to hand the loot to, and a foreign unit the

@@ -24,7 +24,7 @@ use atlantis_hud_core::orders::effects::preview_orders_for_remembered_report;
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions};
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 /// Each unit, the tag its `PRODUCE` names, and what the report's own `Produces` line says.

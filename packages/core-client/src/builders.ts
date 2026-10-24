@@ -77,7 +77,7 @@ export function aStructure(kind: string, overrides: Partial<StructureInfo> = {})
     throw new Error(
       `aStructure has no parsed split for ${JSON.stringify(kind)}: add it to FIXTURE_STRUCTURE_KINDS in ` +
         "crates/core/tests/generated_ts.rs and regenerate with " +
-        "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test generated_ts"
+        "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test integration generated_ts::"
     );
   }
   return {

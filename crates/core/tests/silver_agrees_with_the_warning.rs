@@ -20,7 +20,7 @@ use atlantis_hud_core::report::orders::extract_orders_template;
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 use std::collections::{BTreeMap, BTreeSet};
 
-mod common;
+use crate::common;
 use common::{ruleset, without_standing_month_orders};
 
 /// One own unit of one fixture, with both surfaces' answers about it side by side.

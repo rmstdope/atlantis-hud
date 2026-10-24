@@ -13,7 +13,7 @@
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, Finding};
 use atlantis_hud_core::report::{classify_units, parse_report_full};
 
-mod common;
+use crate::common;
 use common::ruleset;
 
 const CODE: &str = "transport-target-refused";

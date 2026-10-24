@@ -12,7 +12,7 @@ use atlantis_hud_fixtures::ALL;
 
 const RELATIVE_PATH: &str = "../../docs/order-checks/corpus-errors.generated.md";
 const REGENERATE: &str =
-    "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test corpus_errors";
+    "ATLANTIS_UPDATE_GENERATED=1 cargo test -p atlantis-hud-core --test integration corpus_errors::";
 
 /// One engine error, reduced to what repeats: the order keyword and the message with the unit
 /// prefix stripped and every number replaced by `N`.
