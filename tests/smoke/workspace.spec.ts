@@ -477,8 +477,8 @@ test("the faction view opens Production, which says a faction with no Martial po
 
 /**
  * ah-nneu: a Production row takes the map to its hex. Turn 42 is an older report (`Tax Regions`,
- * `Trade Regions`), and `mountain (36,4)` offers 34 livestock, all of which unit 3493 produces - the
- * same walk as "a produced item marks the ITEMS cell as a projection".
+ * `Trade Regions`), and `mountain (36,4)` offers 34 livestock, all of which unit 3493 produces
+ * (`crates/core/tests/production_matches_the_hexs_yield.rs`).
  */
 test("a Production row takes the map to its hex", async ({ page }) => {
   await loadReport(page, "Production smoke", F42_T42, "regions");
@@ -5408,9 +5408,14 @@ test("movement capacity updates in the unit list and detail", async ({ page }) =
 });
 
 /**
- * ah-agbm: the ITEMS column already showed a pending GIVE in italic; BUY, SELL, WITHDRAW and TAKE
- * now get the same treatment. Hex 1:7,53 carries a "For Sale: ... perfume [PERF] ..." line, so a
- * stated BUY settles without contention from any other own unit.
+ * ah-agbm: a pending BUY marks the ITEMS cell as a projection, and resting on the cell opens its
+ * popup. Hex 1:7,53 carries a "For Sale: ... perfume [PERF] ..." line, so a stated BUY settles
+ * without contention from any other own unit.
+ *
+ * **Only that the cell and its popup reach the screen** (`ah-sybfj`). What the order settles to is
+ * the core's (`crates/core/tests`), and what the popup says is `unitCellPopup.test.ts`'s and
+ * `UnitTableDock.test.tsx`'s; asserting either here made every reword or settlement change rewrite
+ * a browser walk. The tag is data, not wording, so it is the one thing read off the screen.
  */
 test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
   await loadReport(page);
@@ -5418,26 +5423,25 @@ test("a bought item marks the ITEMS cell as a projection", async ({ page }) => {
   await selectUnit(page, OWN_UNIT);
 
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  // The CLAIM pays for it. 18642 holds no silver of its own and is the only own unit in this hex,
-  // so since `ah-szye` its BUY is capped by a shared purse of nothing and buys none - `rules/buy`
-  // buys as many as the unit can afford. `rules/claim` runs before the market, so one line funds
-  // the purchase this test is actually about.
+  // The CLAIM pays for it: 18642 holds no silver of its own and is the only own unit in this hex,
+  // so since `ah-szye` an unfunded BUY buys none - `rules/buy` buys as many as the unit can afford.
   await fillOrders(page, "CLAIM 500\nBUY 1 PERF");
 
-  // The ITEMS cell is the first predicted cell in the row - the same locator the NAME case above
-  // uses. The CLAIM predicts the SILVER cell too, which is last, so `.first()` still reaches ITEMS.
-  const itemsCell = row.locator('[data-predicted="true"]').first();
+  const itemsCell = row.locator('td[data-column="items"]');
+  await expect(itemsCell).toHaveAttribute("data-predicted", "true");
   await expect(itemsCell).toContainText("PERF");
-  // Since `ah-rgkk.3.3` the popup pairs each item with what the report said and names what moved
-  // it, in place of the old `was: ...` lead.
-  await expect(itemsCell).toContainText(/perfume PERF 1, up from none/);
-  await expect(itemsCell).toContainText(/perfume: bought 1 at \d+ silver each/);
+
+  await itemsCell.hover();
+  const popup = page.getByTestId("unit-cell-popup");
+  await expect(popup).toBeVisible();
+  await expect(popup).toHaveAttribute("data-column", "items");
+  await expect(popup).toContainText("PERF");
 });
 
 /**
  * ah-tguk: `All my units` showed the report's figures while `This hex` showed the coming month.
  * The same order, the same unit, the same column - read from the source that spans hexes, which is
- * the one you plan across hexes from.
+ * the one you plan across hexes from. Only that the projection is drawn, as above (`ah-sybfj`).
  */
 test("All my units shows the coming month too", async ({ page }) => {
   await loadReport(page);
@@ -5448,168 +5452,9 @@ test("All my units shows the coming month too", async ({ page }) => {
 
   await page.getByTestId("unit-source-own").click();
 
-  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  const itemsCell = row.locator('[data-predicted="true"]').first();
+  const itemsCell = page.getByTestId(`unit-row-${OWN_UNIT}`).locator('td[data-column="items"]');
+  await expect(itemsCell).toHaveAttribute("data-predicted", "true");
   await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell).toContainText(/perfume PERF 1, up from none/);
-});
-
-/**
- * ah-bxgs: TRANSPORT now marks the sending row too, exactly as BUY, SELL and the rest already do.
- * Unit 14451 is another own unit, in a different hex ("1:20,40"), which is what makes this a
- * transport rather than a same-hex GIVE. The remembered report does not establish that the target
- * owns a Caravanserai, so the `rules/transport` target gate keeps the goods and explains the refusal.
- */
-test("a transported item marks the ITEMS cell as a projection", async ({ page }) => {
-  await loadReport(page);
-  await selectHex(page, "1:7,53");
-  await selectUnit(page, OWN_UNIT);
-
-  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  // The CLAIM funds the purchase - see the ITEMS-projection test above (`ah-szye`).
-  await fillOrders(page, "CLAIM 500\nBUY 2 PERF\nTRANSPORT 14451 1 PERF");
-
-  // `.first()` reaches ITEMS: the CLAIM also predicts the SILVER cell, which is last in the row.
-  const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText(/perfume PERF 2, up from none/);
-  await expect(itemsCell).toContainText(
-    /Unit 14451 is not a quartermaster, so 1 PERF stay with this unit/
-  );
-});
-
-/**
- * ah-jown: a `BUY ALL` now settles like a stated `BUY` instead of leaving the ITEMS cell marked
- * `+ ?`. Hex 1:7,53 carries a "For Sale: 63 perfume [PERF] at $204 ..." line; `CLAIM 1000` gives
- * the unit silver to spend without depending on this hex's own tax or wage figures, so the case
- * stays deterministic wherever the fixture's own numbers drift.
- */
-test("a BUY ALL settles and marks the ITEMS cell as a projection", async ({ page }) => {
-  await loadReport(page);
-  await selectHex(page, "1:7,53");
-  await selectUnit(page, OWN_UNIT);
-
-  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  await fillOrders(page, "CLAIM 1000\nBUY ALL perfume");
-
-  const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText("PERF");
-  await expect(itemsCell.getByTestId("items-partly-counted")).toHaveCount(0);
-  await expect(itemsCell).toContainText(/this market offers/);
-});
-
-/**
- * ah-ofpb.1: a PRODUCE now shows what it makes. The projection now *does* depend on whether the
- * unit can do it: `ah-vtwn` counts the producing skill's level into the rate, so a unit with no
- * level in it makes nothing at all and marks no cell.
- *
- * That is why this cannot use the default turn-71 fixture - its five own units carry only
- * observation, stealth and manipulation - and follows the `CAST` walk below onto `F42_T42`.
- * `Farmers (3493)` is 17 orcs with `farming [FARM] 2` in `mountain (36,4)`, and what it makes is
- * capped by `ah-256d` sharing the hex's own `Products: 34 livestock [LIVE] ...` between the units
- * producing there. The walk asserts the cell names LIVE and carries the projection title, both of
- * which hold whatever the settled figure is.
- *
- * **Not the miners, since `ah-728m.2.2`.** This walk used to follow `MinersA (5105)` and its iron.
- * That hex has `sharing` units, and `Smiths (2964)` in it produces swords from iron - so now that
- * a manufacturer draws on the hex's shared stock before primary PRODUCE runs, the miner lends the
- * smith exactly the iron it goes on to mine back: its net item change for the month is zero, so
- * its row carries no projection to mark. That is the settlement working, not a projection going
- * missing, and the walk directly below pins it. Livestock is the row that shows a projection
- * without also being somebody else's raw material.
- */
-test("a produced item marks the ITEMS cell as a projection", async ({ page }) => {
-  await loadReport(page, "Produce smoke", F42_T42, "regions");
-  await selectHex(page, "1:36,4");
-  await selectUnit(page, "3493");
-  await fillOrders(page, "PRODUCE livestock");
-
-  const row = page.getByTestId("unit-row-3493");
-  const itemsCell = row.locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText("LIVE");
-  await expect(itemsCell).toContainText(/livestock: .*produced 34/);
-  await expect(itemsCell).toContainText(/Production resolves late/);
-});
-
-/**
- * ah-728m.2.2: the settlement the walk above had to move off, pinned rather than walked around.
- *
- * `mountain (36,4)` shares, so `Smiths (2964)` - 14 orcs with `weaponsmith [WEAP] 2` and 11
- * hammers, carrying no iron at all - forges from the hex's sharing units' stock: `rules/share`
- * lends "resources for production", and `rules/sequenceofevents` runs manufacturing PRODUCE before
- * primary PRODUCE, so the iron a miner holds *now* is iron the smith may work. Before this bead a
- * unit with no iron made nothing whatever; it now makes 36, which on top of the 24 swords it
- * already carries is the 60 the cell shows.
- *
- * The miner then mines back exactly what it lent, so its month nets to nothing and its row carries
- * no projection at all - which is why the walk above follows the farmers instead. Both halves are
- * asserted here, because between them they are this bead's user-visible behaviour.
- */
-test("a manufacturer draws on the hex's shared stock, and its supplier nets to nothing", async ({
-  page,
-}) => {
-  await loadReport(page, "Shared produce smoke", F42_T42, "regions");
-  await selectHex(page, "1:36,4");
-  await selectUnit(page, "2964");
-  await fillOrders(page, "PRODUCE sword");
-
-  // The ITEMS cell by name, not `.first()`: forging 36 swords moves the unit's weight too, so the
-  // movement cell is marked as well and sorts ahead of the items one.
-  const smith = page.getByTestId("unit-row-2964").locator('td[data-column="items"]');
-  await expect(smith).toContainText("60 SWOR");
-  await expect(smith).toContainText(/swords SWOR 60, up from 24/);
-  await expect(smith).toContainText(/swords: produced 36/);
-  // The cap sentence reads the same settlement as the cell since `ah-728m.2.2`: before it, this
-  // said "materials for 16 swords" beside a cell projecting 36.
-  await expect(smith).toContainText(/materials for 36 swords/);
-
-  await selectUnit(page, "5105");
-  await fillOrders(page, "PRODUCE iron");
-  await expect(page.getByTestId("unit-row-5105")).toBeVisible();
-  await expect(page.getByTestId("unit-row-5105").locator('[data-predicted="true"]')).toHaveCount(0);
-});
-
-/**
- * ah-ofpb.2: a BUILD the column cannot put a figure to marks the cell.
- *
- * The mark rather than a counted build, and that is forced rather than chosen: no own unit on the
- * turn-71 fixture has a skill that builds anything, and none holds wood or stone, so no BUILD on
- * this report moves an item at all. The counted path is covered by `effects.rs` and
- * `UnitTableDock.test.tsx`; this walk proves the order reaches the cell in a real browser.
- *
- * Located by title rather than by `data-predicted`: an uncounted-only row has no `items` change,
- * so the cell is deliberately not marked as a projection (`UnitTableDock.tsx:894`).
- */
-test("a build that cannot be counted marks the ITEMS cell", async ({ page }) => {
-  await loadReport(page);
-  await selectHex(page, "1:7,53");
-  await selectUnit(page, OWN_UNIT);
-
-  const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
-  await fillOrders(page, "BUILD Barn");
-
-  const itemsCell = row.locator('td[data-column="items"]');
-  await expect(itemsCell.getByTestId("items-partly-counted")).toHaveText("?");
-  await expect(itemsCell).not.toContainText("+ ?");
-  await expect(itemsCell).toContainText(/and more that cannot be counted: BUILD Barn/);
-});
-
-/**
- * ah-ofpb.5: a CAST now shows what it creates, chance and all. This cannot use the default
- * turn-71 fixture: that report's five own units carry only observation, stealth and manipulation,
- * and a cast's count comes from the caster's level, so a skill-less unit summons nothing. `g5f21t23`
- * unit 1294 "Five of Eight" holds `wolf lore [WOLF] 2` and no wolves, so `CAST Wolf_Lore` exercises
- * the averaged summon, the range and the hover in one walk.
- */
-test("a cast creation marks the ITEMS cell as a projection", async ({ page }) => {
-  await loadReport(page, "Cast smoke", readReport("g5f21t23"), "regions");
-  await selectHex(page, "1:36,44");
-  await selectUnit(page, "1294");
-  await fillOrders(page, "CAST Wolf_Lore");
-
-  const itemsCell = page.getByTestId("unit-row-1294").locator('[data-predicted="true"]').first();
-  await expect(itemsCell).toContainText("1-8 WOLF");
-  await expect(itemsCell).toContainText(/wolf WOLF 1-8, up from none/);
-  await expect(itemsCell).toContainText(/wolf: summoned 1-8/);
 });
 
 /**
