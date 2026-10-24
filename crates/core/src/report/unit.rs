@@ -74,6 +74,22 @@ fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
     (head, sections)
 }
 
+/// The unit line with the unit's description, if it has one, cut off.
+///
+/// The engine writes a description last, as `; <description>` before the line's closing full stop
+/// (`unit.cpp`, `Unit::WriteReport`), so left in place it lands inside whichever section ended the
+/// line and the last skill, study entry or item fails to read (ah-2mus1). A description, like a
+/// unit or faction name, may contain `;`, `,`, `[`, `.` or `:`, but never a parenthesis
+/// (`astring.cpp`, `islegal`), while every unit line carries at least its own `(id)`. So the
+/// description is whatever follows the first `; ` after the line's last `)`.
+fn without_description(body: &str) -> &str {
+    let after_last_paren = body.rfind(')').map_or(0, |at| at + 1);
+    match body[after_last_paren..].find("; ") {
+        Some(at) => &body[..after_last_paren + at],
+        None => body,
+    }
+}
+
 /// Reused by `battle.rs` for battle rosters, which are flagged the same way a region's units are.
 pub(crate) fn matching_flag(field: &str) -> Option<&'static str> {
     let normalised = field.trim().trim_end_matches('.');
@@ -105,7 +121,7 @@ pub fn parse_unit(
         .or_else(|| body.strip_prefix("- "))
         .unwrap_or(body);
 
-    let (head, sections) = split_sections(without_marker);
+    let (head, sections) = split_sections(without_description(without_marker));
     let (name, unit_id, mut rest) = split_leading_id(&head)?;
 
     let mut bad_field = false;
@@ -653,5 +669,85 @@ mod tests {
 
         assert_eq!(faction.faction_name.as_deref(), Some("Wanderers :("));
         assert_eq!(faction.faction_id.as_deref(), Some("29"));
+    }
+
+    /// The engine writes a unit's description last, after `; ` and before the closing full stop
+    /// (`unit.cpp`, `Unit::WriteReport`), so it lands inside whatever section the line ended with.
+    /// ah-2mus1: the last skill then read as `stealth [STEA] 2 (90); Who goes there?` and was
+    /// dropped, and a unit with one skill was shown with none.
+    #[test]
+    fn a_description_after_the_skills_keeps_every_skill() {
+        for description in [
+            "Who goes there?",
+            "Who goes there.",
+            "Halt!",
+            "Stop; who, goes there",
+        ] {
+            let line = format!(
+                "* Scout (1234), Borg (73), behind, leader [LEAD]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30), stealth [STEA] 2 (90); \
+                 {description}."
+            );
+            let unit = parse_unit(&line, true, "1:1,1", None).expect("unit should parse");
+            let tags: Vec<&str> = unit.skills.iter().map(|skill| skill.tag.as_str()).collect();
+            assert_eq!(tags, ["COMB", "STEA"], "description {description:?}");
+            assert_eq!(unit.skills[1].level, 2);
+            assert_eq!(unit.read, UnitRead::Complete, "description {description:?}");
+        }
+    }
+
+    #[test]
+    fn a_description_after_a_single_skill_keeps_it() {
+        let unit = parse_unit(
+            "* Scout (1234), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: stealth [STEA] 2 (90); Are we there yet?.",
+            true,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        assert_eq!(unit.skills.len(), 1);
+        assert_eq!(unit.skills[0].tag, "STEA");
+    }
+
+    #[test]
+    fn a_description_after_can_study_and_combat_spell_is_not_read_as_either() {
+        let unit = parse_unit(
+            "* Mage (55), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: fire [FIRE] 3 (180). Combat spell: fire [FIRE]. \
+             Can Study: earthquake [EQUA], force shield [FSHI]; Burn it [all]?.",
+            true,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        let study: Vec<&str> = unit
+            .can_study
+            .iter()
+            .map(|spell| spell.tag.as_str())
+            .collect();
+        assert_eq!(study, ["EQUA", "FSHI"]);
+        assert_eq!(
+            unit.combat_spell.map(|spell| spell.tag),
+            Some("FIRE".to_string())
+        );
+    }
+
+    /// A foreign unit shows no sections, so the description follows its items; names may carry a
+    /// `;` of their own (`astring.cpp`, `islegal`), but never a parenthesis.
+    #[test]
+    fn a_description_after_a_foreign_units_items_leaves_it_read_completely() {
+        let unit = parse_unit(
+            "- Odd; name (77), Borg; TNG (95), behind, 5 orcs [ORC]; In need [of] help?.",
+            false,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        assert_eq!(unit.name, "Odd; name");
+        assert_eq!(unit.faction_name.as_deref(), Some("Borg; TNG"));
+        assert_eq!(unit.items.len(), 1);
+        assert_eq!(unit.items[0].tag, "ORC");
+        assert_eq!(unit.read, UnitRead::Complete);
     }
 }
