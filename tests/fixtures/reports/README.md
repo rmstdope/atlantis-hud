@@ -47,6 +47,11 @@ the archive calls January of Year 1 turn 0, while the engine - and so HUD - call
 So `g7-f95-t71`, dated December, Year 6, is HUD's turn 72. The names were kept rather than renamed,
 since every test and document refers to these files by them.
 
+The turn HUD shows for each fixture is written down once, in `REPORT_TURNS` in
+`packages/fixtures/src/index.ts`, and checked against the core by
+`packages/browser-core/src/reportTurns.wasm.test.ts`. A walk takes its turn from there rather than
+repeating the number, and `scripts/turnLiterals.test.ts` fails on one that repeats it (ah-iuofk).
+
 ## Redaction
 
 Every `#atlantis <id> "..."` line has its quoted value replaced with `<password>`, and nothing else
