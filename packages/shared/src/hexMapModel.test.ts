@@ -12,6 +12,7 @@ import {
   levelClause,
   levelFieldOf,
   levelNameOf,
+  levelToFollow,
   parseRegionId,
   regionIdOf,
   sortUnitsForDisplay,
@@ -355,5 +356,28 @@ describe("the units a report of this turn names", () => {
     );
 
     expect([...latestTurnUnitsById(model).keys()].sort()).toEqual(["1", "500"]);
+  });
+});
+
+/**
+ * Selecting a hex by id - from the Changes, Battles and Production dialogs, the palette, or a turn
+ * message naming a unit - follows it to its own level, because the map draws one level at a time
+ * and a hex selected on a level not on screen leaves nothing marked (fix 2eb65c82).
+ */
+describe("levelToFollow", () => {
+  it("follows a hex on another level to that level", () => {
+    expect(levelToFollow("0:0,0", 1)).toBe(0);
+    expect(levelToFollow("2:-3,5", 1)).toBe(2);
+    expect(levelToFollow("1:7,53", 0)).toBe(1);
+  });
+
+  it("stays put for a hex on the level being drawn", () => {
+    expect(levelToFollow("1:7,53", 1)).toBeNull();
+  });
+
+  it("does not move for an id that is not a hex", () => {
+    for (const text of ["", "7,53", "1:7,52", "-1:7,53"]) {
+      expect(levelToFollow(text, 1), `${text} should not move the map`).toBeNull();
+    }
   });
 });
