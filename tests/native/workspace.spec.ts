@@ -1,4 +1,4 @@
-import { readReport } from "@atlantis/fixtures";
+import { readReport, reportTurn } from "@atlantis/fixtures";
 import { browser, $, expect } from "@wdio/globals";
 import {
   clearGamesNative,
@@ -22,6 +22,8 @@ import {
  */
 
 const REPORT = readReport("g7f95t71");
+/** The turn HUD shows for that report, from the fixtures rather than written out (ah-iuofk). */
+const REPORT_TURN = reportTurn("g7f95t71");
 
 /** Inholm's own unit, the same one the smoke suite edits. */
 const OWN_UNIT = "18642";
@@ -31,7 +33,7 @@ describe("native desktop workspace", () => {
     await clearGamesNative();
   });
 
-  it("imports the turn 72 report and persists it to the sidecar database", async () => {
+  it(`imports the turn ${REPORT_TURN} report and persists it to the sidecar database`, async () => {
     await $('[data-testid="game-gate"]').waitForDisplayed();
     await createGameUi("Native game");
     await loadReportUi(REPORT);
@@ -42,7 +44,7 @@ describe("native desktop workspace", () => {
     await expect($('[data-testid="app-header"]')).toHaveText(
       expect.stringContaining("Borg TNG (95)")
     );
-    await expect($('[data-testid="app-header"]')).toHaveText(expect.stringContaining("72"));
+    await expect($('[data-testid="app-header"]')).toHaveText(expect.stringContaining(String(REPORT_TURN)));
 
     // The half the browser suites cannot see: the turn is a row in a file on disk, not an
     // IndexedDB entry, and it is readable from outside the application. Polled, because the
@@ -55,13 +57,13 @@ describe("native desktop workspace", () => {
             .prepare("SELECT faction_id, turn_number FROM imported_turns ORDER BY turn_number")
             .all();
           return (
-            rows.length === 1 && rows[0].faction_id === "95" && rows[0].turn_number === 72
+            rows.length === 1 && rows[0].faction_id === "95" && rows[0].turn_number === REPORT_TURN
           );
         } finally {
           db.close();
         }
       },
-      { timeoutMsg: "imported_turns never held exactly the row (95, 72)" }
+      { timeoutMsg: `imported_turns never held exactly the row (95, ${REPORT_TURN})` }
     );
   });
 
