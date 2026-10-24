@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
 import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
+import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
  * ah-mlls.7: the header's Import, Fetch and Send as command palette rows - offered where the header
@@ -204,21 +205,21 @@ test("a New Origins game on the web offers no Fetch or Send row, as the header h
   await expect(row(page, "Send orders")).toHaveCount(0);
 });
 
-test("a New Origins game on the desktop offers only Fetch latest report", async ({ page }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-shell",
-    "the New Origins transport is only there in the desktop bundle"
-  );
+// Tagged for `desktop-shell` alone: the New Origins transport is only there in the desktop bundle.
+test(
+  "a New Origins game on the desktop offers only Fetch latest report",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    await clearGames(page);
+    await page.getByTestId("game-ruleset").selectOption("neworigins");
+    await createGame(page, "New Origins game");
+    await rulesetReady(page);
+    await expect(page.getByTestId("fetch-control")).toBeVisible();
 
-  await clearGames(page);
-  await page.getByTestId("game-ruleset").selectOption("neworigins");
-  await createGame(page, "New Origins game");
-  await rulesetReady(page);
-  await expect(page.getByTestId("fetch-control")).toBeVisible();
-
-  await search(page, "fetch");
-  await expect(row(page, "Fetch latest report")).toHaveCount(1);
-  await expect(row(page, "Fetch all reports not yet fetched/imported")).toHaveCount(0);
-  await page.keyboard.press("Enter");
-  await expect(page.getByTestId("neworigins-fetch-panel")).toBeVisible();
-});
+    await search(page, "fetch");
+    await expect(row(page, "Fetch latest report")).toHaveCount(1);
+    await expect(row(page, "Fetch all reports not yet fetched/imported")).toHaveCount(0);
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("neworigins-fetch-panel")).toBeVisible();
+  }
+);

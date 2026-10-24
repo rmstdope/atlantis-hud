@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readReport, reportTurn } from "@atlantis/fixtures";
 
 import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
+import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
  * Fetching from a New Age world (ah-coij).
@@ -37,12 +38,8 @@ type HistoryStandIn = {
   reports: Record<string, { status: number; body: string }>;
 };
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-shell",
-    "desktop wiring: the New Age transport is only there in the desktop bundle"
-  );
-
+// Every test here is tagged DESKTOP_SHELL_TAG, so only `desktop-shell` walks it - desktop wiring: the New Age transport is only there in the desktop bundle.
+test.beforeEach(async ({ page }) => {
   await page.addInitScript(
     ({ report }: { report: string }) => {
       const calls: unknown[][] = [];
@@ -200,7 +197,7 @@ async function activate(page: import("@playwright/test").Page, testId: string) {
   await page.keyboard.press("Enter");
 }
 
-test("fetches this turn's report with the password typed into the dialog", async ({ page }) => {
+test("fetches this turn's report with the password typed into the dialog", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
 
@@ -219,7 +216,7 @@ test("fetches this turn's report with the password typed into the dialog", async
   ]);
 });
 
-test("asks again when the world refuses the password, and keeps the faction number", async ({
+test("asks again when the world refuses the password, and keeps the faction number", { tag: DESKTOP_SHELL_TAG }, async ({
   page
 }) => {
   await clearGames(page);
@@ -236,7 +233,7 @@ test("asks again when the world refuses the password, and keeps the faction numb
   await expect(page.getByTestId("newage-faction-number")).toHaveValue("27");
 });
 
-test("says so when the world has no report yet", async ({ page }) => {
+test("says so when the world has no report yet", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: "" });
@@ -249,7 +246,7 @@ test("says so when the world has no report yet", async ({ page }) => {
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
 });
 
-test("fetches every missing turn in one press and says what happened", async ({ page }) => {
+test("fetches every missing turn in one press and says what happened", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
   // Turn 73 (the file named t72) is the turn on screen, so 71 and 72 are the earlier ones brought
@@ -278,7 +275,7 @@ test("fetches every missing turn in one press and says what happened", async ({ 
   expect(historyCalls).toHaveLength(2);
 });
 
-test("stops a run when the dialog is cancelled and keeps what landed", async ({ page }) => {
+test("stops a run when the dialog is cancelled and keeps what landed", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: TURN_72 });
@@ -330,7 +327,7 @@ test("stops a run when the dialog is cancelled and keeps what landed", async ({ 
   expect(historyCalls[0]).toContain(`/history/${T70_TURN}/`);
 });
 
-test("keeps this turn and says why when the list of earlier turns could not be fetched", async ({
+test("keeps this turn and says why when the list of earlier turns could not be fetched", { tag: DESKTOP_SHELL_TAG }, async ({
   page
 }) => {
   await clearGames(page);
@@ -348,7 +345,7 @@ test("keeps this turn and says why when the list of earlier turns could not be f
   await expect(page.getByTestId("turn-chip")).toContainText(String(T71_TURN));
 });
 
-test("owns the fault when the list of earlier turns cannot be understood", async ({ page }) => {
+test("owns the fault when the list of earlier turns cannot be understood", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
   await historyWith(page, {
@@ -368,7 +365,7 @@ test("owns the fault when the list of earlier turns cannot be understood", async
   expect(historyCalls).toEqual([]);
 });
 
-test("says calmly when every earlier turn is already loaded", async ({ page }) => {
+test("says calmly when every earlier turn is already loaded", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: TURN_72 });
@@ -395,7 +392,7 @@ test("says calmly when every earlier turn is already loaded", async ({ page }) =
   );
 });
 
-test("switching game closes the fetch dialog, and coming back does not reopen it", async ({
+test("switching game closes the fetch dialog, and coming back does not reopen it", { tag: DESKTOP_SHELL_TAG }, async ({
   page
 }) => {
   await clearGames(page);

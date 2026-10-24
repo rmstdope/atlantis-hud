@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
 import { clearGames, closeRulesetCheck, createGame, STANDARD_TURN } from "./gameSetup";
+import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
  * Sending orders to a New Age world (ah-lbd9.4).
@@ -39,12 +40,8 @@ const SAVED_WITH_ERRORS: Reply = {
   })
 };
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-shell",
-    "desktop wiring: the New Age transport is only there in the desktop bundle"
-  );
-
+// Every test here is tagged DESKTOP_SHELL_TAG, so only `desktop-shell` walks it - desktop wiring: the New Age transport is only there in the desktop bundle.
+test.beforeEach(async ({ page }) => {
   await page.addInitScript(
     ({ report, orders }: { report: string; orders: Reply }) => {
       const calls: unknown[][] = [];
@@ -136,7 +133,7 @@ async function withTurnLoaded(page: import("@playwright/test").Page) {
   await closeRulesetCheck(page);
 }
 
-test("sends orders and reports that the world saved them with errors", async ({ page }) => {
+test("sends orders and reports that the world saved them with errors", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await withTurnLoaded(page);
 
   await page.getByTestId("send-orders").click();
@@ -171,7 +168,7 @@ test("sends orders and reports that the world saved them with errors", async ({ 
   );
 });
 
-test("says so when the world saved nothing, and keeps the password field", async ({ page }) => {
+test("says so when the world saved nothing, and keeps the password field", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await withTurnLoaded(page);
   await ordersReplyWith(page, {
     status: 200,
@@ -200,7 +197,7 @@ test("says so when the world saved nothing, and keeps the password field", async
   await expect(page.getByTestId("newage-send-confirm")).toBeVisible();
 });
 
-test("returns focus to Send when the dialog is dismissed", async ({ page }) => {
+test("returns focus to Send when the dialog is dismissed", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await withTurnLoaded(page);
 
   await page.getByTestId("send-orders").click();

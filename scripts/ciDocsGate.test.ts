@@ -62,6 +62,24 @@ function decide(condition: string, files: string[], missingMessage: string): boo
   return decision === "true";
 }
 
+/** The gate job's text. */
+function gate(): string {
+  const block = jobBlocks(WORKFLOW).get(GATE_JOB);
+  if (block === undefined) {
+    throw new Error(`workflow has no "${GATE_JOB}" job`);
+  }
+  return block;
+}
+
+/** The lines jq prints for a filter over a JSON input, run without a shell. */
+function jq(filter: string, input: unknown): string[] {
+  const output = execFileSync("jq", ["-r", filter], {
+    input: JSON.stringify(input),
+    encoding: "utf8"
+  });
+  return output.split("\n").filter((line) => line !== "");
+}
+
 describe("the gate condition's safety check", () => {
   // The tests below run the gate's own shell, which is the only way to assert what CI will decide
   // rather than a JavaScript restatement of it. That means `ci.yml` decides what `test:tooling`
@@ -239,6 +257,35 @@ describe("the prose-only fast path", () => {
     expect(runsEverything(["CLAUDE.md"])).toBe(false);
   });
 
+  it("takes the fast path for the .cerebro/ declarations no test reads (ah-slxi7)", () => {
+    // Fleet housekeeping - the roster, the agents' models, the QA lists, the traps - is read by the
+    // fleet's own scripts and by people, never by anything CI builds, tests or runs. Each such
+    // commit used to cost about 45 runner-minutes for checks it could not affect.
+    expect(runsEverything([".cerebro/roster.conf"])).toBe(false);
+    expect(runsEverything([".cerebro/agents.conf"])).toBe(false);
+    expect(runsEverything([".cerebro/requirements.md"])).toBe(false);
+    expect(runsEverything([".cerebro/test-architecture.md"])).toBe(false);
+    expect(runsEverything([".cerebro/traps.md"])).toBe(false);
+    expect(runsEverything([".cerebro/requirements.md", "docs/implementation-plan.md"])).toBe(false);
+    expect(runsNative([".cerebro/roster.conf"])).toBe(false);
+  });
+
+  it("runs everything for the .cerebro/ paths a test or the gate reads, and any it does not name", () => {
+    // project.conf is read by scripts/runGate.ts and scripts/verificationSkill.test.ts; the
+    // cerebro submodule (listed as its gitlink path) carries the gate and preflight scripts. A new
+    // file under .cerebro/ is not exempt until somebody names it, so the list fails safe.
+    expect(runsEverything([".cerebro/project.conf"])).toBe(true);
+    expect(runsEverything([".cerebro/cerebro"])).toBe(true);
+    expect(runsEverything([".cerebro/other.md"])).toBe(true);
+    expect(runsEverything([".cerebro/roster.conf", "scripts/release.ts"])).toBe(true);
+
+    // Exact-matched per file: not a prefix, not a suffix, not nested.
+    expect(runsEverything([".cerebro/roster.conf.bak"])).toBe(true);
+    expect(runsEverything(["x.cerebro/roster.conf"])).toBe(true);
+    expect(runsEverything([".cerebro/sub/roster.conf"])).toBe(true);
+    expect(runsEverything([".cerebro/trapsxmd"])).toBe(true);
+  });
+
   it("runs everything for a diff mixing root prose with a source file", () => {
     expect(runsEverything(["README.md", "scripts/release.ts"])).toBe(true);
   });
@@ -284,18 +331,52 @@ describe("the prose-only fast path", () => {
     expect(runsEverything([".claude/settings.json"])).toBe(false);
   });
 
-  it("falls open to running everything when the event is not a pull request", () => {
-    const blocks = jobBlocks(WORKFLOW);
-    const gate = blocks.get(GATE_JOB);
-    if (gate === undefined) {
-      throw new Error(`workflow has no "${GATE_JOB}" job`);
+  it("judges a push from the last successful main run, not its parent, and fails open (ah-slxi7)", () => {
+    const block = gate();
+
+    // A concurrency group keeps one pending run, so a newer push cancels an older pending one. A
+    // docs-only push diffed from its own parent would then skip a code commit whose run was
+    // cancelled, and that code would never be tested on main. Diffing from the head of the last
+    // successful run keeps every commit since then inside the diff. Raised by review on PR #1869.
+    expect(block).not.toMatch(/github\.event\.before/u);
+    expect(block).toMatch(/actions\/workflows\/ci\.yml\/runs\?branch=main&event=push&status=success&per_page=1/u);
+    expect(block).toMatch(/compare\/\$\{BASE\}\.\.\.\$\{AFTER\}/u);
+
+    // Any other event still runs everything, before any listing is attempted.
+    expect(block).toMatch(/github\.event_name.*!=.*push/u);
+    expect(block).toMatch(/code=true/u);
+    expect(block).toMatch(/native=true/u);
+  });
+
+  it("needs read access to Actions runs for the push gate's lookup", () => {
+    expect(WORKFLOW).toMatch(/^permissions:\n(?: {2}\S.*\n)*? {2}actions: read$/mu);
+  });
+
+  it("lists a push's files only from a compare that is plainly ahead and not truncated", () => {
+    // The real jq filters from ci.yml, run with jq against fixtures - jq is given the filter as an
+    // argument, never through a shell. An empty listing is what makes the gate run everything.
+    const filters = [...gate().matchAll(/--jq '([^']*)'/gu)].map((match) => match[1]);
+    const lastSuccess = filters.find((filter) => filter.includes("workflow_runs"));
+    const compare = filters.find((filter) => filter.includes(".status"));
+    if (lastSuccess === undefined || compare === undefined) {
+      throw new Error("the push branch no longer has the two jq filters this test runs");
     }
 
-    // Asserted on the shell text rather than executed: the direction matters more than the
-    // mechanism here. A gate that fails closed turns an infrastructure blip into untested code
-    // reaching main.
-    expect(gate).toMatch(/github\.event_name.*!=.*pull_request/u);
-    expect(gate).toMatch(/code=true/u);
+    const files = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({ filename: `.cerebro/f${index}` }));
+
+    expect(jq(compare, { status: "ahead", files: [{ filename: ".cerebro/roster.conf" }] })).toEqual([
+      ".cerebro/roster.conf"
+    ]);
+    expect(jq(compare, { status: "ahead", files: files(299) })).toHaveLength(299);
+    expect(jq(compare, { status: "ahead", files: files(300) })).toEqual([]);
+    expect(jq(compare, { status: "ahead", files: [] })).toEqual([]);
+    expect(jq(compare, { status: "behind", files: files(1) })).toEqual([]);
+    expect(jq(compare, { status: "diverged", files: files(1) })).toEqual([]);
+    expect(jq(compare, { status: "identical", files: [] })).toEqual([]);
+
+    expect(jq(lastSuccess, { workflow_runs: [{ head_sha: "abc123" }] })).toEqual(["abc123"]);
+    expect(jq(lastSuccess, { workflow_runs: [] })).toEqual([]);
   });
 });
 
