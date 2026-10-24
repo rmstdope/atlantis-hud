@@ -139,3 +139,26 @@ fn every_test_file_is_compiled_into_this_program() {
         "these files in crates/core/tests/ are not declared in integration.rs and would never run: {missing:?}"
     );
 }
+
+/// Cargo used to build any `tests/<dir>/main.rs` as a program of its own, which is how `movement/`
+/// runs. With `autotests = false` a new directory runs only if `Cargo.toml` declares it, so every
+/// directory here except `common/` must be a declared `[[test]]` path.
+#[test]
+fn every_test_directory_is_a_declared_program() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cargo_toml =
+        std::fs::read_to_string(manifest.join("Cargo.toml")).expect("Cargo.toml reads");
+    let mut missing: Vec<String> = std::fs::read_dir(manifest.join("tests"))
+        .expect("the tests directory reads")
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| path.is_dir())
+        .filter_map(|path| Some(path.file_name()?.to_str()?.to_owned()))
+        .filter(|dir| dir != "common")
+        .filter(|dir| !cargo_toml.contains(&format!("path = \"tests/{dir}/main.rs\"")))
+        .collect();
+    missing.sort();
+    assert!(
+        missing.is_empty(),
+        "these directories in crates/core/tests/ are not a [[test]] in crates/core/Cargo.toml and would never run: {missing:?}"
+    );
+}

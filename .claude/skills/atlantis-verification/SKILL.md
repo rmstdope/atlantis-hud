@@ -85,9 +85,12 @@ Three steps, in order.
 
    `pub fn parse_report_full(source: &str) -> ParsedReport` lives at
    `crates/core/src/report/mod.rs`; the crate is `atlantis-hud-core`, and its integration tests live
-   in `crates/core/tests/`. Run it with:
+   in `crates/core/tests/`. Cargo does not discover a test file there by itself
+   (`autotests = false`, ah-dt118), so also append a throwaway target to that worktree's
+   `crates/core/Cargo.toml`, never committed either, and run it with:
 
    ```bash
+   printf '\n[[test]]\nname = "verify_fixture"\npath = "tests/verify_fixture.rs"\n' >> crates/core/Cargo.toml
    cargo test -p atlantis-hud-core --test verify_fixture -- --nocapture
    ```
 

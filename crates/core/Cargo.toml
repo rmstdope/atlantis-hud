@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 # Integration tests are declared below rather than discovered, so that they build into two
 # programs instead of one per file and run in parallel (ah-dt118). `tests/integration.rs` has
-# a test that fails when a file in `tests/` is not declared there.
+# tests that fail when a file or directory in `tests/` is not declared.
 autotests = false
 
 [lib]
