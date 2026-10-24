@@ -192,6 +192,22 @@ export function parseRegionId(regionId: string): Coordinate | null {
   return coordinate;
 }
 
+/**
+ * The level the map has to switch to so that `regionId` is on screen, or `null` when it already is
+ * - or when the id is not a hex at all, which must not move the map anywhere.
+ *
+ * The map draws one level at a time, so selecting a hex by id (a dialog row, the palette, a turn
+ * message naming a unit) has to follow it to its own level first; otherwise the map stays where it
+ * was with nothing marked.
+ */
+export function levelToFollow(regionId: string, currentLevel: number): number | null {
+  const coordinate = parseRegionId(regionId);
+  if (coordinate === null || coordinate.z === currentLevel) {
+    return null;
+  }
+  return coordinate.z;
+}
+
 function countUnits(region: ReportRegion | null) {
   if (!region) {
     return { ownUnitCount: 0, foreignUnitCount: 0 };

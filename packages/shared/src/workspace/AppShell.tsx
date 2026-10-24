@@ -25,6 +25,7 @@ import {
   buildHexMapModel,
   latestTurnUnitsById,
   levelClause,
+  levelToFollow,
   parseRegionId,
   levelFieldOf,
   SURFACE_LEVEL,
@@ -1439,9 +1440,8 @@ export function AppShell({
   const lookAtHex = useCallback(
     (regionId: string | null, options?: { picked?: boolean }) => {
       if (regionId !== null) {
-        // Region ids are `z:x,y`, so the level is written on the front of the id.
-        const targetLevel = Number(regionId.split(":")[0]);
-        if (Number.isFinite(targetLevel) && targetLevel !== level) {
+        const targetLevel = levelToFollow(regionId, level);
+        if (targetLevel !== null) {
           setLevel(targetLevel);
         }
       }
@@ -1707,9 +1707,8 @@ export function AppShell({
       if (!regionId) {
         return;
       }
-      // Region ids are `z:x,y`, so the level the unit is on is written on the front of its hex.
-      const target = Number(regionId.split(":")[0]);
-      if (Number.isFinite(target) && target !== level) {
+      const target = levelToFollow(regionId, level);
+      if (target !== null) {
         setLevel(target);
       }
       // Every caller of `goToUnit` is a list, a panel or the palette - never a click on the map - so
