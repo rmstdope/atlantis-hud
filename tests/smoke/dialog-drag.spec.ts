@@ -9,8 +9,6 @@ import { clearGames, createGame, loadReport } from "./gameSetup";
  * the part only a browser can show: the press, the pointer capture, the veil, the resize listener.
  */
 
-const KEEP = 80;
-
 function bar(dialog: Locator): Locator {
   return dialog.locator("[data-dialog-bar]");
 }
@@ -78,39 +76,29 @@ test("a press on the top bar that does not travel neither moves the dialog nor l
   expect(await veil(page, "settings-backdrop")).not.toBe(CLEAR);
 });
 
-test("a dragged dialog keeps part of its top bar in the window at every edge", async ({ page }) => {
-  const viewport = page.viewportSize()!;
+test("a drag past the window's edge keeps part of the top bar in the window", async ({ page }) => {
   const dialog = await openSettings(page);
+  const before = await box(bar(dialog));
 
+  // Where exactly it stops is clampDialogPosition's, pinned in dialogDrag.test.ts; this proves the
+  // drag goes through it.
   await dragBar(page, dialog, -3000, -3000);
-  let b = await box(dialog);
-  expect(b.y).toBeCloseTo(0, 0);
-  expect(b.x + b.width).toBeCloseTo(KEEP, 0);
-
-  // Only the bar's last 80px are in the window now; grab them clear of the x at their right end.
-  const barBox = await box(bar(dialog));
-  await page.mouse.move(10, barBox.y + barBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(viewport.width + 3000, viewport.height + 3000, { steps: 8 });
-  await page.mouse.up();
-  b = await box(dialog);
-  expect(b.x).toBeCloseTo(viewport.width - KEEP, 0);
-  const barAfter = await box(bar(dialog));
-  expect(barAfter.y + barAfter.height).toBeLessThanOrEqual(viewport.height + 1);
-  expect(barAfter.y + barAfter.height).toBeGreaterThan(viewport.height - 40);
+  const after = await box(bar(dialog));
+  expect(after.x).toBeLessThan(before.x);
+  expect(after.y).toBeGreaterThanOrEqual(0);
+  expect(after.x + after.width).toBeGreaterThan(0);
 });
 
 test("a moved dialog is pulled in, not recentred, when the window shrinks", async ({ page }) => {
   const viewport = page.viewportSize()!;
   const dialog = await openSettings(page);
-  const start = await box(dialog);
   await dragBar(page, dialog, viewport.width, 40);
   const moved = await box(dialog);
-  expect(moved.x).toBeCloseTo(viewport.width - KEEP, 0);
 
-  await page.setViewportSize({ width: viewport.width - 200, height: viewport.height });
-  await expect.poll(async () => Math.round((await box(dialog)).x)).toBe(viewport.width - 200 - KEEP);
-  expect((await box(dialog)).y).toBeCloseTo(start.y + 40, 0);
+  const width = viewport.width - 200;
+  await page.setViewportSize({ width, height: viewport.height });
+  await expect.poll(async () => (await box(dialog)).x < width).toBe(true);
+  expect((await box(dialog)).y).toBeCloseTo(moved.y, 0);
 });
 
 test("an unmoved dialog stays centred when the window shrinks", async ({ page }) => {
