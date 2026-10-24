@@ -1077,11 +1077,7 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
   /** E3: two or more picked is what draws the bulk line and stands the header trigger down. */
   const bulk = pick.ids.size >= 2;
 
-  /**
-   * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
-   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing
-   * (ah-1lac review), until the effect below forgets it (ah-91i4).
-   */
+  /** The remembered menu worth keeping: `menu` while its list is drawn, `null` otherwise. */
   const keptMenu = rememberedMenu(menu, {
     canEditArmies,
     hasSelection: selectedUnit !== null,
@@ -1089,6 +1085,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
     acting: acting.length,
     hasTurn: currentTurn !== null
   });
+  /**
+   * Whether an Add to army list is drawn, from the conditions each of its three controls draws it
+   * under. `menu` alone is not that: a right-click with no game open sets it and draws nothing
+   * (ah-1lac review), until the effect below forgets it (ah-91i4).
+   */
   const armyListOpen = keptMenu !== null;
 
   // A list that is not drawn is forgotten (ah-91i4); the rule, and why, is `rememberedMenu`.

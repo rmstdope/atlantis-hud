@@ -3144,8 +3144,11 @@ describe("rememberedMenu (ah-91i4)", () => {
     expect(rememberedMenu({ at: "bulk" }, { ...all, bulk: false })).toBeNull();
   });
 
-  it("does not bring a forgotten list back by itself once its condition holds again", () => {
-    const forgotten = rememberedMenu({ at: "header" }, { ...all, hasSelection: false });
-    expect(rememberedMenu(forgotten, all)).toBeNull();
+  it("leaves nothing that draws a list once a hidden one's condition holds again", () => {
+    // What the component keeps across the hidden spell is this function's answer; drawing from it
+    // when the filter lifts must show nothing. Applying the answer to state is the effect's job,
+    // which only the smoke walk in tests/smoke/armies.spec.ts can observe (traps: no jsdom here).
+    const keptWhileHidden = rememberedMenu({ at: "header" }, { ...all, hasSelection: false });
+    expect(armyListShown(keptWhileHidden, all)).toBe(false);
   });
 });
