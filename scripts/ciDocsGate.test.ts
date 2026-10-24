@@ -436,16 +436,16 @@ describe("the smoke matrix", () => {
     expect(smokeMatrixContexts(smoke)).toEqual([...SMOKE_CONTEXTS]);
   });
 
-  it("splits web over four shards and walks desktop-shell in one", () => {
-    // desktop-shell walks only its tagged tests since ah-r7kot, so a second shard of it is a
-    // runner idle for most of the run while web is the critical path (ah-5qndx).
-    expect(SMOKE_CONTEXTS).toEqual([
-      "smoke (web, 1, 4)",
-      "smoke (web, 2, 4)",
-      "smoke (web, 3, 4)",
-      "smoke (web, 4, 4)",
-      "smoke (desktop-shell, 1, 1)"
-    ]);
+  it("refuses a smoke matrix line it cannot read, rather than skipping it", () => {
+    // A skipped line is a context the workflow reports and the equality test above never sees -
+    // a block-form entry, or a cross-product key GitHub would combine with `include:`.
+    const job = (matrix: string) =>
+      ["    strategy:", "      matrix:", "        include:", matrix, "    steps:"].join("\n");
+    const entry = "          - { project: web, shardIndex: 1, shardTotal: 1 }";
+
+    expect(smokeMatrixContexts(job(entry))).toEqual(["smoke (web, 1, 1)"]);
+    expect(() => smokeMatrixContexts(job(`${entry}\n          - project: web`))).toThrow(/project: web/u);
+    expect(() => smokeMatrixContexts(job(`${entry}\n        project: [web]`))).toThrow(/project: \[web\]/u);
   });
 
   it("covers each project's shards 1..shardTotal exactly once", () => {

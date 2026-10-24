@@ -219,11 +219,35 @@ export const SMOKE_CONTEXTS: readonly string[] = [
 /**
  * The check contexts the `smoke` job's matrix reports, one per `include:` entry written as
  * `- { project: <p>, shardIndex: <i>, shardTotal: <t> }`, in the order they appear.
+ *
+ * Throws on any other line in the `matrix:` block (comments and blank lines aside) - a block-form
+ * entry or a cross-product key beside `include:` changes what GitHub runs, and skipping it would
+ * hide a context from the comparison with SMOKE_CONTEXTS.
  */
 export function smokeMatrixContexts(jobBlock: string): string[] {
-  const entry =
-    /^ {10}- \{\s*project:\s*([a-z-]+),\s*shardIndex:\s*(\d+),\s*shardTotal:\s*(\d+)\s*\}\s*$/gmu;
-  return [...jobBlock.matchAll(entry)].map(([, project, index, total]) => `smoke (${project}, ${index}, ${total})`);
+  const lines = jobBlock.split("\n");
+  const start = lines.findIndex((line) => /^ {6}matrix:\s*$/u.test(line));
+  if (start === -1) {
+    return [];
+  }
+
+  const entry = /^ {10}- \{\s*project:\s*([a-z-]+),\s*shardIndex:\s*(\d+),\s*shardTotal:\s*(\d+)\s*\}\s*$/u;
+  const contexts: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s*(#.*)?$/u.test(line)) {
+      continue;
+    }
+    if (!/^ {8}/u.test(line)) {
+      break;
+    }
+    const match = line.match(entry);
+    if (match !== null) {
+      contexts.push(`smoke (${match[1]}, ${match[2]}, ${match[3]})`);
+    } else if (!/^ {8}include:\s*$/u.test(line)) {
+      throw new Error(`smoke matrix line not in the one-entry-per-line flow form: ${line.trim()}`);
+    }
+  }
+  return contexts;
 }
 
 /**

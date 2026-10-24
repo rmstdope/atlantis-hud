@@ -316,10 +316,10 @@ jobs:
             exit 1
           fi
 
-  # One job per Playwright project and shard, because the suite is deliberately single-worker. Two
-  # of its tests measure how long the main thread is blocked, and anything running beside them
-  # turns that into a measurement of contention - so parallelism is bought here, where each runner
-  # walks its slice of one shell on its own, rather than inside Playwright.
+  # One job per Playwright project and shard, because the suite runs few workers on purpose (two,
+  # see SMOKE_WORKERS below). Two of its tests measure how long the main thread is blocked, and
+  # more running beside them turns that into a measurement of contention - so most parallelism is
+  # bought here, where each runner walks its slice of one shell, rather than inside Playwright.
   #
   # The two projects do not walk the same tests (ah-r7kot): `web` walks every shell-agnostic test
   # and `desktop-shell` only the few tagged for it in `tests/smoke/shells.ts`. So `web` is split
