@@ -26,6 +26,7 @@ import {
   STANDARD_TURN,
   turnInHeader
 } from "./gameSetup";
+import { BOTH_SHELLS_TAG } from "./shells";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
 import { ROW_HEIGHT } from "../../packages/shared/src/unitTable";
@@ -39,11 +40,11 @@ import { COLUMN_PITCH } from "../../packages/shared/src/workspace/mapViewport";
 import { railHasRoomToDrag, railRemFor } from "../../packages/shared/src/workspace/panelLayout";
 
 /**
- * Walks the workspace on a real turn report, in whichever shell the project targets.
+ * Walks the workspace on a real turn report.
  *
- * The two shells render the same components, so the same walk has to hold for both. Anything that
- * passes here for the web and fails for the desktop is a divergence, which is exactly the failure
- * this suite exists to catch.
+ * The two shells render the same components, so most of this is walked once, on `web` (ah-r7kot).
+ * The exceptions carry `BOTH_SHELLS_TAG`: the desktop header has Send and Fetch where the web one has
+ * neither, so a walk about where things sit below that header has to hold for both.
  */
 const REPORT = readReport("g7f95t71");
 /**
@@ -1606,7 +1607,7 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
  * The tallest the header may be at the pinned viewport, in pixels.
  *
  * Measured, not chosen: on 2026-08-28, after ah-30hg.2 folded the three amber advisory chips into
- * one, the header renders at 37px on both the desktop shell and web, at the pinned 1280x720
+ * one, the header rendered at 37px on both the desktop shell and web, at the pinned 1280x720
  * viewport with a 16px root font. The budget is ~125% of that - loose enough that an ordinary
  * change does not trip it, tight enough that one more chip or a step up in the type scale does.
  *
@@ -1621,7 +1622,7 @@ test("a folded panel shrinks to its title bar", async ({ page }) => {
  */
 const HEADER_BUDGET_PX = 46;
 
-test("the header fits its budget, so a taller one fails here and not somewhere else", async ({
+test("the header fits its budget, so a taller one fails here and not somewhere else", { tag: BOTH_SHELLS_TAG }, async ({
   page
 }) => {
   await loadReport(page);
@@ -1726,7 +1727,7 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
  * one-row floor, and whatever the column still cannot hold scrolls inside the column, so the
  * splitter never lies under the dock at any height.
  */
-test("in a short window the orders splitter stays clear of the units dock and takes the mouse", async ({
+test("in a short window the orders splitter stays clear of the units dock and takes the mouse", { tag: BOTH_SHELLS_TAG }, async ({
   page
 }) => {
   await page.setViewportSize({ width: 1200, height: 720 });
@@ -2060,7 +2061,7 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
 });
 
-test("every control that acts on the map view sits in one strip", async ({ page }) => {
+test("every control that acts on the map view sits in one strip", { tag: BOTH_SHELLS_TAG }, async ({ page }) => {
   await loadReport(page);
 
   // ah-ljil: the zoom buttons moved up from the map's own top-right corner into the strip that
@@ -2089,7 +2090,7 @@ test("every control that acts on the map view sits in one strip", async ({ page 
  * instead, and only while a menu is open. Lifted always, it swallows clicks meant for whatever sits
  * under it. ah-ljil moved the zoom buttons into this strip, and this is what must have survived.
  */
-test("the badge menu's lower rows take clicks, and give the map back when it closes", async ({
+test("the badge menu's lower rows take clicks, and give the map back when it closes", { tag: BOTH_SHELLS_TAG }, async ({
   page
 }) => {
   await loadReport(page);
@@ -2186,7 +2187,7 @@ test("a first turn opens on the nexus, on a level of its own", async ({ page }) 
  * glanceable. A game that knows more than one level gets a real control there, and changing it
  * changes the level the map is drawn for.
  */
-test("the level selector in the header changes level", async ({ page }) => {
+test("the level selector in the header changes level", { tag: BOTH_SHELLS_TAG }, async ({ page }) => {
   await clearGames(page);
   await expect(page.getByTestId("game-gate")).toBeVisible();
   await createGame(page, "Two levels");
@@ -2235,7 +2236,7 @@ test("the level selector in the header changes level", async ({ page }) => {
  * nothing, because the only controls were "units" and "structures" over nine kinds of mark - and
  * the set a player settles on is a preference, so it outlives a reload.
  */
-test("each badge can be turned off on its own, and the set survives a reload", async ({ page }) => {
+test("each badge can be turned off on its own, and the set survives a reload", { tag: BOTH_SHELLS_TAG }, async ({ page }) => {
   await loadReport(page);
 
   const map = page.getByTestId("map-canvas");
@@ -4086,7 +4087,7 @@ const DAMAGED_REPORT = REPORT.replace(
   UNREADABLE_UNIT
 );
 
-test("the header chip opens the lines that could not be read", async ({ page }) => {
+test("the header chip opens the lines that could not be read", { tag: BOTH_SHELLS_TAG }, async ({ page }) => {
   await clearGames(page);
   await expect(page.getByTestId("game-gate")).toBeVisible();
   await createGame(page, "Smoke game");
@@ -4161,7 +4162,7 @@ test("the header chip opens the turn's errors and events", async ({ page }) => {
   await expect(panel).toContainText("Claims $50.");
 });
 
-test("a unit named in a turn message is a way back to it", async ({ page }) => {
+test("a unit named in a turn message is a way back to it", { tag: BOTH_SHELLS_TAG }, async ({ page }) => {
   await loadReport(page);
   await page.getByTestId("turn-report-chip").click();
   await page.getByTestId("turn-report-tab-events").click();
@@ -5616,7 +5617,7 @@ test("a cast creation marks the ITEMS cell as a projection", async ({ page }) =>
  * gear) instead of adapting. The header now wraps into two groups, with the actions group
  * dropping to its own right-aligned row when the game-state group has already taken the width.
  */
-test("a narrow window wraps the header instead of clipping it", async ({ page }) => {
+test("a narrow window wraps the header instead of clipping it", { tag: BOTH_SHELLS_TAG }, async ({ page }) => {
   await loadReport(page);
   await page.setViewportSize({ width: 520, height: 720 });
 

@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { smokePorts } from "./scripts/smokePorts";
+import { BOTH_SHELLS_TAG, DESKTOP_SHELL_TAG } from "./tests/smoke/shells";
 
 const { web, desktop } = smokePorts();
 
@@ -77,6 +78,11 @@ function smokeWorkers(): number {
   return workers;
 }
 
+/** Tests only `desktop-shell` walks; Playwright greps a test's tags along with its title. */
+const DESKTOP_SHELL_PATTERN = new RegExp(`${DESKTOP_SHELL_TAG}\\b`);
+/** Everything `desktop-shell` walks: its own tests and the layout walks both shells must pass. */
+const DESKTOP_SHELL_WALKS = new RegExp(`(${DESKTOP_SHELL_TAG}|${BOTH_SHELLS_TAG})\\b`);
+
 const only = process.env.SMOKE_PROJECT;
 if (only && !(only in SERVERS)) {
   throw new Error(`SMOKE_PROJECT is "${only}", which names no server: ${Object.keys(SERVERS)}`);
@@ -145,13 +151,19 @@ export default defineConfig({
   },
   projects: [
     {
-      // Both projects run the same spec. The shells share their components, so a walk that passes
-      // for one and fails for the other is a divergence, which is what this suite exists to catch.
+      // Every shell-agnostic walk, once (ah-r7kot). Opened in Chromium, the desktop bundle runs the
+      // same core, storage and AppShell as this one, so walking each test on both projects spent
+      // half the smoke runner time re-walking identical code; `tests/smoke/shells.ts` says which
+      // tests the desktop bundle earns, and those are left to `desktop-shell` alone.
       name: "web",
+      grepInvert: DESKTOP_SHELL_PATTERN,
       use: { ...devices["Desktop Chrome"], viewport: PINNED_VIEWPORT, baseURL: `http://127.0.0.1:${web}` }
     },
     {
+      // Only the walks that need a prop the desktop App.tsx hands AppShell and the web one does not,
+      // and the layout walks that header's extra controls can break (`BOTH_SHELLS_TAG`).
       name: "desktop-shell",
+      grep: DESKTOP_SHELL_WALKS,
       use: {
         ...devices["Desktop Chrome"],
         viewport: PINNED_VIEWPORT,

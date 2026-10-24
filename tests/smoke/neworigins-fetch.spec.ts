@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readReport, reportTurn } from "@atlantis/fixtures";
 
 import { clearGames, createGame } from "./gameSetup";
+import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
  * Fetching this turn's report from New Origins (ah-ia0w).
@@ -39,12 +40,8 @@ type HttpCall = ["httpRequest", string, string, number];
 
 type DownloadReply = { status: number; body: string; throws?: boolean };
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-shell",
-    "desktop wiring: the pbem transport is only there in the desktop bundle"
-  );
-
+// Every test here is tagged DESKTOP_SHELL_TAG, so only `desktop-shell` walks it - desktop wiring: the pbem transport is only there in the desktop bundle.
+test.beforeEach(async ({ page }) => {
   await page.addInitScript(
     ({ report }: { report: string }) => {
       const calls: unknown[][] = [];
@@ -128,7 +125,7 @@ async function fetchWith(page: import("@playwright/test").Page) {
   await page.getByTestId("neworigins-fetch-confirm").click();
 }
 
-test("fetches this turn's report into an empty game", async ({ page }) => {
+test("fetches this turn's report into an empty game", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
 
@@ -145,7 +142,7 @@ test("fetches this turn's report into an empty game", async ({ page }) => {
   expect(calls.filter((call) => call[3] > 0)).toHaveLength(1);
 });
 
-test("asks before a newer turn replaces what is on screen, and files it when kept", async ({
+test("asks before a newer turn replaces what is on screen, and files it when kept", { tag: DESKTOP_SHELL_TAG }, async ({
   page
 }) => {
   await clearGames(page);
@@ -168,7 +165,7 @@ test("asks before a newer turn replaces what is on screen, and files it when kep
   await expect(page.getByTestId("turn-chip")).toContainText(String(OLDER_TURN));
 });
 
-test("opens a newer turn when asked to", async ({ page }) => {
+test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await fetchWith(page);
@@ -183,7 +180,7 @@ test("opens a newer turn when asked to", async ({ page }) => {
   await expect(page.getByTestId("turn-chip")).toContainText(String(NEWER_TURN));
 });
 
-test("offers a reload when the same turn comes back", async ({ page }) => {
+test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await fetchWith(page);
@@ -199,7 +196,7 @@ test("offers a reload when the same turn comes back", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${OLDER_TURN}.`);
 });
 
-test("files an older turn without asking", async ({ page }) => {
+test("files an older turn without asking", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await replyWith(page, { status: 200, body: TURN_71 });
@@ -215,7 +212,7 @@ test("files an older turn without asking", async ({ page }) => {
   await expect(page.getByTestId("neworigins-fetch-panel")).toHaveCount(0);
 });
 
-test("quotes the site's own sentence when it is refused", async ({ page }) => {
+test("quotes the site's own sentence when it is refused", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await replyWith(page, { status: 200, body: REFUSAL_PAGE });
@@ -227,7 +224,7 @@ test("quotes the site's own sentence when it is refused", async ({ page }) => {
   await expect(page.getByTestId("newage-password")).toHaveValue("");
 });
 
-test("says the site could not be reached, and keeps both fields", async ({ page }) => {
+test("says the site could not be reached, and keeps both fields", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await replyWith(page, { status: 0, body: "", throws: true });
@@ -240,7 +237,7 @@ test("says the site could not be reached, and keeps both fields", async ({ page 
   await expect(page.getByTestId("newage-password")).toHaveValue("right");
 });
 
-test("names the browser route when the reply cannot be read", async ({ page }) => {
+test("names the browser route when the reply cannot be read", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await newOriginsGame(page);
   await replyWith(page, { status: 200, body: "<html>hello</html>" });
