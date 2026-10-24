@@ -239,6 +239,35 @@ describe("the prose-only fast path", () => {
     expect(runsEverything(["CLAUDE.md"])).toBe(false);
   });
 
+  it("takes the fast path for the .cerebro/ declarations no test reads (ah-slxi7)", () => {
+    // Fleet housekeeping - the roster, the agents' models, the QA lists, the traps - is read by the
+    // fleet's own scripts and by people, never by anything CI builds, tests or runs. Each such
+    // commit used to cost about 45 runner-minutes for checks it could not affect.
+    expect(runsEverything([".cerebro/roster.conf"])).toBe(false);
+    expect(runsEverything([".cerebro/agents.conf"])).toBe(false);
+    expect(runsEverything([".cerebro/requirements.md"])).toBe(false);
+    expect(runsEverything([".cerebro/test-architecture.md"])).toBe(false);
+    expect(runsEverything([".cerebro/traps.md"])).toBe(false);
+    expect(runsEverything([".cerebro/requirements.md", "docs/implementation-plan.md"])).toBe(false);
+    expect(runsNative([".cerebro/roster.conf"])).toBe(false);
+  });
+
+  it("runs everything for the .cerebro/ paths a test or the gate reads, and any it does not name", () => {
+    // project.conf is read by scripts/runGate.ts and scripts/verificationSkill.test.ts; the
+    // cerebro submodule (listed as its gitlink path) carries the gate and preflight scripts. A new
+    // file under .cerebro/ is not exempt until somebody names it, so the list fails safe.
+    expect(runsEverything([".cerebro/project.conf"])).toBe(true);
+    expect(runsEverything([".cerebro/cerebro"])).toBe(true);
+    expect(runsEverything([".cerebro/other.md"])).toBe(true);
+    expect(runsEverything([".cerebro/roster.conf", "scripts/release.ts"])).toBe(true);
+
+    // Exact-matched per file: not a prefix, not a suffix, not nested.
+    expect(runsEverything([".cerebro/roster.conf.bak"])).toBe(true);
+    expect(runsEverything(["x.cerebro/roster.conf"])).toBe(true);
+    expect(runsEverything([".cerebro/sub/roster.conf"])).toBe(true);
+    expect(runsEverything([".cerebro/trapsxmd"])).toBe(true);
+  });
+
   it("runs everything for a diff mixing root prose with a source file", () => {
     expect(runsEverything(["README.md", "scripts/release.ts"])).toBe(true);
   });
@@ -284,18 +313,29 @@ describe("the prose-only fast path", () => {
     expect(runsEverything([".claude/settings.json"])).toBe(false);
   });
 
-  it("falls open to running everything when the event is not a pull request", () => {
+  it("judges a push on its own diff, from the compare API, and fails open (ah-slxi7)", () => {
     const blocks = jobBlocks(WORKFLOW);
     const gate = blocks.get(GATE_JOB);
     if (gate === undefined) {
       throw new Error(`workflow has no "${GATE_JOB}" job`);
     }
 
-    // Asserted on the shell text rather than executed: the direction matters more than the
-    // mechanism here. A gate that fails closed turns an infrastructure blip into untested code
-    // reaching main.
-    expect(gate).toMatch(/github\.event_name.*!=.*pull_request/u);
+    // Asserted on the shell text rather than executed, since it calls the GitHub API. A push to
+    // main used to run everything unconditionally, so a .cerebro/-only housekeeping commit paid the
+    // whole suite even with the exemption above. It now lists its files from before..after - but
+    // only a compare that is plainly ahead and under the API's 300-file cap counts. Anything else
+    // (branch creation's all-zero before, a force push, a truncated list) runs everything: a gate
+    // that fails closed turns an infrastructure blip into untested code reaching main.
+    expect(gate).toMatch(/github\.event\.before/u);
+    expect(gate).toMatch(/compare\/\$\{?BEFORE\}?\.\.\.\$\{?AFTER\}?/u);
+    expect(gate).toMatch(/\.status == "ahead"/u);
+    expect(gate).toMatch(/length\) < 300/u);
+    expect(gate).toMatch(/\^0\+\$/u);
+
+    // Any other event still runs everything, before any listing is attempted.
+    expect(gate).toMatch(/github\.event_name.*!=.*push/u);
     expect(gate).toMatch(/code=true/u);
+    expect(gate).toMatch(/native=true/u);
   });
 });
 
