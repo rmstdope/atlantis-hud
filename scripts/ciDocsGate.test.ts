@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  assertShardsCover,
   dependsOnChanges,
   GATE_JOB,
   gateCondition,
@@ -15,6 +16,8 @@ import {
   nativeGateCondition,
   onTriggerBlock,
   REQUIRED_JOBS,
+  SMOKE_CONTEXTS,
+  smokeMatrixContexts,
   stepBlocks
 } from "./ciDocsGate";
 
@@ -417,5 +420,38 @@ describe("the native job's path scope", () => {
 
   it("fails open: an empty file list runs the native job too", () => {
     expect(runsNative([])).toBe(true);
+  });
+});
+
+describe("the smoke matrix", () => {
+  it("reports exactly the contexts the main ruleset requires", () => {
+    // The ruleset names each smoke context, so a matrix change that does not change
+    // SMOKE_CONTEXTS - and, with it, the ruleset - leaves a required check that never reports
+    // and blocks every merge (ah-5qndx).
+    const smoke = jobBlocks(WORKFLOW).get("smoke");
+    if (smoke === undefined) {
+      throw new Error('workflow has no "smoke" job');
+    }
+
+    expect(smokeMatrixContexts(smoke)).toEqual([...SMOKE_CONTEXTS]);
+  });
+
+  it("splits web over four shards and walks desktop-shell in one", () => {
+    // desktop-shell walks only its tagged tests since ah-r7kot, so a second shard of it is a
+    // runner idle for most of the run while web is the critical path (ah-5qndx).
+    expect(SMOKE_CONTEXTS).toEqual([
+      "smoke (web, 1, 4)",
+      "smoke (web, 2, 4)",
+      "smoke (web, 3, 4)",
+      "smoke (web, 4, 4)",
+      "smoke (desktop-shell, 1, 1)"
+    ]);
+  });
+
+  it("covers each project's shards 1..shardTotal exactly once", () => {
+    expect(() => assertShardsCover(SMOKE_CONTEXTS)).not.toThrow();
+    expect(() => assertShardsCover(["smoke (web, 1, 3)", "smoke (web, 3, 3)"])).toThrow(/web/u);
+    expect(() => assertShardsCover(["smoke (web, 1, 2)", "smoke (web, 1, 2)"])).toThrow(/web/u);
+    expect(() => assertShardsCover(["smoke (web, 1, 2)", "smoke (web, 2, 3)"])).toThrow(/web/u);
   });
 });

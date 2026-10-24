@@ -201,3 +201,55 @@ export function onTriggerBlock(yaml: string): string {
 
   return body.join("\n");
 }
+
+/**
+ * The smoke contexts the main branch ruleset requires (ruleset `main`, required status checks).
+ * The ruleset names every shard, so this list, the `smoke` job's matrix in `ci.yml` and the
+ * ruleset change together or a required check never reports and every merge blocks; the tooling
+ * suite pins the first two, and the ruleset is edited on GitHub in the same change (ah-5qndx).
+ */
+export const SMOKE_CONTEXTS: readonly string[] = [
+  "smoke (web, 1, 4)",
+  "smoke (web, 2, 4)",
+  "smoke (web, 3, 4)",
+  "smoke (web, 4, 4)",
+  "smoke (desktop-shell, 1, 1)"
+];
+
+/**
+ * The check contexts the `smoke` job's matrix reports, one per `include:` entry written as
+ * `- { project: <p>, shardIndex: <i>, shardTotal: <t> }`, in the order they appear.
+ */
+export function smokeMatrixContexts(jobBlock: string): string[] {
+  const entry =
+    /^ {10}- \{\s*project:\s*([a-z-]+),\s*shardIndex:\s*(\d+),\s*shardTotal:\s*(\d+)\s*\}\s*$/gmu;
+  return [...jobBlock.matchAll(entry)].map(([, project, index, total]) => `smoke (${project}, ${index}, ${total})`);
+}
+
+/**
+ * Throws unless, for every project, the contexts carry one shardTotal and the indexes 1..shardTotal
+ * exactly once - a gap is a slice of the suite no runner walks, a duplicate one walked twice.
+ */
+export function assertShardsCover(contexts: readonly string[]): void {
+  const byProject = new Map<string, { totals: Set<number>; indexes: number[] }>();
+  for (const context of contexts) {
+    const match = context.match(/^smoke \(([a-z-]+), (\d+), (\d+)\)$/u);
+    if (match === null) {
+      throw new Error(`not a smoke context: ${context}`);
+    }
+    const [, project, index, total] = match;
+    const shards = byProject.get(project) ?? { totals: new Set<number>(), indexes: [] };
+    shards.totals.add(Number(total));
+    shards.indexes.push(Number(index));
+    byProject.set(project, shards);
+  }
+
+  for (const [project, { totals, indexes }] of byProject) {
+    const [total] = [...totals];
+    const expected = Array.from({ length: total }, (_, i) => i + 1);
+    const actual = [...indexes].sort((a, b) => a - b);
+    if (totals.size !== 1 || actual.join(",") !== expected.join(",")) {
+      throw new Error(`${project}: shards ${actual.join(",")} of ${[...totals].join("/")} do not cover 1..${total} once`);
+    }
+  }
+}

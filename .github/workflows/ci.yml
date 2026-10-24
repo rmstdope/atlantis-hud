@@ -319,15 +319,19 @@ jobs:
   # One job per Playwright project and shard, because the suite is deliberately single-worker. Two
   # of its tests measure how long the main thread is blocked, and anything running beside them
   # turns that into a measurement of contention - so parallelism is bought here, where each runner
-  # walks its slice of one shell on its own, rather than inside Playwright. Two shards, because
-  # each job pays a fixed ~45 seconds of setup before the first test runs: at two the split still
-  # roughly halves the test time; at three the setup starts to dominate what it saves.
+  # walks its slice of one shell on its own, rather than inside Playwright.
   #
-  # The two projects no longer walk the same tests (ah-r7kot): `web` walks every shell-agnostic
-  # test and `desktop-shell` only the few tagged for it in `tests/smoke/shells.ts`, so the
-  # desktop-shell shards are short. The matrix keeps its shape because the four contexts are the
-  # required checks in the main ruleset; spending the freed runners on more `web` shards means
-  # editing that ruleset in the same change.
+  # The two projects do not walk the same tests (ah-r7kot): `web` walks every shell-agnostic test
+  # and `desktop-shell` only the few tagged for it in `tests/smoke/shells.ts`. So `web` is split
+  # four ways and `desktop-shell` runs whole (ah-5qndx). Each job pays a fixed ~45 seconds of setup
+  # before its first test; against that, two `web` shards took 8-11 minutes each (run 40094870475:
+  # 10:46 and 11:05) and the two `desktop-shell` shards about 1:20, so a third and fourth `web`
+  # shard cut the critical path by far more than they add, and a second `desktop-shell` shard
+  # saved well under a minute on a job that was never the slowest.
+  #
+  # Every context below is a required check in the main ruleset, by name, shard count included.
+  # Changing the matrix means changing SMOKE_CONTEXTS in scripts/ciDocsGate.ts (the tooling suite
+  # keeps the two equal) and editing the ruleset on GitHub in the same change.
   #
   # These need no Rust at all: the wasm module arrives as an artifact.
   #
@@ -337,7 +341,7 @@ jobs:
   # <shardTotal>)` contexts under an explicit `name:`. On a CODE PR the twin was the one skipped
   # instead, so IT never expanded either, and its `${{ matrix.* }}` `name:` posted uninterpolated -
   # a permanently-"skipping" check with a raw expression in its name, on every code PR (ah-2m2).
-  # Gating every step instead keeps the four contexts reporting on every PR by construction, with
+  # Gating every step instead keeps the smoke contexts reporting on every PR by construction, with
   # no job anywhere carrying a matrix expression in a `name:`. `!cancelled()` is what lets the job
   # (and therefore its matrix) still run when `wasm` was skipped on a prose-only PR, while still
   # dying on an actual cancellation.
@@ -358,9 +362,9 @@ jobs:
     # fails the gate if they drift (ah-f9q9).
     #
     # The cost, measured rather than assumed (ah-vzj9): a job-level container is pulled before any
-    # step gate is evaluated, and this job deliberately always expands its matrix so the four
-    # required contexts always report (ah-2m2). So a prose-only PR pulls the image in all four
-    # shards and then skips every step. Two one-file docs-only PRs either side of the change - a
+    # step gate is evaluated, and this job deliberately always expands its matrix so the
+    # required contexts always report (ah-2m2). So a prose-only PR pulls the image in every
+    # shard and then skips every step. Two one-file docs-only PRs either side of the change - a
     # sample of two, #461 and #467 - went from 21s to 135s of runner time across the four shards,
     # about 37s more wall-clock since they run in parallel. Weighed against a step that ran on
     # every code PR, hit or miss, and stalled 25-55 minutes four times in five days (ah-3c80), and
@@ -368,10 +372,15 @@ jobs:
     container: mcr.microsoft.com/playwright:v1.62.1-noble
     strategy:
       fail-fast: false
+      # Kept equal to SMOKE_CONTEXTS in scripts/ciDocsGate.ts by scripts/ciDocsGate.test.ts, which
+      # reads one entry per line in this flow form. The ruleset is kept equal to both by hand.
       matrix:
-        project: [web, desktop-shell]
-        shardIndex: [1, 2]
-        shardTotal: [2]
+        include:
+          - { project: web, shardIndex: 1, shardTotal: 4 }
+          - { project: web, shardIndex: 2, shardTotal: 4 }
+          - { project: web, shardIndex: 3, shardTotal: 4 }
+          - { project: web, shardIndex: 4, shardTotal: 4 }
+          - { project: desktop-shell, shardIndex: 1, shardTotal: 1 }
     steps:
       - name: Checkout
         if: needs.changes.outputs.code == 'true'
@@ -412,7 +421,8 @@ jobs:
           # workers 354 s over one - so the gain saturates at two, and two contends least with the
           # interactivity guard in workspace.spec.ts. The same shard varied by up to 200 s between
           # runs of identical code, so one run tells you nothing; average several. More shards is
-          # the lever that scales, but the shard count is in the required status check names.
+          # the lever that scales, but the shard count is in the required status check names
+          # (see the comment above the job).
           SMOKE_WORKERS: 2
 
       - name: Upload the report of a failed run
