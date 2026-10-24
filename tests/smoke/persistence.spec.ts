@@ -15,7 +15,8 @@ import {
 } from "./gameSetup";
 
 /**
- * The acceptance vectors of issue #34, end to end, in both shells.
+ * The acceptance vectors of issue #34, end to end - walked on `web` alone,
+ * since the desktop bundle renders the same components (ah-r7kot).
  *
  * Unsaved data for the open game is saved - regularly, on switching games, and on the way out - and
  * reloaded when the game is opened again. Two things were broken before this: nothing ever wrote an

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { smokePorts } from "./scripts/smokePorts";
-import { DESKTOP_SHELL_TAG } from "./tests/smoke/shells";
+import { BOTH_SHELLS_TAG, DESKTOP_SHELL_TAG } from "./tests/smoke/shells";
 
 const { web, desktop } = smokePorts();
 
@@ -78,8 +78,10 @@ function smokeWorkers(): number {
   return workers;
 }
 
-/** Matches a test tagged for the desktop shell; Playwright greps a test's tags with its title. */
+/** Tests only `desktop-shell` walks; Playwright greps a test's tags along with its title. */
 const DESKTOP_SHELL_PATTERN = new RegExp(`${DESKTOP_SHELL_TAG}\\b`);
+/** Everything `desktop-shell` walks: its own tests and the layout walks both shells must pass. */
+const DESKTOP_SHELL_WALKS = new RegExp(`(${DESKTOP_SHELL_TAG}|${BOTH_SHELLS_TAG})\\b`);
 
 const only = process.env.SMOKE_PROJECT;
 if (only && !(only in SERVERS)) {
@@ -158,9 +160,10 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"], viewport: PINNED_VIEWPORT, baseURL: `http://127.0.0.1:${web}` }
     },
     {
-      // Only the walks that need a prop the desktop App.tsx hands AppShell and the web one does not.
+      // Only the walks that need a prop the desktop App.tsx hands AppShell and the web one does not,
+      // and the layout walks that header's extra controls can break (`BOTH_SHELLS_TAG`).
       name: "desktop-shell",
-      grep: DESKTOP_SHELL_PATTERN,
+      grep: DESKTOP_SHELL_WALKS,
       use: {
         ...devices["Desktop Chrome"],
         viewport: PINNED_VIEWPORT,

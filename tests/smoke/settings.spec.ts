@@ -3,7 +3,8 @@ import { readReport } from "@atlantis/fixtures";
 import { clearGames, createGame, loadReport, selectHex, STANDARD_TURN } from "./gameSetup";
 
 /**
- * The settings dialog, in both shells.
+ * The settings dialog, walked on `web` alone,
+ * since the desktop bundle renders the same components (ah-r7kot).
  *
  * What is asserted here is deliberately the part the two builds share: the cogwheel opens a
  * centered modal with several tabs, the theme choice restyles the app and survives a reload, and the

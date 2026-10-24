@@ -9,7 +9,8 @@ async function openThisGameTab(page: Page) {
 }
 
 /**
- * The acceptance vectors of issue #33, end to end, in both shells.
+ * The acceptance vectors of issue #33, end to end - walked on `web` alone,
+ * since the desktop bundle renders the same components (ah-r7kot).
  *
  * All user data is divided into games; the top menu says which one is loaded and lets the player
  * switch, create and delete; with no game the only thing possible is creating one; and creating one
