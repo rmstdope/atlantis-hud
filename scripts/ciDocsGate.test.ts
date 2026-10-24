@@ -332,24 +332,20 @@ describe("the prose-only fast path", () => {
   });
 
   it("judges a push from the last successful main run, not its parent, and fails open (ah-slxi7)", () => {
-    const blocks = jobBlocks(WORKFLOW);
-    const gate = blocks.get(GATE_JOB);
-    if (gate === undefined) {
-      throw new Error(`workflow has no "${GATE_JOB}" job`);
-    }
+    const block = gate();
 
     // A concurrency group keeps one pending run, so a newer push cancels an older pending one. A
     // docs-only push diffed from its own parent would then skip a code commit whose run was
     // cancelled, and that code would never be tested on main. Diffing from the head of the last
     // successful run keeps every commit since then inside the diff. Raised by review on PR #1869.
-    expect(gate).not.toMatch(/github\.event\.before/u);
-    expect(gate).toMatch(/actions\/workflows\/ci\.yml\/runs\?branch=main&event=push&status=success&per_page=1/u);
-    expect(gate).toMatch(/compare\/\$\{BASE\}\.\.\.\$\{AFTER\}/u);
+    expect(block).not.toMatch(/github\.event\.before/u);
+    expect(block).toMatch(/actions\/workflows\/ci\.yml\/runs\?branch=main&event=push&status=success&per_page=1/u);
+    expect(block).toMatch(/compare\/\$\{BASE\}\.\.\.\$\{AFTER\}/u);
 
     // Any other event still runs everything, before any listing is attempted.
-    expect(gate).toMatch(/github\.event_name.*!=.*push/u);
-    expect(gate).toMatch(/code=true/u);
-    expect(gate).toMatch(/native=true/u);
+    expect(block).toMatch(/github\.event_name.*!=.*push/u);
+    expect(block).toMatch(/code=true/u);
+    expect(block).toMatch(/native=true/u);
   });
 
   it("needs read access to Actions runs for the push gate's lookup", () => {
