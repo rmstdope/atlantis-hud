@@ -56,9 +56,12 @@ export const PUBLISHING_JOBS = ["web-tarball", "web-image", "publish", "publish-
 /** The guard that keeps a job to a tag push. */
 export const TAG_GUARD = "if: github.ref_type == 'tag'";
 
-/** Step names in a job, in order. */
-function stepNames(job: string): string[] {
-  return [...job.matchAll(/^ {6}- name: (.+)$/gmu)].map((match) => match[1].trim());
+/** The named steps of a job, in order, each with its own lines. */
+function stepBlocks(job: string): { name: string; body: string }[] {
+  return job
+    .split(/^(?= {6}- )/mu)
+    .map((body) => ({ name: body.match(/^ {6}- name: (.+)$/mu)?.[1].trim() ?? "", body }))
+    .filter((step) => step.name !== "");
 }
 
 /**
@@ -70,11 +73,39 @@ export function launchChecksBeforeUpload(yaml: string, job: string): boolean {
   if (block === undefined) {
     return false;
   }
-  const names = stepNames(block);
+  const steps = stepBlocks(block);
+  const names = steps.map((step) => step.name);
   const check = names.indexOf(LAUNCH_CHECK_STEP);
   const build = names.findIndex((name) => name.startsWith("Build the "));
   const upload = names.findIndex((name) => name.startsWith("Upload the "));
-  return build !== -1 && upload !== -1 && build < check && check < upload;
+  if (build === -1 || upload === -1 || !(build < check && check < upload)) {
+    return false;
+  }
+  // The file launched is the file uploaded: the check's command names the upload's path glob.
+  const uploaded = steps[upload].body.match(/^ +path: (.+)$/mu)?.[1].trim();
+  const command = steps[check].body.match(/^ +run: (.+)$/mu)?.[1] ?? "";
+  return uploaded !== undefined && command.split(/\s+/u).includes(uploaded);
+}
+
+/**
+ * Steps a pull-request run must not take, by job: signing (it would notarize with the release
+ * credentials the day they exist) and saving the release build caches (three large caches per PR
+ * run would evict `ci.yml`'s main-branch ones).
+ */
+export function tagOnlyStepsMissingGuard(yaml: string): string[] {
+  const blocks = jobBlocks(yaml);
+  const missing: string[] = [];
+  for (const job of DESKTOP_BUNDLE_JOBS) {
+    for (const step of stepBlocks(blocks.get(job) ?? "")) {
+      if (step.name.startsWith("Enable signing") && !step.body.includes(`        ${TAG_GUARD}`)) {
+        missing.push(`${job}: ${step.name}`);
+      }
+      if (step.body.includes("uses: Swatinem/rust-cache@") && !step.body.includes("save-if: ${{ github.ref_type == 'tag' }}")) {
+        missing.push(`${job}: ${step.name}`);
+      }
+    }
+  }
+  return missing;
 }
 
 /** The publishing jobs not guarded to a tag push at job level, so a pull-request run would run them. */

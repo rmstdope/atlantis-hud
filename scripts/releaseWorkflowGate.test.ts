@@ -11,6 +11,7 @@ import {
   publishNeedsWebTarball,
   publishingJobsWithoutTagGuard,
   runsOnPullRequestsTouching,
+  tagOnlyStepsMissingGuard,
   WEB_TARBALL_GLOB,
   WEB_TARBALL_JOB
 } from "./releaseWorkflowGate";
@@ -43,6 +44,10 @@ describe("the release workflow launches every desktop bundle before publishing i
     expect(publishingJobsWithoutTagGuard(WORKFLOW)).toEqual([]);
   });
 
+  it("a pull request run neither signs nor saves release build caches", () => {
+    expect(tagOnlyStepsMissingGuard(WORKFLOW)).toEqual([]);
+  });
+
   it("the workflow runs on a pull request that changes it or the launch check", () => {
     expect(runsOnPullRequestsTouching(WORKFLOW)).toEqual([
       ".github/workflows/release.yml",
@@ -54,8 +59,8 @@ describe("the release workflow launches every desktop bundle before publishing i
 describe("the R55 launch-check reading of a workflow", () => {
   const job = (steps: string) => `jobs:\n  linux:\n    runs-on: x\n    steps:\n${steps}`;
   const build = "      - name: Build the Linux bundle\n        run: b\n";
-  const check = `      - name: ${LAUNCH_CHECK_STEP}\n        run: c\n`;
-  const upload = "      - name: Upload the Linux bundle\n        run: u\n";
+  const check = `      - name: ${LAUNCH_CHECK_STEP}\n        run: c target/x/*.AppImage\n`;
+  const upload = "      - name: Upload the Linux bundle\n        with:\n          path: target/x/*.AppImage\n";
 
   it("accepts the check between build and upload", () => {
     expect(launchChecksBeforeUpload(job(build + check + upload), "linux")).toBe(true);
@@ -64,5 +69,10 @@ describe("the R55 launch-check reading of a workflow", () => {
   it("refuses a missing check, or one after the upload", () => {
     expect(launchChecksBeforeUpload(job(build + upload), "linux")).toBe(false);
     expect(launchChecksBeforeUpload(job(build + upload + check), "linux")).toBe(false);
+  });
+
+  it("refuses a check that launches something other than what is uploaded", () => {
+    const other = `      - name: ${LAUNCH_CHECK_STEP}\n        run: c target/y/*.AppImage\n`;
+    expect(launchChecksBeforeUpload(job(build + other + upload), "linux")).toBe(false);
   });
 });

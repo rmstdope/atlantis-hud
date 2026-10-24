@@ -23,6 +23,12 @@ on:
       - ".github/workflows/release.yml"
       - "scripts/desktopLaunchCheck.ts"
 
+# A newer push to the same pull request supersedes its three bundle builds; a tag is its own group
+# and is never cancelled by anything.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   macos:
     name: macOS bundle
@@ -76,6 +82,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-macos
+          # A pull-request run restores but never saves: three release caches per PR run would
+          # evict ci.yml's main-branch ones from the repository's cache budget.
+          save-if: ${{ github.ref_type == 'tag' }}
 
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2
@@ -91,6 +100,9 @@ jobs:
       # interpolates to an empty string and an empty string is still a set environment variable -
       # which Tauri reads as "sign", and then fails importing a certificate that is not there.
       - name: Enable signing if the credentials are configured
+        # A tag only: a pull-request run stays on the ad-hoc path rather than notarizing with the
+        # release credentials the day they exist.
+        if: github.ref_type == 'tag'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -202,6 +214,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-linux
+          # A pull-request run restores but never saves: three release caches per PR run would
+          # evict ci.yml's main-branch ones from the repository's cache budget.
+          save-if: ${{ github.ref_type == 'tag' }}
 
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2
@@ -260,6 +275,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-windows
+          # A pull-request run restores but never saves: three release caches per PR run would
+          # evict ci.yml's main-branch ones from the repository's cache budget.
+          save-if: ${{ github.ref_type == 'tag' }}
 
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2

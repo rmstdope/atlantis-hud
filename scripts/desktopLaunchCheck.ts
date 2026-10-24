@@ -30,15 +30,18 @@ import { fileURLToPath } from "node:url";
 
 /** What the polling loop can ask about the launched app. */
 export type LaunchProbe = {
-  /** The app's exit code once it has exited, `null` while it runs. */
-  exited(): number | null;
+  /** How the app ended once it has, `null` while it runs. */
+  exited(): AppExit | null;
   /** Whether the operating system shows the app's window yet. */
   windowShown(): Promise<boolean>;
 };
 
+/** An exit code, or the signal that killed the app - a crashing bundle usually dies by signal. */
+export type AppExit = { code: number } | { signal: string };
+
 export type LaunchOutcome =
   | { kind: "window"; afterMs: number }
-  | { kind: "exited"; code: number }
+  | { kind: "exited"; exit: AppExit }
   | { kind: "timeout"; afterMs: number };
 
 export type WaitOptions = {
@@ -52,9 +55,9 @@ export type WaitOptions = {
 export async function waitForWindow(probe: LaunchProbe, options: WaitOptions): Promise<LaunchOutcome> {
   const start = options.now();
   for (;;) {
-    const code = probe.exited();
-    if (code !== null) {
-      return { kind: "exited", code };
+    const exit = probe.exited();
+    if (exit !== null) {
+      return { kind: "exited", exit };
     }
     const elapsed = options.now() - start;
     if (await probe.windowShown()) {
@@ -72,8 +75,10 @@ export function describeOutcome(outcome: LaunchOutcome): { ok: boolean; message:
   switch (outcome.kind) {
     case "window":
       return { ok: true, message: `R55: the window opened ${Math.round(outcome.afterMs / 1000)} s after launch.` };
-    case "exited":
-      return { ok: false, message: `R55: the app exited with code ${outcome.code} before any window opened.` };
+    case "exited": {
+      const how = "signal" in outcome.exit ? `was killed by ${outcome.exit.signal}` : `exited with code ${outcome.exit.code}`;
+      return { ok: false, message: `R55: the app ${how} before any window opened.` };
+    }
     case "timeout":
       return { ok: false, message: `R55: no window opened within ${Math.round(outcome.afterMs / 1000)} s of launch.` };
   }
@@ -120,6 +125,19 @@ function run(argv) {
 }
 `;
 
+/**
+ * The macOS probe's answer. Anything but its two words is the probe failing - an unbridged constant,
+ * a script error - and must not read as "no window yet", or a broken probe would wait out the
+ * deadline and blame the app.
+ */
+export function readMacWindowProbe(stdout: string, stderr: string): boolean {
+  const answer = stdout.trim();
+  if (answer === "shown" || answer === "none") {
+    return answer === "shown";
+  }
+  throw new Error(`the macOS window probe failed: ${stderr.trim() || `it printed "${answer}"`}`);
+}
+
 function run(command: string[]): void {
   const [file, ...args] = command;
   console.log(`$ ${command.join(" ")}`);
@@ -129,9 +147,16 @@ function run(command: string[]): void {
   }
 }
 
-function quiet(file: string, args: string[]): { status: number | null; stdout: string } {
+/** The probes' most recent error output, printed beside the app's when the check fails. */
+let probeErrors = "";
+
+function quiet(file: string, args: string[]): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync(file, args, { encoding: "utf8" });
-  return { status: result.status, stdout: result.stdout ?? "" };
+  const stderr = `${result.stderr ?? ""}${result.error ? `${result.error.message}\n` : ""}`;
+  if (stderr.trim() !== "") {
+    probeErrors = stderr;
+  }
+  return { status: result.status, stdout: result.stdout ?? "", stderr };
 }
 
 /** The installed executable to launch, and how to ask whether its window is showing. */
@@ -149,7 +174,10 @@ function prepare(
     return {
       executable: posix.join(macos, binary),
       env: process.env,
-      windowShown: (pid) => quiet("osascript", ["-l", "JavaScript", probe, String(pid)]).stdout.trim() === "shown"
+      windowShown: (pid) => {
+        const { stdout, stderr } = quiet("osascript", ["-l", "JavaScript", probe, String(pid)]);
+        return readMacWindowProbe(stdout, stderr);
+      }
     };
   }
   if (process.platform === "win32") {
@@ -218,16 +246,16 @@ async function main(bundleArgument: string | undefined): Promise<number> {
   const child = spawn(executable, [], { env, detached: process.platform !== "win32" });
   child.stdout?.on("data", (chunk) => (output += chunk));
   child.stderr?.on("data", (chunk) => (output += chunk));
-  let code: number | null = null;
-  child.on("exit", (exitCode, signal) => (code = exitCode ?? (signal === null ? 0 : 128)));
+  let exit: AppExit | null = null;
+  child.on("exit", (code, signal) => (exit = signal !== null ? { signal } : { code: code ?? 0 }));
   child.on("error", (error) => {
     output += `${error.message}\n`;
-    code = 127;
+    exit = { code: 127 };
   });
 
   try {
     const outcome = await waitForWindow(
-      { exited: () => code, windowShown: async () => child.pid !== undefined && windowShown(child.pid) },
+      { exited: () => exit, windowShown: async () => child.pid !== undefined && windowShown(child.pid) },
       {
         timeoutMs: 90_000,
         intervalMs: 1_000,
@@ -241,6 +269,7 @@ async function main(bundleArgument: string | undefined): Promise<number> {
       return 0;
     }
     console.log(`The app's output:\n${output || "(none)"}`);
+    console.log(`The window probe's last error output:\n${probeErrors || "(none)"}`);
     console.log(`::error::${message}`);
     return 1;
   } finally {

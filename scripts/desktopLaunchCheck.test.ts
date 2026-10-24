@@ -3,6 +3,7 @@ import {
   describeOutcome,
   installCommands,
   type LaunchProbe,
+  readMacWindowProbe,
   waitForWindow
 } from "./desktopLaunchCheck";
 
@@ -19,7 +20,7 @@ function fakeClock() {
 
 function probe(script: { windowAt?: number; exitAt?: number; code?: number }, now: () => number): LaunchProbe {
   return {
-    exited: () => (script.exitAt !== undefined && now() >= script.exitAt ? (script.code ?? 0) : null),
+    exited: () => (script.exitAt !== undefined && now() >= script.exitAt ? { code: script.code ?? 0 } : null),
     windowShown: async () => script.windowAt !== undefined && now() >= script.windowAt
   };
 }
@@ -42,7 +43,7 @@ describe("waiting for the launched app's window", () => {
       intervalMs: 1_000,
       ...clock
     });
-    expect(outcome).toEqual({ kind: "exited", code: 101 });
+    expect(outcome).toEqual({ kind: "exited", exit: { code: 101 } });
   });
 
   it("no window by the deadline fails", async () => {
@@ -60,9 +61,13 @@ describe("waiting for the launched app's window", () => {
       ok: true,
       message: "R55: the window opened 3 s after launch."
     });
-    expect(describeOutcome({ kind: "exited", code: 101 })).toEqual({
+    expect(describeOutcome({ kind: "exited", exit: { code: 101 } })).toEqual({
       ok: false,
       message: "R55: the app exited with code 101 before any window opened."
+    });
+    expect(describeOutcome({ kind: "exited", exit: { signal: "SIGSEGV" } })).toEqual({
+      ok: false,
+      message: "R55: the app was killed by SIGSEGV before any window opened."
     });
     expect(describeOutcome({ kind: "timeout", afterMs: 90_000 })).toEqual({
       ok: false,
@@ -86,5 +91,18 @@ describe("installing the bundle a release would publish", () => {
 
   it("Linux makes the AppImage executable", () => {
     expect(installCommands("linux", "/b/a.AppImage", "/t", "Atlantis HUD")).toEqual([["chmod", "+x", "/b/a.AppImage"]]);
+  });
+});
+
+describe("reading the macOS window probe", () => {
+  it("answers shown or not shown", () => {
+    expect(readMacWindowProbe("shown\n", "")).toBe(true);
+    expect(readMacWindowProbe("none\n", "")).toBe(false);
+  });
+
+  it("refuses anything else, so a broken probe is not mistaken for a missing window", () => {
+    expect(() => readMacWindowProbe("", "execution error: ReferenceError: Can't find variable: x")).toThrow(
+      "the macOS window probe failed: execution error: ReferenceError: Can't find variable: x"
+    );
   });
 });
