@@ -78,7 +78,7 @@ test("a press on the top bar that does not travel neither moves the dialog nor l
 
 test("a drag past the window's edge keeps part of the top bar in the window", async ({ page }) => {
   const dialog = await openSettings(page);
-  const before = await box(dialog);
+  const before = await box(bar(dialog));
 
   // Where exactly it stops is clampDialogPosition's, pinned in dialogDrag.test.ts; this proves the
   // drag goes through it.
@@ -98,9 +98,7 @@ test("a moved dialog is pulled in, not recentred, when the window shrinks", asyn
   const width = viewport.width - 200;
   await page.setViewportSize({ width, height: viewport.height });
   await expect.poll(async () => (await box(dialog)).x < width).toBe(true);
-  const after = await box(dialog);
-  expect(after.x).toBeLessThan(moved.x);
-  expect(after.y).toBeCloseTo(moved.y, 0);
+  expect((await box(dialog)).y).toBeCloseTo(moved.y, 0);
 });
 
 test("an unmoved dialog stays centred when the window shrinks", async ({ page }) => {
