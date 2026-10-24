@@ -62,6 +62,24 @@ function decide(condition: string, files: string[], missingMessage: string): boo
   return decision === "true";
 }
 
+/** The gate job's text. */
+function gate(): string {
+  const block = jobBlocks(WORKFLOW).get(GATE_JOB);
+  if (block === undefined) {
+    throw new Error(`workflow has no "${GATE_JOB}" job`);
+  }
+  return block;
+}
+
+/** The lines jq prints for a filter over a JSON input, run without a shell. */
+function jq(filter: string, input: unknown): string[] {
+  const output = execFileSync("jq", ["-r", filter], {
+    input: JSON.stringify(input),
+    encoding: "utf8"
+  });
+  return output.split("\n").filter((line) => line !== "");
+}
+
 describe("the gate condition's safety check", () => {
   // The tests below run the gate's own shell, which is the only way to assert what CI will decide
   // rather than a JavaScript restatement of it. That means `ci.yml` decides what `test:tooling`
@@ -313,29 +331,56 @@ describe("the prose-only fast path", () => {
     expect(runsEverything([".claude/settings.json"])).toBe(false);
   });
 
-  it("judges a push on its own diff, from the compare API, and fails open (ah-slxi7)", () => {
+  it("judges a push from the last successful main run, not its parent, and fails open (ah-slxi7)", () => {
     const blocks = jobBlocks(WORKFLOW);
     const gate = blocks.get(GATE_JOB);
     if (gate === undefined) {
       throw new Error(`workflow has no "${GATE_JOB}" job`);
     }
 
-    // Asserted on the shell text rather than executed, since it calls the GitHub API. A push to
-    // main used to run everything unconditionally, so a .cerebro/-only housekeeping commit paid the
-    // whole suite even with the exemption above. It now lists its files from before..after - but
-    // only a compare that is plainly ahead and under the API's 300-file cap counts. Anything else
-    // (branch creation's all-zero before, a force push, a truncated list) runs everything: a gate
-    // that fails closed turns an infrastructure blip into untested code reaching main.
-    expect(gate).toMatch(/github\.event\.before/u);
-    expect(gate).toMatch(/compare\/\$\{?BEFORE\}?\.\.\.\$\{?AFTER\}?/u);
-    expect(gate).toMatch(/\.status == "ahead"/u);
-    expect(gate).toMatch(/length\) < 300/u);
-    expect(gate).toMatch(/\^0\+\$/u);
+    // A concurrency group keeps one pending run, so a newer push cancels an older pending one. A
+    // docs-only push diffed from its own parent would then skip a code commit whose run was
+    // cancelled, and that code would never be tested on main. Diffing from the head of the last
+    // successful run keeps every commit since then inside the diff. Raised by review on PR #1869.
+    expect(gate).not.toMatch(/github\.event\.before/u);
+    expect(gate).toMatch(/actions\/workflows\/ci\.yml\/runs\?branch=main&event=push&status=success&per_page=1/u);
+    expect(gate).toMatch(/compare\/\$\{BASE\}\.\.\.\$\{AFTER\}/u);
 
     // Any other event still runs everything, before any listing is attempted.
     expect(gate).toMatch(/github\.event_name.*!=.*push/u);
     expect(gate).toMatch(/code=true/u);
     expect(gate).toMatch(/native=true/u);
+  });
+
+  it("needs read access to Actions runs for the push gate's lookup", () => {
+    expect(WORKFLOW).toMatch(/^permissions:\n(?: {2}\S.*\n)*? {2}actions: read$/mu);
+  });
+
+  it("lists a push's files only from a compare that is plainly ahead and not truncated", () => {
+    // The real jq filters from ci.yml, run with jq against fixtures - jq is given the filter as an
+    // argument, never through a shell. An empty listing is what makes the gate run everything.
+    const filters = [...gate().matchAll(/--jq '([^']*)'/gu)].map((match) => match[1]);
+    const lastSuccess = filters.find((filter) => filter.includes("workflow_runs"));
+    const compare = filters.find((filter) => filter.includes(".status"));
+    if (lastSuccess === undefined || compare === undefined) {
+      throw new Error("the push branch no longer has the two jq filters this test runs");
+    }
+
+    const files = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({ filename: `.cerebro/f${index}` }));
+
+    expect(jq(compare, { status: "ahead", files: [{ filename: ".cerebro/roster.conf" }] })).toEqual([
+      ".cerebro/roster.conf"
+    ]);
+    expect(jq(compare, { status: "ahead", files: files(299) })).toHaveLength(299);
+    expect(jq(compare, { status: "ahead", files: files(300) })).toEqual([]);
+    expect(jq(compare, { status: "ahead", files: [] })).toEqual([]);
+    expect(jq(compare, { status: "behind", files: files(1) })).toEqual([]);
+    expect(jq(compare, { status: "diverged", files: files(1) })).toEqual([]);
+    expect(jq(compare, { status: "identical", files: [] })).toEqual([]);
+
+    expect(jq(lastSuccess, { workflow_runs: [{ head_sha: "abc123" }] })).toEqual(["abc123"]);
+    expect(jq(lastSuccess, { workflow_runs: [] })).toEqual([]);
   });
 });
 
