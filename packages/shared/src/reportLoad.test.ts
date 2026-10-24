@@ -2,6 +2,7 @@ import { readAtlaClientMap } from "@atlantis/fixtures";
 import type {
   CoreClient,
   KnownMap,
+  MergedReportRecord,
   OpenedGame,
   ParsedReport,
   RememberedRegion,
@@ -37,7 +38,8 @@ import {
   openingSelection,
   reportParser,
   routeReport,
-  storeOlderTurn
+  storeOlderTurn,
+  storeOlderTurnAndRefresh
 } from "./reportLoad";
 
 function region(regionId: string, x: number, y: number, own: boolean, unitId = `${regionId}-u`): ReportRegion {
@@ -373,6 +375,86 @@ describe("storeOlderTurn", () => {
     await storeOlderTurn(core, OPEN_GAME, report(), "raw text", RULESET, NOW, 71);
 
     expect(core.editGameManifest).not.toHaveBeenCalled();
+  });
+});
+
+describe("storeOlderTurnAndRefresh", () => {
+  // Only identity matters to these tests: the function hands back what it read, untouched.
+  const SIGHTING = { regionId: "r-history" } as unknown as RememberedRegion;
+  const MERGED = { mergedFactionId: "12" } as unknown as MergedReportRecord;
+  const SHOWING = { factionId: "95", rawReport: "turn 72 on screen" };
+
+  function older(): ParsedReport {
+    return report({ factionId: "33", turnNumber: 70 });
+  }
+
+  it("re-reads the remembered map after storing the older turn", async () => {
+    const core = client({ loadRegionSightings: vi.fn().mockResolvedValue([SIGHTING]) });
+
+    const outcome = await storeOlderTurnAndRefresh(core, OPEN_GAME, older(), "raw text", RULESET, NOW, 72, SHOWING);
+
+    expect(outcome.remembered).toEqual([SIGHTING]);
+    expect(outcome.knownMap).toBe(KNOWN_MAP);
+    const committed = vi.mocked(core.commitReportImport).mock.invocationCallOrder[0];
+    const reread = vi.mocked(core.loadRegionSightings).mock.invocationCallOrder[0];
+    expect(committed).toBeLessThan(reread);
+  });
+
+  it("reads the memory of the faction on screen, at the current turn, against the report on screen", async () => {
+    const core = client();
+
+    await storeOlderTurnAndRefresh(core, OPEN_GAME, older(), "raw text", RULESET, NOW, 72, SHOWING);
+
+    expect(core.loadRegionSightings).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95");
+    expect(core.loadMergedReports).toHaveBeenCalledWith("p.sqlite", "aug-2026", "95", 72);
+    expect(core.knownMap).toHaveBeenCalledWith("turn 72 on screen", RULESET, []);
+  });
+
+  it("falls back to the older report's faction when no faction is on screen", async () => {
+    const core = client();
+
+    await storeOlderTurnAndRefresh(core, OPEN_GAME, older(), "raw text", RULESET, NOW, 72, {
+      factionId: null,
+      rawReport: ""
+    });
+
+    expect(core.loadRegionSightings).toHaveBeenCalledWith("p.sqlite", "aug-2026", "33");
+  });
+
+  it("returns the merged reports read back", async () => {
+    const core = client({ loadMergedReports: vi.fn().mockResolvedValue([MERGED]) });
+
+    const outcome = await storeOlderTurnAndRefresh(core, OPEN_GAME, older(), "raw text", RULESET, NOW, 72, SHOWING);
+
+    expect(outcome.merged).toEqual([MERGED]);
+  });
+
+  it("says the turn was stored for history when memory reads cleanly", async () => {
+    const outcome = await storeOlderTurnAndRefresh(client(), OPEN_GAME, older(), "raw text", RULESET, NOW, 72, SHOWING);
+
+    expect(outcome.status).toEqual({
+      text: "turn 70 stored for history; still showing turn 72.",
+      tone: "notice"
+    });
+  });
+
+  it("keeps the commit's warning when memory reads cleanly", async () => {
+    const core = client({ commitReportImport: vi.fn().mockRejectedValue(new Error("disk is full")) });
+
+    const outcome = await storeOlderTurnAndRefresh(core, OPEN_GAME, older(), "raw text", RULESET, NOW, 72, SHOWING);
+
+    expect(outcome.status.tone).toBe("warning");
+    expect(outcome.status.text).toContain("disk is full");
+  });
+
+  it("puts a memory warning in place of the stored notice", async () => {
+    const core = client({ loadRegionSightings: vi.fn().mockRejectedValue(new Error("locked")) });
+
+    const outcome = await storeOlderTurnAndRefresh(core, OPEN_GAME, older(), "raw text", RULESET, NOW, 72, SHOWING);
+
+    expect(outcome.status.tone).toBe("warning");
+    expect(outcome.status.text).toContain("locked");
+    expect(outcome.remembered).toEqual([]);
   });
 });
 

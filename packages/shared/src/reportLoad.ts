@@ -33,7 +33,7 @@ import type {
   ReportRegion
 } from "@atlantis/core-client";
 import type { StatusLine } from "./workspace/shellStatus";
-import { commitTurn, rememberTurn, type MemoryOutcome } from "./gameMemory";
+import { commitTurn, readMemory, rememberTurn, type MemoryOutcome } from "./gameMemory";
 import { draftKeyFor } from "./orderDraft";
 import { decideReportLoad, judgeReportUsable } from "./reportLoadDecision";
 import { readAtlaClientAges, type AtlaClientAges } from "./atlaClientImport";
@@ -244,6 +244,40 @@ export async function storeOlderTurn(
     : noticeStatus(
         `turn ${report.header.turnNumber} stored for history; still showing turn ${currentTurn}.`
       );
+}
+
+/** What storing an older turn changed: the memory read back, and the line to show for it. */
+export type StoredOlderTurn = MemoryOutcome & { status: StatusLine };
+
+/**
+ * Stores an older report for history, then reads the remembered map and merged reports back.
+ *
+ * ah-mc3p: the stored turn's sightings must become reachable - the palette finds historical units
+ * and map objects - without the older report replacing the one on screen. So the memory is re-read
+ * for the faction and turn *showing*, against the report showing; the older report's own faction
+ * is used only when nothing is on screen. A warning from that read replaces the stored notice,
+ * because a map that did not refresh is the thing the player needs to hear about.
+ */
+export async function storeOlderTurnAndRefresh(
+  client: CoreClient,
+  game: OpenedGame,
+  report: ParsedReport,
+  text: string,
+  rulesetText: string | null,
+  now: string,
+  currentTurn: number,
+  showing: { factionId: string | null; rawReport: string }
+): Promise<StoredOlderTurn> {
+  const status = await storeOlderTurn(client, game, report, text, rulesetText, now, currentTurn);
+  const memory = await readMemory(
+    client,
+    game,
+    showing.factionId ?? report.header.factionId ?? "",
+    currentTurn,
+    showing.rawReport,
+    rulesetText
+  );
+  return { ...memory, status: memory.warning === null ? status : warningStatus(memory.warning) };
 }
 
 /**

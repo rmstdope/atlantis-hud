@@ -74,7 +74,7 @@ import {
   openingSelection,
   reportParser,
   routeReport,
-  storeOlderTurn,
+  storeOlderTurnAndRefresh,
   type LoadedTurn,
   type PendingMageSheet,
   type ReportLoadOutcome,
@@ -2275,26 +2275,19 @@ export function AppShell({
       }
       const settledRuleset = rulesetTextOf(await rulesetForThisLoad());
       const now = new Date().toISOString();
-      const status = await storeOlderTurn(
+      const stored = await storeOlderTurnAndRefresh(
         client,
         game,
         report,
         text,
         settledRuleset,
         now,
-        currentTurn
-      );
-      const memory = await readMemory(
-        client,
-        game,
-        parsed?.header.factionId ?? report.header.factionId ?? "",
         currentTurn,
-        rawReport,
-        settledRuleset
+        { factionId: parsed?.header.factionId ?? null, rawReport }
       );
-      setMemory({ remembered: memory.remembered, knownMap: memory.knownMap });
-      setMergedReports(memory.merged);
-      setStatus(memory.warning === null ? status : warningStatus(memory.warning));
+      setMemory({ remembered: stored.remembered, knownMap: stored.knownMap });
+      setMergedReports(stored.merged);
+      setStatus(stored.status);
     },
     [client, game, parsed, rawReport, rulesetForThisLoad]
   );
