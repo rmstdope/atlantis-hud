@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { readReport } from "@atlantis/fixtures";
+import { readReport, reportTurn } from "@atlantis/fixtures";
 import {
   boxOf,
   clearGames,
@@ -22,7 +22,9 @@ import {
   waitForStableBox,
   waitForStableHeight,
   closeRulesetCheck,
-  waitForValidation
+  waitForValidation,
+  STANDARD_TURN,
+  turnInHeader
 } from "./gameSetup";
 // The real constant, not a copy of it: this test exists to catch the rendered height and the
 // windowing arithmetic drifting apart, which a hard-coded 22 here would hide.
@@ -56,6 +58,9 @@ const OTHER_FACTION_OLDER = readReport("g8f73t2");
 const ALLY_REPORT = readReport("g8f73t71");
 /** The player's own faction, one turn back - gh-208's plain case: stored for history, not shown. */
 const OWN_OLDER_REPORT = readReport("g7f95t70");
+/** The turns HUD shows for the reports above, from the fixtures rather than written out (ah-iuofk). */
+const OTHER_FACTION_OLDER_TURN = reportTurn("g8f73t2");
+const OWN_OLDER_TURN = reportTurn("g7f95t70");
 
 /**
  * Three real, consecutive turns of one faction (game 3, faction 42), used to prove a route can
@@ -66,12 +71,15 @@ const OWN_OLDER_REPORT = readReport("g7f95t70");
 const F42_T40 = readReport("g3f42t40");
 const F42_T41 = readReport("g3f42t41");
 const F42_T42 = readReport("g3f42t42");
+const F42_T40_TURN = reportTurn("g3f42t40");
+const F42_T42_TURN = reportTurn("g3f42t42");
 /**
  * The same faction forty turns on, used together with `F42_T42` for the Trade chip walk (ah-1j5.2):
  * the turn-71 fixture every other walk in this file uses has no trade routes at all, which is
  * exactly why the chip must still be visible at zero.
  */
 const F42_T82 = readReport("g3f42t82");
+const F42_T82_TURN = reportTurn("g3f42t82");
 /** Faction 21's turn 24: Raft [235] in the plain at (36,44), with a passenger aboard (ah-048). */
 const F21_T24 = readReport("g5f21t24");
 
@@ -114,7 +122,7 @@ test("loads a report and shows the turn it describes", async ({ page }) => {
   await loadReport(page);
 
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
-  await expect(page.getByTestId("app-header")).toContainText("72");
+  await expect(page.getByTestId("app-header")).toContainText(String(STANDARD_TURN));
   await expect(page.getByTestId("import-status")).toContainText("units");
 });
 
@@ -136,7 +144,7 @@ async function choose(page: Page, name: string, contents: string) {
  */
 test("an older own report is stored for history, not shown", async ({ page }) => {
   await loadReport(page);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
 
   // No native dialog and no foreign-report prompt - either would mean the old behaviour survived.
   let dialogSeen = false;
@@ -154,15 +162,15 @@ test("an older own report is stored for history, not shown", async ({ page }) =>
   await expect.poll(async () => (await status.boundingBox())?.width ?? 0).toBeGreaterThan(1);
   expect(dialogSeen).toBe(false);
   await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
   // The one observable proof the commit really landed: turn 71 now shows up in the turn picker,
   // even though it never touched the screen.
   await page.getByTestId("turn-chip").click();
   await expect(page.getByTestId("turn-picker")).toBeVisible();
-  await expect(page.getByTestId("turn-row-72")).toContainText("playing");
-  await expect(page.getByTestId("turn-row-71")).toBeVisible();
+  await expect(page.getByTestId(`turn-row-${STANDARD_TURN}`)).toContainText("playing");
+  await expect(page.getByTestId(`turn-row-${OWN_OLDER_TURN}`)).toBeVisible();
 });
 
 /**
@@ -171,19 +179,19 @@ test("an older own report is stored for history, not shown", async ({ page }) =>
  */
 test("an older foreign report is stored for history too, not shown", async ({ page }) => {
   await loadReport(page);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
 
   await choose(page, "turn-2.rep", OTHER_FACTION_OLDER);
 
   await expect(page.getByTestId("import-status")).toContainText("stored for history");
   await expect(page.getByTestId("foreign-report-prompt")).toHaveCount(0);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 });
 
 test("a report from another faction can be turned away", async ({ page }) => {
   await loadReport(page);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
 
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);
 
@@ -194,18 +202,18 @@ test("a report from another faction can be turned away", async ({ page }) => {
   await page.getByTestId("foreign-report-cancel").click();
 
   await expect(prompt).toHaveCount(0);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 });
 
 test("a report from another faction can take over the workspace", async ({ page }) => {
   await loadReport(page);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
 
   await choose(page, "turn-71-f73.rep", ALLY_REPORT);
   await page.getByTestId("foreign-report-switch").click();
 
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg (73)");
 });
 
@@ -233,7 +241,7 @@ test("an ally's report for the same turn can be merged into the map", async ({ p
     .toBeGreaterThan(1);
 
   // Still faction 95's turn 72. That is the difference between merging and switching.
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
 
   // And the header now says whose eyes are in the map.
@@ -340,8 +348,9 @@ test("an orders file imports through the confirm prompt", async ({ page }) => {
 
   const prompt = page.getByTestId("orders-import-prompt");
   await expect(prompt).toBeVisible();
+  // turn-literal: the name of the file the walk handed over, echoed back
   await expect(prompt).toContainText("orders-turn-71.txt");
-  await expect(prompt).toContainText("Orders for 1 unit of Borg TNG (95), turn 72.");
+  await expect(prompt).toContainText(`Orders for 1 unit of Borg TNG (95), turn ${STANDARD_TURN}.`);
   await expect(prompt).toContainText("This replaces all current orders for this turn");
 
   await page.getByTestId("orders-import-replace").click();
@@ -516,7 +525,7 @@ test("the faction view survives a reload", async ({ page }) => {
   await loadReport(page);
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
 
   await page.getByTestId("faction-chip").click();
   const panel = page.getByTestId("faction-panel");
@@ -558,7 +567,7 @@ test("the header keeps quiet about routine state", async ({ page }) => {
 
   // The turn that was on screen before the junk drop is still there - nothing was replaced.
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
-  await expect(page.getByTestId("app-header")).toContainText("72");
+  await expect(page.getByTestId("app-header")).toContainText(String(STANDARD_TURN));
 });
 
 /**
@@ -589,16 +598,16 @@ test("imports a run of turns and an ally's report in one action", async ({ page 
   await expect(dialog).toContainText("Imported 2 turns for Borg TNG (95)");
   await expect(dialog).toContainText("merged 1 allied report");
   // Sorted by the turn in each header, not by the order they were handed over.
-  await expect(dialog).toContainText("f95-t70.rep — imported as turn 71");
-  await expect(dialog).toContainText("f95-t71.rep — imported as turn 72");
-  await expect(dialog).toContainText("f73-t71.rep — merged into turn 72");
+  await expect(dialog).toContainText(`f95-t70.rep — imported as turn ${OWN_OLDER_TURN}`);
+  await expect(dialog).toContainText(`f95-t71.rep — imported as turn ${STANDARD_TURN}`);
+  await expect(dialog).toContainText(`f73-t71.rep — merged into turn ${STANDARD_TURN}`);
 
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
   // The newest own turn is what is left on screen, and the ally of that turn is on the chip.
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
-  await expect(page.getByTestId("app-header")).toContainText("72");
+  await expect(page.getByTestId("app-header")).toContainText(String(STANDARD_TURN));
   await expect(page.getByTestId("merged-factions-chip")).toContainText("1 merged");
 
   /*
@@ -638,7 +647,7 @@ async function loadTwoTurns(page: Page) {
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   // ah-30hg: the month and year live in the turn picker (TurnPicker.tsx:53), not in the chip.
   await expect(page.getByTestId("app-header")).not.toContainText("December");
 }
@@ -652,18 +661,18 @@ test("a second turn can be compared and dismissed", async ({ page }) => {
 
   await page.getByTestId("turn-chip").click();
   await expect(page.getByTestId("turn-picker")).toBeVisible();
-  await expect(page.getByTestId("turn-row-72")).toContainText("playing");
-  await expect(page.getByTestId("turn-row-71")).toBeVisible();
+  await expect(page.getByTestId(`turn-row-${STANDARD_TURN}`)).toContainText("playing");
+  await expect(page.getByTestId(`turn-row-${OWN_OLDER_TURN}`)).toBeVisible();
 
-  await page.getByTestId("turn-row-71").click();
+  await page.getByTestId(`turn-row-${OWN_OLDER_TURN}`).click();
 
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
-  await expect(page.getByTestId("app-header")).toContainText("⇄ 71");
+  await expect(page.getByTestId("app-header")).toContainText(`⇄ ${OWN_OLDER_TURN}`);
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
   await expect(page.getByTestId("app-header")).not.toContainText("⇄");
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
 
   // The working turn is still 72, undisturbed: the faction and selection surfaces answer for it.
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
@@ -682,12 +691,12 @@ test("the changes dialog reads a real pair", async ({ page }) => {
   await expect(page.getByTestId("changes-chip")).toHaveCount(0);
 
   await page.getByTestId("turn-chip").click();
-  await page.getByTestId("turn-row-71").click();
+  await page.getByTestId(`turn-row-${OWN_OLDER_TURN}`).click();
 
   const dialog = page.getByTestId("changes-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("71");
-  await expect(dialog).toContainText("72");
+  await expect(dialog).toContainText(String(OWN_OLDER_TURN));
+  await expect(dialog).toContainText(String(STANDARD_TURN));
   await expect(page.getByTestId("changes-chip")).toBeVisible();
 
   // The two fixtures genuinely differ, so the Units tab carries a non-zero count.
@@ -699,7 +708,7 @@ test("the changes dialog closes on Escape and ends the comparison", async ({ pag
   await loadTwoTurns(page);
 
   await page.getByTestId("turn-chip").click();
-  await page.getByTestId("turn-row-71").click();
+  await page.getByTestId(`turn-row-${OWN_OLDER_TURN}`).click();
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -717,7 +726,7 @@ test("clicking a changed unit selects it, closes the dialog and keeps the compar
   await loadTwoTurns(page);
 
   await page.getByTestId("turn-chip").click();
-  await page.getByTestId("turn-row-71").click();
+  await page.getByTestId(`turn-row-${OWN_OLDER_TURN}`).click();
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
 
   const firstUnitRow = page.locator('[data-testid^="changes-unit-"]').first();
@@ -726,7 +735,7 @@ test("clicking a changed unit selects it, closes the dialog and keeps the compar
 
   await expect(page.getByTestId("changes-dialog")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toBeVisible();
-  await expect(page.getByTestId("app-header")).toContainText("⇄ 71");
+  await expect(page.getByTestId("app-header")).toContainText(`⇄ ${OWN_OLDER_TURN}`);
 
   await page.getByTestId("changes-chip").click();
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
@@ -771,7 +780,7 @@ test("clicking a changed hex on another level follows it there", async ({ page }
   await expect(nexusHex).toHaveCount(0);
 
   await page.getByTestId("turn-chip").click();
-  await page.getByTestId("turn-row-1").click();
+  await page.getByTestId(`turn-row-${reportTurn("g5f21t0")}`).click();
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
   await page.getByTestId("changes-tab-regions").click();
   await page.getByTestId("changes-region-0:0,0").click();
@@ -792,14 +801,14 @@ test("comparing does not disturb the working turn's orders", async ({ page }) =>
   await saveNow(page);
 
   await page.getByTestId("turn-chip").click();
-  await page.getByTestId("turn-row-71").click();
-  await expect(page.getByTestId("app-header")).toContainText("⇄ 71");
+  await page.getByTestId(`turn-row-${OWN_OLDER_TURN}`).click();
+  await expect(page.getByTestId("app-header")).toContainText(`⇄ ${OWN_OLDER_TURN}`);
   await expect(page.getByTestId("changes-dialog")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("app-header")).not.toContainText("⇄");
 
   await page.reload();
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
   await expectOrders(page, /^@work\n?$/u);
@@ -834,11 +843,11 @@ test("asks which faction is yours when the batch cannot say", async ({ page }) =
   await expect(dialog).toContainText("Imported 2 turns for Borg TNG (95)");
   await expect(dialog).toContainText("merged 2 allied reports");
   // An ally's account of a turn you never played still fills in ground you have not stood on.
-  await expect(dialog).toContainText("f73-t2.rep — merged into turn 3");
+  await expect(dialog).toContainText(`f73-t2.rep — merged into turn ${OTHER_FACTION_OLDER_TURN}`);
 
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByTestId("app-header")).toContainText("Borg TNG (95)");
-  await expect(page.getByTestId("app-header")).toContainText("72");
+  await expect(page.getByTestId("app-header")).toContainText(String(STANDARD_TURN));
 });
 
 /** One file is still one file: the question that guards a change of faction has not moved. */
@@ -978,7 +987,7 @@ test("a merge survives a reload", async ({ page }) => {
 
   await page.reload();
 
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await expect(page.getByTestId("merged-factions-chip")).toContainText("+1 merged");
   await selectHex(page, "1:9,53");
   await expect(page.getByTestId("panel-region")).toContainText("(9,53)");
@@ -1202,7 +1211,7 @@ test("the hidden problems stay hidden across a reload", async ({ page }) => {
   await expect(page.getByTestId("region-problems")).toHaveCount(0);
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await selectHex(page, "1:7,53");
 
   await expect(page.getByTestId("region-problems-toggle")).not.toBeChecked();
@@ -1276,10 +1285,10 @@ test("the trade chip lists routes and flies the map to one", async ({ page }) =>
     mimeType: "text/plain",
     buffer: Buffer.from(F42_T42, "utf8")
   });
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*43\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T42_TURN));
 
   await choose(page, "f42-t82.rep", F42_T82);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*83\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T82_TURN));
 
   const chip = page.getByTestId("trade-chip");
   await expect(chip).toContainText("Trade 6");
@@ -1318,9 +1327,9 @@ test("hovering a trade route draws it, frames it, and puts the map back", async 
     mimeType: "text/plain",
     buffer: Buffer.from(F42_T42, "utf8")
   });
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*43\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T42_TURN));
   await choose(page, "f42-t82.rep", F42_T82);
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*83\b/);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(F42_T82_TURN));
 
   await page.getByTestId("trade-chip").click();
   const panel = page.getByTestId("trade-panel");
@@ -1689,7 +1698,7 @@ test("the unit/orders split drags at the grip and survives a reload", async ({ p
   );
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await selectHex(page, "1:7,53");
   // The reload rebuilds the page, so the validation round trip runs again and the chip arrives
   // again: the header is back to one row until it does.
@@ -1799,7 +1808,7 @@ test("a rail drags at its edge pill and survives a reload", async ({ page }) => 
   await expect.poll(async () => overlayWidth(page, "left")).toBeGreaterThan(before + 80);
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await selectHex(page, "1:7,53");
   await expect.poll(async () => overlayWidth(page, "left")).toBeGreaterThan(before + 80);
 
@@ -1833,7 +1842,7 @@ test("the units pane drags at its grip and survives a reload", async ({ page }) 
   await expect.poll(async () => unitsPaneHeight(page)).toBeGreaterThan(before + 80);
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await selectHex(page, "1:7,53");
   await expect.poll(async () => unitsPaneHeight(page)).toBeGreaterThan(before + 80);
 
@@ -2048,7 +2057,7 @@ test("a folded panel is still folded after a reload", async ({ page }) => {
   // The layout the user arranged outlives the reload, and since issue #34 so does the turn: the
   // game reopens on what was last worked on rather than on an empty workspace over a full database.
   await expect(page.getByTestId("panel-region")).toHaveAttribute("data-collapsed", "true");
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
 });
 
 test("every control that acts on the map view sits in one strip", async ({ page }) => {
@@ -2542,7 +2551,7 @@ test("the movement pane stays hidden until its flag is turned on", async ({ page
   await expect(page.getByTestId("slot-tab-movement")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await expect(page.getByTestId("slot-tab-movement")).toBeVisible();
 });
 
@@ -2647,7 +2656,7 @@ test("the interface is not blocked while the core reads a report", async ({ page
   // And wait for the reload's own work to finish before starting the clock. Since issue #34 a
   // reload reopens the stored turn, which parses the report - so without this wait that parse
   // lands inside the sampling window and is charged to the import being measured.
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
 
   // And for the checks that reopening runs on the restored orders, for the same reason. They wait
   // out a 300ms debounce, so they ran inside the sampling window and were charged to the import:
@@ -3285,12 +3294,12 @@ test("a route crosses ground only an earlier turn described", async ({ page }) =
   // (41,3) is the remembered hex the route crosses: last stood in at t40, two turns before the t42
   // now on screen.
   await selectHex(page, "1:41,3");
-  await expect(page.getByTestId("panel-region")).toContainText("Last seen turn 41");
+  await expect(page.getByTestId("panel-region")).toContainText(`Last seen turn ${F42_T40_TURN}`);
   await expect(page.getByTestId("panel-region")).toContainText("2 turns ago");
 
   // Whatever stood here at t40 may have moved, disbanded or died since - the units pane must not
   // show it as though it were still there (ah-o86).
-  await expect(page.getByTestId("panel-units")).toContainText("Not seen since turn 41");
+  await expect(page.getByTestId("panel-units")).toContainText(`Not seen since turn ${F42_T40_TURN}`);
   await expect(page.getByTestId("panel-units").locator('[data-testid^="unit-row-"]')).toHaveCount(0);
 });
 
@@ -3671,7 +3680,7 @@ test("a merged hex's men are counted rather than guessed", async ({ page }) => {
 
   // And still counted when the same units come back off disk rather than out of the merge.
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await selectHex(page, "1:9,53");
   const restored = await page.locator("[data-testid^='unit-row-'] td:nth-child(5)").allInnerTexts();
   expect(restored.length).toBeGreaterThan(0);
@@ -5695,14 +5704,14 @@ test("a note written on a hex is still there after a reload", async ({ page }) =
   await page.keyboard.press("ControlOrMeta+Enter");
 
   const note = page.getByTestId("region-note").filter({ hasText: "Build a castle here" });
-  await expect(note).toContainText("turn 72");
+  await expect(note).toContainText(`turn ${STANDARD_TURN}`);
   // The row above appears optimistically, before the store's `add()` has awaited the actual
   // storage write; the editor closing is what proves that write landed. Reloading before this
   // is a real race - the note is durable in memory a tick before it is durable on disk.
   await expect(page.getByTestId("region-note-editor")).toHaveCount(0);
 
   await page.reload();
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await selectHex(page, "1:7,53");
   await expect(page.getByTestId("region-note").filter({ hasText: "Build a castle here" })).toBeVisible();
 
@@ -5759,7 +5768,7 @@ test("a note pinned on the map opens its tags and selects the hex", async ({ pag
   const tags = page.getByTestId("map-note-tags");
   await expect(tags).toBeVisible();
   await expect(tags).toContainText("Allies mass here");
-  await expect(tags).toContainText("turn 72");
+  await expect(tags).toContainText(`turn ${STANDARD_TURN}`);
   await expect(
     page.getByRole("button", { name: "hex 1:7,53", exact: true })
   ).toHaveAttribute("aria-pressed", "true");

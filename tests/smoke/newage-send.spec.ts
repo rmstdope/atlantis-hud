@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
 
-import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
+import { clearGames, closeRulesetCheck, createGame, STANDARD_TURN } from "./gameSetup";
 
 /**
  * Sending orders to a New Age world (ah-lbd9.4).
@@ -141,7 +141,7 @@ test("sends orders and reports that the world saved them with errors", async ({ 
 
   await page.getByTestId("send-orders").click();
   await expect(page.getByTestId("newage-send-meta")).toContainText(
-    "turn 72 · atlantis-newage.com"
+    `turn ${STANDARD_TURN} · atlantis-newage.com`
   );
   // Both are asked for, every send: there is no session to lean on.
   await expect(page.getByTestId("newage-faction-number")).toHaveValue("95");
@@ -151,7 +151,7 @@ test("sends orders and reports that the world saved them with errors", async ({ 
   await page.getByTestId("newage-send-confirm").click();
 
   await expect(page.getByTestId("newage-send-outcome")).toHaveText(
-    "Orders for turn 72 were saved, but the world found 2 errors in them."
+    `Orders for turn ${STANDARD_TURN} were saved, but the world found 2 errors in them.`
   );
   await expect(page.getByTestId("newage-send-errors").locator("li")).toHaveCount(2);
   await expect(page.getByTestId("newage-send-warnings").locator("li")).toHaveCount(1);

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, importReport, loadReport } from "./gameSetup";
+import { clearGames, importReport, loadReport, STANDARD_TURN, turnInHeader } from "./gameSetup";
 
 /**
  * The check a report gets the first time it is opened (ah-fdmb): a New Origins report opened in a
@@ -122,7 +122,7 @@ test("the reporting step copies the list, opens a prefilled issue and the world'
 
   const { opened, copied } = await recorded(page);
   expect(copied[0]).toMatch(/^A report names things the New Age: Trident ruleset does not define\./u);
-  expect(copied[0]).toContain("Report turn: 72");
+  expect(copied[0]).toContain(`Report turn: ${STANDARD_TURN}`);
   const issue = new URL(opened[0]);
   expect(`${issue.origin}${issue.pathname}`).toBe("https://github.com/rmstdope/atlantis-hud/issues/new");
   expect(issue.searchParams.get("title")).toBe("Names missing from the New Age: Trident ruleset");
@@ -148,7 +148,7 @@ test("a report is checked once: opening it again, after a reload, never warns ag
   await expect(page.getByTestId("report-check")).toHaveCount(0);
 
   await page.reload();
-  await expect(page.getByTestId("app-header")).toContainText(/Turn\s*72\b/u);
+  await expect(page.getByTestId("app-header")).toContainText(turnInHeader(STANDARD_TURN));
   await importReport(page, "turn-71.rep", TURN_71);
   await expect(page.getByTestId("import-status")).toContainText("regions");
   await expect(page.getByTestId("report-check")).toHaveCount(0);

@@ -7,7 +7,8 @@ import {
   fillOrders,
   importReport,
   openOrders,
-  saveNow
+  saveNow,
+  STANDARD_TURN
 } from "./gameSetup";
 
 const TURN_70 = readReport("g7f95t70");
@@ -113,7 +114,7 @@ test("a game backup restores turns, orders and remembered map after storage is c
   await page.setInputFiles("[data-testid='game-gate-import-input']", backupPath);
 
   await expect(page.getByTestId("game-indicator")).toContainText("Backup game");
-  await expect(page.getByTestId("import-status")).toContainText("restored turn 72");
+  await expect(page.getByTestId("import-status")).toContainText(`restored turn ${STANDARD_TURN}`);
   await openOrders(page, OWN_UNIT);
   await expectOrders(page, /@study combat/u);
 

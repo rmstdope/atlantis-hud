@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { loadReport } from "./gameSetup";
+import { loadReport, STANDARD_TURN } from "./gameSetup";
 
 /**
  * The study planner's Orders tab (`ah-lyg6.4.1`): next turn's `STUDY` and `TEACH` lines, one
@@ -32,7 +32,7 @@ test("the Orders tab writes next turn's study orders and saves them", async ({ p
   await page.getByTestId("study-planner-view-orders").click();
   const section = page.getByTestId("study-planner-orders-95");
   await expect(section).toBeVisible();
-  await expect(page.getByTestId("study-planner-summary")).toContainText("Orders for turn 73");
+  await expect(page.getByTestId("study-planner-summary")).toContainText(`Orders for turn ${STANDARD_TURN + 1}`);
 
   const downloading = page.waitForEvent("download");
   await page.getByTestId("study-planner-save-95").click();
@@ -41,8 +41,8 @@ test("the Orders tab writes next turn's study orders and saves them", async ({ p
   await download.saveAs(path);
 
   const text = readFileSync(path, "utf8");
-  expect(download.suggestedFilename()).toMatch(/^study-orders-.+-turn-73\.txt$/u);
-  expect(text).toContain("study orders for turn 73, from Atlantis HUD");
+  expect(download.suggestedFilename()).toMatch(new RegExp(`^study-orders-.+-turn-${STANDARD_TURN + 1}\\.txt$`, "u"));
+  expect(text).toContain(`study orders for turn ${STANDARD_TURN + 1}, from Atlantis HUD`);
   expect(text).toContain(`UNIT ${MAGE}`);
   expect(text).toContain("STUDY FORC");
   // A `95/881` key on an order line is an order no server accepts.

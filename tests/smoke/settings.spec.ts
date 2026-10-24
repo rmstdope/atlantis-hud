@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readReport } from "@atlantis/fixtures";
-import { clearGames, createGame, loadReport, selectHex } from "./gameSetup";
+import { clearGames, createGame, loadReport, selectHex, STANDARD_TURN } from "./gameSetup";
 
 /**
  * The settings dialog, in both shells.
@@ -283,7 +283,7 @@ test("a change that leaves names undefined warns first, and Cancel or Escape kee
   await expect(warning).toContainText("⚠ Change to New Age: Trident?");
   await expect(warning).toContainText("of this game’s 1 turns name");
   await expect(warning).toContainText("Not defined in New Age: Trident");
-  await expect(page.getByTestId("ruleset-change-warning-names")).toContainText("Turn 72");
+  await expect(page.getByTestId("ruleset-change-warning-names")).toContainText(`Turn ${STANDARD_TURN}`);
   await expect(page.getByTestId("ruleset-change-warning-cancel")).toBeFocused();
 
   // Escape is Cancel, and closes only the warning.

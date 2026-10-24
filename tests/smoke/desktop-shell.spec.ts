@@ -3,7 +3,8 @@ import { readReport } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
-  importReport
+  importReport,
+  STANDARD_TURN
 } from "./gameSetup";
 
 /**
@@ -109,9 +110,9 @@ test("an orders export goes through the save dialog, with no browser download", 
   await expect.poll(() => desktopCalls(page)).toEqual([
     [
       "save",
-      { defaultPath: "orders-turn-72.txt", filters: [{ name: "Text", extensions: ["txt"] }] }
+      { defaultPath: `orders-turn-${STANDARD_TURN}.txt`, filters: [{ name: "Text", extensions: ["txt"] }] }
     ],
-    ["write", "/fake/orders-turn-72.txt", expect.any(Number)]
+    ["write", `/fake/orders-turn-${STANDARD_TURN}.txt`, expect.any(Number)]
   ]);
   expect(await downloadRace).toBe("none");
 });

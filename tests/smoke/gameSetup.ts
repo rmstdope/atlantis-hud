@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { readReport } from "@atlantis/fixtures";
+import { readReport, reportTurn } from "@atlantis/fixtures";
 import {
   ADVISORY_CHECK_CODES,
   type AdvisoryCheckCode
@@ -155,6 +155,18 @@ export async function closeRulesetCheck(page: Page) {
 
 /** The turn every walk that just needs "a game with a map in it" loads. */
 const TURN_71 = readReport("g7f95t71");
+
+/**
+ * The turn HUD shows for that standard report - faction 95's December of Year 6 - taken from the
+ * fixtures rather than written out, so a change to how turns are numbered edits the fixtures and
+ * the walks about turn labels, not every walk that loads this report (ah-iuofk).
+ */
+export const STANDARD_TURN = reportTurn("g7f95t71");
+
+/** The header's turn label for `turn`, as a pattern: `Turn 72`, however the header spaces it. */
+export function turnInHeader(turn: number): RegExp {
+  return new RegExp(`Turn\\s*${turn}\\b`, "u");
+}
 
 /**
  * A fresh game with the standard turn loaded: the start of most walks in this suite.
