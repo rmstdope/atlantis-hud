@@ -6,16 +6,18 @@ import {
   importReport,
   STANDARD_TURN
 } from "./gameSetup";
+import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
  * The `desktop-shell` project's own tests (ah-9lv).
  *
- * Every other spec in this suite runs on both `web` and `desktop-shell`, and both drive the same
- * WASM core - the desktop bundle only differs from the web one when there is a Tauri runtime, and
- * neither project has one. That made `desktop-shell` a second web run: three desktop-only defects
- * (ah-7pa, ah-jfx, ah-6l2) reached the navigator with it green.
+ * Both projects drive the same WASM core - the desktop bundle only differs from the web one when
+ * there is a Tauri runtime, and neither project has one. When every spec ran on both, that made
+ * `desktop-shell` a second web run: three desktop-only defects (ah-7pa, ah-jfx, ah-6l2) reached the
+ * navigator with it green. Since ah-r7kot `desktop-shell` walks only the tests tagged
+ * `DESKTOP_SHELL_TAG` (`./shells.ts`), and `web` walks everything else.
  *
- * This spec skips itself everywhere but `desktop-shell` and asserts the one thing that project can
+ * This spec is tagged for `desktop-shell` alone and asserts the one thing that project can
  * check that `web` cannot: an export goes through `desktopPlugins.ts`'s save-dialog port with the
  * right file name and filter, writes what the dialog answered, and never falls back to a browser
  * download; and a cancelled dialog writes nothing and leaves the picker open. The stand-in is
@@ -27,12 +29,8 @@ const TURN_71 = readReport("g7f95t71");
 
 type DesktopCall = ["save", { defaultPath?: string; filters?: unknown }] | ["write", string, number];
 
-test.beforeEach(async ({ page }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop-shell",
-    "desktop wiring: the port is only there in the desktop bundle"
-  );
-
+// Every test here is tagged DESKTOP_SHELL_TAG, so only `desktop-shell` walks it - desktop wiring: the port is only there in the desktop bundle.
+test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const calls: unknown[][] = [];
     (window as unknown as { __ATLANTIS_DESKTOP_CALLS__: unknown[][] }).__ATLANTIS_DESKTOP_CALLS__ =
@@ -91,7 +89,7 @@ async function desktopCalls(page: import("@playwright/test").Page): Promise<Desk
 }
 
 
-test("an orders export goes through the save dialog, with no browser download", async ({ page }) => {
+test("an orders export goes through the save dialog, with no browser download", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Desktop export game");
   await importReport(page, "turn-70.rep", TURN_70);
@@ -117,7 +115,7 @@ test("an orders export goes through the save dialog, with no browser download", 
   expect(await downloadRace).toBe("none");
 });
 
-test("a game backup export goes through the save dialog and closes the picker", async ({ page }) => {
+test("a game backup export goes through the save dialog and closes the picker", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Desktop backup game");
 
@@ -137,7 +135,7 @@ test("a game backup export goes through the save dialog and closes the picker", 
   await expect(page.getByTestId("game-picker")).not.toBeVisible();
 });
 
-test("a cancelled backup dialog writes nothing and leaves the picker open", async ({ page }) => {
+test("a cancelled backup dialog writes nothing and leaves the picker open", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await createGame(page, "Desktop cancel game");
   await page.evaluate(() => {

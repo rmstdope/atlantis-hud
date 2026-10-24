@@ -286,6 +286,12 @@ jobs:
   # each job pays a fixed ~45 seconds of setup before the first test runs: at two the split still
   # roughly halves the test time; at three the setup starts to dominate what it saves.
   #
+  # The two projects no longer walk the same tests (ah-r7kot): `web` walks every shell-agnostic
+  # test and `desktop-shell` only the few tagged for it in `tests/smoke/shells.ts`, so the
+  # desktop-shell shards are short. The matrix keeps its shape because the four contexts are the
+  # required checks in the main ruleset; spending the freed runners on more `web` shards means
+  # editing that ruleset in the same change.
+  #
   # These need no Rust at all: the wasm module arrives as an artifact.
   #
   # This job always runs and always expands its matrix - a job skipped by a job-level `if:` never
