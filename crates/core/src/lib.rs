@@ -113,7 +113,30 @@ pub struct OrderDiagnostic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub problems_in: Option<ProblemsElsewhere>,
+    /// A one-press rewrite of the line that removes the problem, offered as a button in the
+    /// editor's hover box (`ah-vs4tp`). Absent on every diagnostic that has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub fix: Option<OrderFix>,
     pub severity: OrderDiagnosticSeverity,
+}
+
+/// A quick fix for one diagnostic (`ah-vs4tp`): replace `[column_start, column_end)` of the
+/// diagnostic's line - UTF-16 code units, as every column on the wire is - with `insert`.
+///
+/// `replaced` is the text that range held when the diagnostic was made. Validation is debounced,
+/// so the line may have changed by the time the button is pressed; an editor applies the fix only
+/// while the range still holds `replaced`, and never rewrites text the fix was not written for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct OrderFix {
+    /// The button's words.
+    pub label: String,
+    pub column_start: usize,
+    pub column_end: usize,
+    pub replaced: String,
+    pub insert: String,
 }
 
 /// A hex a diagnostic's message points the player at (`ah-zjcj`): its id, to go there, and the

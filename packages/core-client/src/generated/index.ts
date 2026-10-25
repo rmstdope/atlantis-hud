@@ -64,6 +64,7 @@ export type { NewStudents } from "./NewStudents";
 export type { NoStudyFee } from "./NoStudyFee";
 export type { OrderDiagnostic } from "./OrderDiagnostic";
 export type { OrderDiagnosticSeverity } from "./OrderDiagnosticSeverity";
+export type { OrderFix } from "./OrderFix";
 export type { OrderValidationResult } from "./OrderValidationResult";
 export type { OrdersPreviewResponse } from "./OrdersPreviewResponse";
 export type { OrdersTemplate } from "./OrdersTemplate";

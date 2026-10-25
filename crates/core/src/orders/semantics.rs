@@ -332,6 +332,9 @@ pub mod codes {
     /// means the month earns nothing. Every ocean is one (`rules/world_regions`: "Oceans, not
     /// surprisingly, have no population").
     pub const WORK_EARNS_NOTHING: Code = Code("work-earns-nothing");
+    /// A NAME or DESCRIBE whose unquoted text has several words, so the game keeps only the first
+    /// (`ah-vs4tp`). Raised by [`crate::orders::quoted_text`], which reads only the text.
+    pub const NAME_CUT_SHORT: Code = Code("name-cut-short");
     /// Every code. This array's own order is not the settings tab's grouping (that groups by
     /// concern - Teaching / Resources / Markets / Guarding / Orders / Sailing - not by this list):
     /// a new entry joins whichever group fits its concern, which need not be the last one
@@ -340,7 +343,7 @@ pub mod codes {
     /// group). What every entry so far has kept is new-*here*-last: the generated TypeScript
     /// copies this array's order, so a new code is always appended to it regardless of where it
     /// lands in the UI.
-    pub const ALL: [Code; 60] = [
+    pub const ALL: [Code; 61] = [
         NOT_ENOUGH_SILVER,
         NOT_ENOUGH_ITEMS,
         GUARD_DROPPED,
@@ -401,6 +404,7 @@ pub mod codes {
         LEADERS_AND_MEN_MIXED,
         DISCARD_FROM_SHARED_STOCK,
         WORK_EARNS_NOTHING,
+        NAME_CUT_SHORT,
     ];
 
     /// The codes that mean a unit's own silver is in trouble, so its Silver figure carries a
@@ -559,6 +563,9 @@ pub struct Finding {
     /// The hex whose Problems the message sends the player to, where that is not `region_id`: a
     /// sailing passenger's landing-hex marker (`ah-1uja`, `ah-zjcj`). `None` everywhere else.
     pub problems_in: Option<crate::ProblemsElsewhere>,
+    /// A one-press rewrite of the line that removes the problem (`ah-vs4tp`). `None` everywhere but
+    /// [`codes::NAME_CUT_SHORT`].
+    pub fix: Option<crate::OrderFix>,
 }
 
 /// Where the report shows each unit, by unit number, across every region it covers.
@@ -1149,6 +1156,10 @@ pub fn review_turn(
         &options,
         &mut findings,
     );
+    // About the text alone, so it reads no hex's state: only which hex each line's block is in.
+    if options.emits(codes::NAME_CUT_SHORT) {
+        super::quoted_text::check(report, source, ruleset, &mut findings);
+    }
 
     // Not a warning, so no `CheckOptions` switch hides it.
     let worked = production_overview(report, &hexes, ruleset, applied, &silver, &plurals);
@@ -4700,6 +4711,7 @@ impl<'a> Hex<'a> {
             formed: None,
             counted_in: None,
             problems_in: None,
+            fix: None,
         }
     }
 }
@@ -6579,6 +6591,7 @@ impl Ordered<'_> {
             formed: self.formed.clone(),
             counted_in: None,
             problems_in: None,
+            fix: None,
         }
     }
 
@@ -6600,6 +6613,7 @@ impl Ordered<'_> {
             formed: self.formed.clone(),
             counted_in: None,
             problems_in: None,
+            fix: None,
         }
     }
 }
@@ -30248,6 +30262,7 @@ fn check_upkeep_fund(
             formed: None,
             counted_in,
             problems_in: None,
+            fix: None,
         });
     }
 }
@@ -30917,6 +30932,7 @@ fn check_faction_orders(
             formed: None,
             counted_in: None,
             problems_in: None,
+            fix: None,
         });
     }
 }
@@ -73840,6 +73856,14 @@ BUILD
                     )])
                 }],
                 orders: "unit 900\nBUY 1 ORC\n",
+                allowance: None,
+                unclaimed: None,
+            },
+            Case {
+                code: codes::NAME_CUT_SHORT,
+                // Several unquoted words: the game keeps only the first (`rules/orders`, `ah-vs4tp`).
+                regions: vec![region(vec![unit("900")])],
+                orders: "unit 900\nDESCRIBE UNIT Outlaw of Sherwood\n",
                 allowance: None,
                 unclaimed: None,
             },
