@@ -1,6 +1,6 @@
 # Requirements
 
-Agreed with the navigator 2026-10-24. Each requirement keeps its number for ever;
+Agreed with the navigator 2026-10-25. Each requirement keeps its number for ever;
 a dropped one is struck, never renumbered.
 
 A `Proven by:` line names the spec file and the test's title.
@@ -99,6 +99,8 @@ R33 The player walks from problem to problem across every unit (F8 and the walk 
     Proven by: tests/smoke/shortcuts.spec.ts "F8 walks to a problem in another unit"
 R34 The player silences an advisory check everywhere at once, or hides the problem list.
     Proven by: tests/smoke/workspace.spec.ts "a silenced advisory check disappears everywhere at once"
+R56 The player mends a marked problem with its quick fix from the editor, in one step that undo takes back.
+    Proven by: tests/smoke/orders-editor.spec.ts "Add quotes mends a description the game would cut to its first word"
 
 ## Movement
 
