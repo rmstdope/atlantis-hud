@@ -49,7 +49,7 @@ test("exporting orders with an error asks first, and Cancel exports nothing", as
 
   await pressExport(page);
 
-  const dialog = page.getByRole("dialog", { name: "Export orders with 1 error?" });
+  const dialog = page.getByRole("dialog", { name: "Export orders with 1 error?", exact: true });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(
     "The orders checker found 1 error. The game may reject that order or read it differently from what you meant. You can still export the orders as they are."
@@ -133,7 +133,7 @@ test("an export pressed while the check is still running waits for it", async ({
   // No wait for the check: the press lands while it is still debounced or in flight.
   await fillOrders(page, ONE_ERROR);
   await pressExport(page);
-  await expect(page.getByRole("dialog", { name: "Export orders with 1 error?" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Export orders with 1 error?", exact: true })).toBeVisible();
   await page.getByTestId("export-warning-cancel").click();
 
   // And the other way: an error fixed just before the press is not counted.
