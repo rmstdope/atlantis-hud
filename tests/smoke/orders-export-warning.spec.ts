@@ -1,0 +1,256 @@
+import { readFileSync } from "node:fs";
+import { expect, test, type Page } from "@playwright/test";
+import {
+  expectOrders,
+  fillOrders,
+  loadReport,
+  openOrders as openOrdersOf,
+  ordersInput,
+  selectHex,
+  selectUnit,
+  waitForValidation
+} from "./gameSetup";
+
+/**
+ * Exporting orders that still carry an error warns and asks, but never refuses (ah-koleq).
+ *
+ * The rule itself is unit-tested in `ordersExportGuard.test.ts`; what only a browser can prove is
+ * the shell around it - the wait on a check still running, focus, Escape, the darkened area, and
+ * that "Export anyway" really reaches the save path.
+ */
+
+/** "Seven of Eight", the player's unit in Inholm at (7,53). */
+const OWN_UNIT = "18642";
+/** Another of the player's units, at (26,52). */
+const OTHER_OWN_UNIT = "13401";
+/** An unclosed quote: the one syntax error the bead was found with. */
+const ONE_ERROR = 'DESCRIBE UNIT "Outlaw of Sherwood';
+/** An unquoted description of several words is a warning, not an error (ah-vs4tp). */
+const WARNING_ONLY = "DESCRIBE UNIT Outlaw of Sherwood";
+
+async function openOrders(page: Page) {
+  await loadReport(page, "Export warning smoke");
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+}
+
+async function pressExport(page: Page, item: "export-orders" | "export-orders-long" = "export-orders") {
+  await page.getByTestId("export-menu").click();
+  await page.getByTestId(item).click();
+}
+
+/** Resolves "download" if one starts within the window, else "none". */
+function downloadWithin(page: Page, timeout = 1_500): Promise<"download" | "none"> {
+  return page
+    .waitForEvent("download", { timeout })
+    .then(() => "download" as const)
+    .catch(() => "none" as const);
+}
+
+async function withOneError(page: Page) {
+  await openOrders(page);
+  await fillOrders(page, ONE_ERROR);
+  await waitForValidation(page);
+  await expect(page.getByTestId("orders-status-errors")).toHaveText("1 error");
+}
+
+test("exporting orders with an error asks first, and Cancel exports nothing", async ({ page }) => {
+  await withOneError(page);
+  const download = downloadWithin(page);
+
+  await pressExport(page);
+
+  const dialog = page.getByRole("dialog", { name: "Export orders with 1 error?", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    "The orders checker found 1 error. The game may reject that order or read it differently from what you meant. You can still export the orders as they are."
+  );
+  // The menu closed behind the choice.
+  await expect(page.getByTestId("export-orders")).toHaveCount(0);
+  // Focus on Cancel, so a reflexive Enter cancels.
+  await expect(page.getByTestId("export-warning-cancel")).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("export-menu")).toBeFocused();
+  expect(await download).toBe("none");
+});
+
+test("Escape and a press on the darkened area also cancel", async ({ page }) => {
+  await withOneError(page);
+  const download = downloadWithin(page, 3_000);
+
+  await pressExport(page);
+  await expect(page.getByTestId("export-warning-panel")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
+  await expect(page.getByTestId("export-menu")).toBeFocused();
+
+  await pressExport(page);
+  await expect(page.getByTestId("export-warning-panel")).toBeVisible();
+  await page.getByTestId("export-warning-backdrop").click({ position: { x: 5, y: 5 } });
+  await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
+  await expect(page.getByTestId("export-menu")).toBeFocused();
+
+  expect(await download).toBe("none");
+});
+
+test("Export anyway saves the orders as they are, from both order exports", async ({ page }, testInfo) => {
+  await withOneError(page);
+
+  for (const item of ["export-orders", "export-orders-long"] as const) {
+    await pressExport(page, item);
+    const downloading = page.waitForEvent("download");
+    await page.getByTestId("export-warning-export").click();
+    const file = await downloading;
+    const path = testInfo.outputPath(`${item}.txt`);
+    await file.saveAs(path);
+    // Only the broken line is asserted: the file also carries the faction password.
+    expect(readFileSync(path, "utf8")).toContain(ONE_ERROR);
+    await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
+  }
+});
+
+test("Show errors goes to the first error, in another unit, and exports nothing", async ({ page }) => {
+  // The error in one unit, warnings before it in walk order (18642's and the report's own advisory
+  // findings, asserted below): Show errors must pass over them to the error.
+  await loadReport(page, "Export warning smoke");
+  await openOrdersOf(page, OTHER_OWN_UNIT, "1:26,52");
+  await fillOrders(page, ONE_ERROR);
+  await openOrdersOf(page, OWN_UNIT);
+  await fillOrders(page, WARNING_ONLY);
+  await waitForValidation(page);
+  await expect(page.getByTestId("orders-status-errors")).toHaveText("0 errors");
+  const download = downloadWithin(page);
+
+  await pressExport(page);
+  await page.getByTestId("export-warning-show-errors").click();
+
+  await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
+  // That unit's orders are open, focus is in them, and the broken order is selected.
+  await expectOrders(page, /"Outlaw of Sherwood$/mu);
+  await expect(ordersInput(page)).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .not.toBe("");
+  expect(ONE_ERROR).toContain(await page.evaluate(() => window.getSelection()?.toString() ?? ""));
+  // The walk stands on that stop among all the problems, warnings included (the report's own
+  // advisory findings among them), so F8 carries on from there to the next one.
+  const walk = page.getByTestId("walk-position");
+  await expect(walk).toHaveAttribute("data-position", /^\d+\/\d+$/u);
+  const [at, of] = (await walk.getAttribute("data-position"))!.split("/").map(Number);
+  // The premise: warnings come before the error in walk order, so landing here skipped them.
+  expect(at).toBeGreaterThan(1);
+  expect(of).toBeGreaterThan(1);
+  await page.keyboard.press("F8");
+  await expect(walk).toHaveAttribute("data-position", `${(at % of) + 1}/${of}`);
+  // Not the to-check panel: that is only for errors no order line carries.
+  await expect(page.getByTestId("turn-report")).not.toBeVisible();
+  expect(await download).toBe("none");
+});
+
+test("warnings alone never ask", async ({ page }) => {
+  await openOrders(page);
+  await fillOrders(page, WARNING_ONLY);
+  await waitForValidation(page);
+  await expect(page.getByTestId("orders-status-errors")).toHaveText("0 errors");
+
+  const downloading = page.waitForEvent("download");
+  await pressExport(page);
+  await downloading;
+  await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
+});
+
+test("an export pressed while the check is still running waits for it", async ({ page }) => {
+  await openOrders(page);
+  await fillOrders(page, "@work");
+  await waitForValidation(page);
+
+  // No wait for the check: the press lands while it is still debounced or in flight.
+  await fillOrders(page, ONE_ERROR);
+  // The premise: the press lands while the check is still pending, or the test proves nothing.
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-validation", "pending");
+  await pressExport(page);
+  await expect(page.getByRole("dialog", { name: "Export orders with 1 error?", exact: true })).toBeVisible();
+  await page.getByTestId("export-warning-cancel").click();
+
+  // And the other way: an error fixed just before the press is not counted.
+  await fillOrders(page, "@work");
+  await expectOrders(page, /^@work\n?$/u);
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-validation", "pending");
+  const downloading = page.waitForEvent("download");
+  await pressExport(page);
+  await downloading;
+  await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
+});
+
+test("Tab stays among the dialog's three buttons", async ({ page }) => {
+  await withOneError(page);
+  await pressExport(page);
+
+  const cancel = page.getByTestId("export-warning-cancel");
+  const exportAnyway = page.getByTestId("export-warning-export");
+  const showErrors = page.getByTestId("export-warning-show-errors");
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(exportAnyway).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(showErrors).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(showErrors).toBeFocused();
+
+  // A click on the words does not let the next Tab walk out behind the darkened area.
+  await page.getByTestId("export-warning-panel").locator("p").click();
+  await page.keyboard.press("Tab");
+  await expect(showErrors).toBeFocused();
+});
+
+test("on a narrow window Cancel and Export anyway wrap together, still on the right", async ({ page }) => {
+  await withOneError(page);
+  await pressExport(page);
+  // Narrow enough that the three buttons cannot share a line in any shell's fonts - at 340px they
+  // did on CI's Linux, and nothing wrapped - and wide enough for the pair to share one.
+  const width = 300;
+  await page.setViewportSize({ width, height: 700 });
+
+  const box = (id: string) => page.getByTestId(id).boundingBox();
+  // Polled: the layout settles after the resize.
+  await expect(async () => {
+    const [panel, show, cancel, exportAnyway] = await Promise.all([
+      box("export-warning-panel"),
+      box("export-warning-show-errors"),
+      box("export-warning-cancel"),
+      box("export-warning-export")
+    ]);
+    expect(panel && show && cancel && exportAnyway).toBeTruthy();
+    // Inside the window, with a margin on each side.
+    expect(panel!.x).toBeGreaterThan(0);
+    expect(panel!.x + panel!.width).toBeLessThan(width);
+    // Show errors on the first line; the pair together on a lower one.
+    expect(cancel!.y).toBeGreaterThan(show!.y + show!.height - 1);
+    expect(Math.abs(cancel!.y - exportAnyway!.y)).toBeLessThan(1);
+    // Still on the right: Export anyway ends at the panel's padding.
+    expect(panel!.x + panel!.width - (exportAnyway!.x + exportAnyway!.width)).toBeLessThan(20);
+  }).toPass({ timeout: 5_000 });
+});
+
+test("the palette's turn actions do nothing over the warning", async ({ page }) => {
+  // The palette can be summoned over the dialog; importing under it would put a new turn's orders
+  // behind a count that was made for the old one.
+  await withOneError(page);
+  await pressExport(page);
+  await expect(page.getByTestId("export-warning-panel")).toBeVisible();
+
+  const chooser = page
+    .waitForEvent("filechooser", { timeout: 1_500 })
+    .then(() => "opened" as const)
+    .catch(() => "none" as const);
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("import reports");
+  await page.keyboard.press("Enter");
+
+  expect(await chooser).toBe("none");
+  await expect(page.getByTestId("export-warning-panel")).toBeVisible();
+});

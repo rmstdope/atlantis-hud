@@ -107,6 +107,7 @@ import {
   findingsByHex,
   findingsForHex,
   shouldTriggerAutosave,
+  summarizeOrderValidation,
   unitsWarnedAboutSilver,
   hexesShortOfSilver,
   type OrdersOrigin,
@@ -203,6 +204,14 @@ import { MapExportDialog } from "./MapExportDialog";
 import { SendOrdersDialog } from "./SendOrdersDialog";
 import { NewAgeFetchDialog } from "./NewAgeFetchDialog";
 import { NewAgeSendDialog } from "./NewAgeSendDialog";
+import { OrdersExportWarningDialog } from "./OrdersExportWarningDialog";
+import {
+  firstErrorStop,
+  ordersExportStep,
+  parkedExportLapsed,
+  type OrdersExportKind,
+  type ParkedOrdersExport
+} from "./ordersExportGuard";
 import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
 import { ownDeclarations, teachingDeclarerFor } from "../teachingPermission";
@@ -681,6 +690,10 @@ export function AppShell({
   });
   // The inputs the answer in `validated` was for (ah-119b); null until the first one lands.
   const [validatedFor, setValidatedFor] = useState<ValidationInputs | null>(null);
+  // The inputs of the latest check that finished, whether it answered or failed (ah-koleq). An
+  // export waits on this rather than on `validatedFor`, which a failed check never moves: the export
+  // must not wait forever on a check that cannot run, and then uses the last answer `validated` has.
+  const [checkedFor, setCheckedFor] = useState<ValidationInputs | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: "clean" });
   // The planner takes the report as text, which keeps the call stateless: there is no session to
   // invalidate when a new turn arrives. The text is also the key the core remembers its last parse
@@ -3883,6 +3896,7 @@ export function AppShell({
     };
     if (!ordersDocument) {
       setValidatedFor(askedFor);
+      setCheckedFor(askedFor);
       setValidated({
         text: "",
         diagnostics: [],
@@ -3918,6 +3932,7 @@ export function AppShell({
         .then((result) => {
           if (!cancelled) {
             setValidatedFor(askedFor);
+            setCheckedFor(askedFor);
             setValidated({
               text: ordersDocument,
               diagnostics: result.diagnostics,
@@ -3933,8 +3948,12 @@ export function AppShell({
         // an empty verdict. Saying "0 errors" because the check failed is the one answer worse than
         // an answer a few keystrokes old, and validation is advisory in any case - the server has
         // the last word on every order. Without this the rejection is unhandled and the state stays
-        // stale anyway, silently.
-        .catch(() => undefined);
+        // stale anyway, silently. It still counts as finished, for an export waiting on it.
+        .catch(() => {
+          if (!cancelled) {
+            setCheckedFor(askedFor);
+          }
+        });
     }, 300);
 
     return () => {
@@ -3953,7 +3972,7 @@ export function AppShell({
   const problemsByHex = useMemo(() => findingsByHex(validated.diagnostics), [validated]);
   // Read against this render's values, so the render that moves the document or a setting already
   // says "pending" - no effect has to run first for the marker to stop claiming "current".
-  const validation = validationMarker(validatedFor, {
+  const validationNow: ValidationInputs = {
     ordersDocument,
     rulesetText,
     rawReport,
@@ -3961,7 +3980,12 @@ export function AppShell({
     mapJson,
     passagesJson,
     rememberedJson
-  });
+  };
+  const validation = validationMarker(validatedFor, validationNow);
+  // Whether a check of exactly these inputs has finished, answered or not: what an export waits on.
+  const checked = validationMarker(checkedFor, validationNow);
+  // Errors in all the orders - the status line's "here" plus "elsewhere" - never warnings.
+  const ordersErrorCount = useMemo(() => summarizeOrderValidation(validated).errorCount, [validated]);
   // Derived from the loaded report and nothing else: that is what makes it follow a turn switch,
   // come back after a reload, and have nothing to dismiss permanently.
   const unreadable = useMemo<readonly UnreadableLine[]>(
@@ -4592,6 +4616,79 @@ export function AppShell({
   }, [ordersDocument, ordersTemplateText, parsed, saveTextFile, orders]);
 
   /**
+   * Exporting orders that carry errors asks first, and never refuses (ah-koleq).
+   *
+   * An export pressed while the checker is still on the latest typing is parked in
+   * `pendingOrdersExport` until that check finishes, so the count asked about is always the count
+   * of the orders being saved - unless the player switched game or loaded a new report meanwhile,
+   * when it is dropped. Nothing here persists: the question is asked every time.
+   */
+  const [pendingOrdersExport, setPendingOrdersExport] = useState<ParkedOrdersExport | null>(null);
+  const [ordersExportWarning, setOrdersExportWarning] = useState<{
+    kind: OrdersExportKind;
+    errorCount: number;
+  } | null>(null);
+  const exportButton = useRef<HTMLButtonElement | null>(null);
+
+  const deliverOrdersExport = useCallback(
+    (kind: OrdersExportKind) => (kind === "long" ? exportOrdersLong() : exportOrders()),
+    [exportOrders, exportOrdersLong]
+  );
+
+  const resolveOrdersExport = useCallback(
+    (kind: OrdersExportKind) => {
+      const step = ordersExportStep(checked, ordersErrorCount);
+      switch (step.kind) {
+        case "wait":
+          setPendingOrdersExport({ kind, gameId: openGameId, report: rawReport });
+          return;
+        case "save":
+          deliverOrdersExport(kind);
+          return;
+        case "confirm":
+          setOrdersExportWarning({ kind, errorCount: step.errorCount });
+      }
+    },
+    [checked, ordersErrorCount, deliverOrdersExport, openGameId, rawReport]
+  );
+
+  // The parked export, resolved on the render its check finishes - or dropped silently if the game
+  // or the report changed under it. Compared here rather than cleared by an effect of its own, so no
+  // ordering of effects can let a lapsed export through in the commit where both change.
+  useEffect(() => {
+    if (pendingOrdersExport === null) {
+      return;
+    }
+    if (parkedExportLapsed(pendingOrdersExport, openGameId, rawReport)) {
+      setPendingOrdersExport(null);
+      return;
+    }
+    if (checked === "current") {
+      setPendingOrdersExport(null);
+      resolveOrdersExport(pendingOrdersExport.kind);
+    }
+  }, [pendingOrdersExport, checked, resolveOrdersExport, openGameId, rawReport]);
+
+  // Show errors: the first error on an order line, landed on exactly as an F8 stop is; the to-check
+  // panel's Problems tab only when no error sits on one.
+  const showOrdersErrors = useCallback(() => {
+    setOrdersExportWarning(null);
+    const step = firstErrorStop(problemTargets);
+    if (step !== null) {
+      landOnStop(step);
+      return;
+    }
+    // The Problems tab whatever was open last, as `openTurnReportEvents` does for Events.
+    setReportTab("problems");
+    setOpenPopover("report");
+  }, [problemTargets, landOnStop]);
+
+  const cancelOrdersExport = useCallback(() => {
+    setOrdersExportWarning(null);
+    exportButton.current?.focus();
+  }, []);
+
+  /**
    * Where the send dialog has got to, or null when it is closed.
    *
    * The whole of the interaction's state, and deliberately nothing more: nothing is persisted and a
@@ -4759,12 +4856,15 @@ export function AppShell({
   runTurnAction.current = (id) => {
     // The palette can be summoned over an open Fetch or Send window, whose backdrop covers the
     // header; the header's buttons cannot be pressed then, so the rows do nothing either. Otherwise
-    // a Fetch row would reset a running fetch to its form, and Send would stack over Fetch.
+    // a Fetch row would reset a running fetch to its form, and Send would stack over Fetch. The
+    // export warning too (ah-koleq): a report imported under it would leave its count describing
+    // orders that are no longer the ones Export anyway saves.
     if (
       fetchPhase !== null ||
       originsPhase !== null ||
       sendPhase !== null ||
-      newAgeSendPhase !== null
+      newAgeSendPhase !== null ||
+      ordersExportWarning !== null
     ) {
       return;
     }
@@ -5996,8 +6096,9 @@ export function AppShell({
         importDisabled={heldNotice !== null}
         onImportReports={(files) => void importReports(files)}
         progress={importProgress}
-        onExportOrders={exportOrders}
+        onExportOrders={() => resolveOrdersExport("plain")}
         canExport={ordersDocument.length > 0}
+        exportButtonRef={exportButton}
         onSendOrders={openSend ?? undefined}
         canSend={canSendOrders}
         sendDisabledReason={sendOffReason}
@@ -6007,7 +6108,7 @@ export function AppShell({
             : { label: FETCH_CONTROL_LABEL, onFetch: () => openFetch("thisTurn") }
         }
         importInputRef={importInput}
-        onExportOrdersLong={exportOrdersLong}
+        onExportOrdersLong={() => resolveOrdersExport("long")}
         canExportLong={ordersDocument.length > 0 && ordersTemplateText !== null}
         onExportMap={() => openExport()}
         canExportMap={parsed !== null}
@@ -6534,6 +6635,17 @@ export function AppShell({
           phase={sendPhase}
           onSend={(password) => void sendOrders(password)}
           onDismiss={dismissSend}
+        />
+      )}
+      {ordersExportWarning === null ? null : (
+        <OrdersExportWarningDialog
+          errorCount={ordersExportWarning.errorCount}
+          onExport={() => {
+            setOrdersExportWarning(null);
+            deliverOrdersExport(ordersExportWarning.kind);
+          }}
+          onCancel={cancelOrdersExport}
+          onShowErrors={showOrdersErrors}
         />
       )}
       {newAgeSendPhase === null || newAgeWorld === null ? null : (

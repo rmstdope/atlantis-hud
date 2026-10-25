@@ -194,6 +194,8 @@ type AppHeaderProps = {
    * command palette's "Import reports" row does (ah-mlls.7). The header keeps its own otherwise.
    */
   importInputRef?: MutableRefObject<HTMLInputElement | null>;
+  /** The Export button, for the export warning to give focus back to when it is cancelled. */
+  exportButtonRef?: MutableRefObject<HTMLButtonElement | null>;
   /** Whether the settings panel is showing. Same split as the picker: header owns the button. */
   settingsOpen: boolean;
   onToggleSettings: () => void;
@@ -256,6 +258,7 @@ export function AppHeader({
   sendDisabledReason,
   fetchControl,
   importInputRef,
+  exportButtonRef,
   settingsOpen,
   onToggleSettings,
   updateMark,
@@ -660,6 +663,7 @@ export function AppHeader({
         }
       >
         <button
+          ref={exportButtonRef}
           type="button"
           data-testid="export-menu"
           aria-haspopup="dialog"
