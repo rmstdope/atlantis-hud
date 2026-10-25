@@ -279,6 +279,15 @@ pub struct ReportUnit {
     /// How much of this unit's line the parser read. See [`UnitRead`].
     #[serde(default)]
     pub read: UnitRead,
+    /// The unit's description, verbatim, as its line printed it after `; ` (set in game with
+    /// `DESCRIBE UNIT`, `rules/describe`). Absent when the line carries none (ah-q418s).
+    //
+    // `skip_serializing_if` with `ts(optional)`, as `FieldChange::cause` does: the TypeScript says
+    // `description?: string`, a key that is absent rather than `null`, and the wire must agree.
+    // `serde(default)` reads payloads stored before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -366,6 +375,7 @@ impl Default for ReportUnit {
             movement: None,
             structure_id: None,
             read: UnitRead::Complete,
+            description: None,
         }
     }
 }
@@ -497,6 +507,24 @@ pub struct UnreadableLine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The TypeScript says `description?: string`, so a unit without one carries no key at all -
+    /// never `null` - and a payload stored before the field existed still reads (ah-q418s).
+    #[test]
+    fn a_unit_without_a_description_writes_no_description_key() {
+        let bare = serde_json::to_value(ReportUnit::default()).expect("serialises");
+        assert!(bare.get("description").is_none(), "{bare}");
+
+        let described = ReportUnit {
+            description: Some("Merlin's helper".to_string()),
+            ..ReportUnit::default()
+        };
+        let value = serde_json::to_value(&described).expect("serialises");
+        assert_eq!(value["description"], "Merlin's helper");
+
+        let read: ReportUnit = serde_json::from_value(bare).expect("reads back");
+        assert_eq!(read.description, None);
+    }
 
     #[test]
     fn item_amount_new_leaves_needs_unset() {

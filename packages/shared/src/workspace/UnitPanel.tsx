@@ -1,6 +1,7 @@
 import type { FieldChange, ReportUnit, UnitPreview } from "@atlantis/core-client";
 import type { HexNode } from "../hexMapModel";
 import { originalTooltip } from "../unitPreview";
+import { unitDescriptionLine } from "../unitDescription";
 import { withoutSilver } from "../silverTag";
 import { describeMen } from "../unitComposition";
 import { NOT_KNOWN, unreadBannerText, weightFloor } from "../unitRead";
@@ -114,6 +115,7 @@ export function UnitPanelBody({
   // belongs to the title bar rather than the body, so `unitPanelHint` derives it instead.
   const flagsChange = preview?.changes.find((change) => change.field === "flags");
   const predictedFlags = flagsChange ? preview?.unit.flags : null;
+  const description = unitDescriptionLine(unit, preview);
 
   return (
     <>
@@ -130,6 +132,29 @@ export function UnitPanelBody({
         </strong>
         {unit.own ? " · your faction" : " · not your faction"}
       </p>
+
+      {/*
+        The player's own words for the unit (ah-q418s): italic marks them as such, so no quotes
+        and no label. Always in full - the game sets no length limit (rules/describe) - and wrapped
+        anywhere so one long word cannot push the panel wide.
+      */}
+      {description === null ? null : description.predicted ? (
+        <p
+          data-testid="unit-description"
+          className="m-0 -mt-1 mb-2 italic text-brass [overflow-wrap:anywhere]"
+          data-predicted="true"
+          title={description.tooltip}
+        >
+          {description.text}
+        </p>
+      ) : (
+        <p
+          data-testid="unit-description"
+          className="m-0 -mt-1 mb-2 italic text-ink-soft [overflow-wrap:anywhere]"
+        >
+          {description.text}
+        </p>
+      )}
 
       {mergedFrom === null ? null : (
         <p

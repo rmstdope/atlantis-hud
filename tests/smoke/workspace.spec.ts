@@ -5316,7 +5316,13 @@ test("a road and the route over it keep their proportion to the hex at every zoo
 test("orders change the units table to show the coming month", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
+
+  // A unit's description, as its report line printed it, sits under the faction line - here a
+  // foreign unit's, whose line wraps before it (ah-q418s). The player's unit has none, so none.
+  await selectUnit(page, "2184");
+  await expect(page.getByTestId("unit-description")).toHaveText("DECLARE 8 ALLY");
   await selectUnit(page, OWN_UNIT);
+  await expect(page.getByTestId("unit-description")).toHaveCount(0);
 
   const row = page.getByTestId(`unit-row-${OWN_UNIT}`);
   await expect(row).toContainText("Seven of Eight");
@@ -5333,6 +5339,16 @@ test("orders change the units table to show the coming month", async ({ page }) 
   const flags = page.getByTestId("panel-unit").locator('[data-predicted="true"]');
   await expect(flags).toContainText("behind");
   await expect(flags).not.toContainText("avoiding");
+
+  // DESCRIBE UNIT gives the unit a description it did not have: the coming month's text, styled
+  // as predicted, with the report's - none - on hover. With no text it clears nothing it had.
+  await fillOrders(page, 'DESCRIBE UNIT "Banner bearer"');
+  const description = page.getByTestId("unit-description");
+  await expect(description).toHaveText("Banner bearer");
+  await expect(description).toHaveAttribute("data-predicted", "true");
+  await expect(description).toHaveAttribute("title", "was: —");
+  await fillOrders(page, "DESCRIBE UNIT");
+  await expect(description).toHaveCount(0);
 
   // A move dims the row into a departure that names where the unit ends the month, and the
   // destination hex's table gains the arriving row.

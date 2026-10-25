@@ -10,7 +10,7 @@
 export type FieldChange = { 
 /**
  * The `ReportUnit` field, in its wire spelling: `name`, `onGuard`, `flags`, `items`, `skills`,
- * `men`, `structureId`, `movement`.
+ * `men`, `description`, `structureId`, `movement`.
  */
 field: string, original: string, 
 /**

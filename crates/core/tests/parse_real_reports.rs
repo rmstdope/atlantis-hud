@@ -752,3 +752,25 @@ fn the_large_turn_reads_its_one_gate_word_for_word() {
         .collect();
     assert_eq!(gated, vec![("1:36,4", "There is a Gate here (Gate 987).")]);
 }
+
+/// Unit 2184's line wraps across two physical lines and ends `giant turtle [TURT]; DECLARE 8
+/// ALLY.`: its description survives the unwrap and the cut (ah-q418s).
+#[test]
+fn turn_71_keeps_a_foreign_units_description() {
+    let parsed = parse_regions(TURN_71);
+    let unit = parsed
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit_id == "2184")
+        .expect("unit 2184 is in turn 71");
+    assert_eq!(unit.description.as_deref(), Some("DECLARE 8 ALLY"));
+    assert_eq!(unit.items.len(), 3, "orc, pick, giant turtle");
+    let seven = parsed
+        .regions
+        .iter()
+        .flat_map(|region| region.units.iter())
+        .find(|unit| unit.unit_id == "18642")
+        .expect("unit 18642 is in turn 71");
+    assert_eq!(seven.description, None);
+}

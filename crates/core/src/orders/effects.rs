@@ -69,7 +69,7 @@ pub enum UnitPreviewStatus {
 #[cfg_attr(test, derive(ts_rs::TS), ts(export))]
 pub struct FieldChange {
     /// The `ReportUnit` field, in its wire spelling: `name`, `onGuard`, `flags`, `items`, `skills`,
-    /// `men`, `structureId`, `movement`.
+    /// `men`, `description`, `structureId`, `movement`.
     pub field: String,
     pub original: String,
     /// The order this change is attributed to, rendered as the game spells it - `ENTER 12`,
@@ -2365,7 +2365,26 @@ pub(crate) fn formed_unit(
         structure_id: parent.structure_id.clone(),
         // A unit the orders form is written by this application, not read from a report.
         read: crate::report::model::UnitRead::Complete,
+        // `parseorders.cpp` `ProcessFormOrder` takes a fresh `Unit` from `GetNewUnit`, whose
+        // constructor leaves `describe` unset: the former's description is not copied.
+        description: None,
     }
+}
+
+/// What `Unit::SetDescribe` keeps of a `DESCRIBE UNIT` token (`unit.cpp`): its `getlegal()`
+/// characters (`astring.cpp`, `islegal`), trimmed, or no description at all when there is no
+/// token or nothing but spaces survives the filter.
+fn engine_description(token: Option<&str>) -> Option<String> {
+    const LEGAL_PUNCTUATION: &str = "![],. {}@#$%^&*-_+=;:<>?/~'\\`";
+    let kept: String = token?
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || LEGAL_PUNCTUATION.contains(*c))
+        .collect();
+    // `getlegal` keeps spaces at either end, and the report prints them, but the parser trims
+    // them off (`report::unit::split_description`): trimmed here too, the preview says what the
+    // next report will read as.
+    let kept = kept.trim();
+    (!kept.is_empty()).then(|| kept.to_string())
 }
 
 /// The far side of a movement order, as the arriving row needs it.
@@ -2721,6 +2740,11 @@ impl WorkingUnit {
             "men",
             self.unit.men != original.men,
             original.men.to_string(),
+        );
+        change(
+            "description",
+            self.unit.description != original.description,
+            original.description.clone().unwrap_or_default(),
         );
         if self.unit.structure_id != original.structure_id {
             changes.push(FieldChange {
@@ -3454,6 +3478,8 @@ impl Working {
 
         if command.is("name") {
             self.rename(active, arguments);
+        } else if command.is("describe") {
+            self.describe(active, arguments);
         } else if let Some(change) = flag {
             let unit = &mut self.units[active].unit;
             crate::report::flags::apply(&mut unit.flags, change);
@@ -3544,6 +3570,23 @@ impl Working {
             .collect::<Vec<_>>()
             .join(" ")
             .replace('_', " ");
+    }
+
+    /// `DESCRIBE UNIT [text]`: the unit's description as the engine will store it (ah-q418s).
+    ///
+    /// `parseorders.cpp` `ProcessDescribeOrder` hands `Unit::SetDescribe` the **one** token after
+    /// `UNIT` (`astring.cpp` `AString::gettoken`: a quoted string, or text up to the next space),
+    /// or none, which clears it (rules/describe: "If no description is given, the description will
+    /// be cleared out"). The other forms describe the object the unit is in, not the unit.
+    fn describe(&mut self, active: usize, arguments: &[super::lexer::Token]) {
+        let Some((what, text)) = arguments.split_first() else {
+            return;
+        };
+        if !what.is("unit") {
+            return;
+        }
+        self.units[active].unit.description =
+            engine_description(text.first().map(|token| token.text.as_str()));
     }
 
     /// Our own row for a unit id standing in one region - a reported unit by number, or one this
@@ -5778,6 +5821,106 @@ mod tests {
                 .iter()
                 .any(|unit| unit.unit.unit_id == "901"),
             "the bystander got no orders and must not appear"
+        );
+    }
+
+    /// `report()` with the walker described as `Old hand` - the line ends `; Old hand.`, where the
+    /// engine prints a description (`unit.cpp`, `Unit::WriteReport`).
+    fn described_preview(orders: &str) -> OrdersPreviewResponse {
+        let report = report().replace(
+            "3 swords [SWOR]. Weight: 10. Capacity: 0/0/15/0.",
+            "3 swords [SWOR]. Weight: 10. Capacity: 0/0/15/0; Old hand.",
+        );
+        preview_orders_for_remembered_report(
+            &mut ReportCache::new(),
+            RULESET,
+            &report,
+            "[]",
+            orders,
+        )
+        .expect("the ruleset loads")
+    }
+
+    /// `parseorders.cpp` `ProcessDescribeOrder`: `DESCRIBE UNIT` hands one token to
+    /// `Unit::SetDescribe`, which keeps it; the change carries the report's text (ah-q418s).
+    #[test]
+    fn describe_unit_changes_a_description() {
+        let response = described_preview("unit 900\nDESCRIBE UNIT \"Banner bearer\"\n");
+        let unit = only_unit(&response);
+        assert_eq!(unit.unit.description.as_deref(), Some("Banner bearer"));
+        assert_eq!(change(unit, "description").original, "Old hand");
+    }
+
+    #[test]
+    fn describe_unit_gives_a_description_to_a_unit_without_one() {
+        let response = preview("unit 900\nDESCRIBE UNIT \"Outrider\"\n");
+        let unit = only_unit(&response);
+        assert_eq!(unit.unit.description.as_deref(), Some("Outrider"));
+        assert_eq!(change(unit, "description").original, "");
+    }
+
+    /// rules/describe: "If no description is given, the description will be cleared out."
+    #[test]
+    fn describe_unit_with_no_text_clears_the_description() {
+        let response = described_preview("unit 900\nDESCRIBE UNIT\n");
+        let unit = only_unit(&response);
+        assert_eq!(unit.unit.description, None);
+        assert_eq!(change(unit, "description").original, "Old hand");
+    }
+
+    #[test]
+    fn clearing_a_description_the_unit_lacks_changes_nothing() {
+        let response = preview("unit 900\nDESCRIBE UNIT\n");
+        assert!(
+            response
+                .regions
+                .iter()
+                .all(|region| region.units.is_empty()),
+            "{response:?}"
+        );
+    }
+
+    /// `astring.cpp` `AString::gettoken` reads one token - a quoted string, or text up to the next
+    /// space - and `Unit::SetDescribe` keeps only its `getlegal()` characters (`islegal`): no
+    /// parenthesis, no double quote; underscores stay underscores.
+    #[test]
+    fn describe_unit_keeps_what_the_engine_keeps() {
+        for (order, kept) in [
+            ("DESCRIBE UNIT Banner bearer", Some("Banner")),
+            ("DESCRIBE UNIT \"Tall (and) proud\"", Some("Tall and proud")),
+            ("DESCRIBE UNIT Merlin's_helper", Some("Merlin's_helper")),
+            ("DESCRIBE UNIT \"()\"", None),
+            // The report prints the spaces and the parser trims them, so the next report reads
+            // back what the preview says only if the preview trims too.
+            ("DESCRIBE UNIT \" Fresh hand \"", Some("Fresh hand")),
+        ] {
+            let response = described_preview(&format!("unit 900\n{order}\n"));
+            let unit = only_unit(&response);
+            assert_eq!(unit.unit.description.as_deref(), kept, "{order}");
+        }
+    }
+
+    /// Orders are applied as they are parsed, in document order, so the last DESCRIBE wins.
+    #[test]
+    fn the_last_describe_unit_wins() {
+        let response = described_preview("unit 900\nDESCRIBE UNIT First\nDESCRIBE UNIT Second\n");
+        assert_eq!(
+            only_unit(&response).unit.description.as_deref(),
+            Some("Second")
+        );
+    }
+
+    /// rules/describe: the other four forms describe "the object you are currently in".
+    #[test]
+    fn describe_object_leaves_the_units_description_alone() {
+        let response = described_preview("unit 900\nDESCRIBE SHIP \"Fast\"\n");
+        assert!(
+            response
+                .regions
+                .iter()
+                .flat_map(|region| region.units.iter())
+                .all(|unit| unit.unit.description.as_deref() == Some("Old hand")),
+            "{response:?}"
         );
     }
 

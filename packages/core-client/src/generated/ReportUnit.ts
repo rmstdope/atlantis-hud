@@ -56,4 +56,9 @@ structureId: string | null,
 /**
  * How much of this unit's line the parser read. See [`UnitRead`].
  */
-read: UnitRead, };
+read: UnitRead, 
+/**
+ * The unit's description, verbatim, as its line printed it after `; ` (set in game with
+ * `DESCRIBE UNIT`, `rules/describe`). Absent when the line carries none (ah-q418s).
+ */
+description?: string, };

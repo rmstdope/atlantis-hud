@@ -364,6 +364,12 @@ fn unit_line(unit: &ReportUnit) -> String {
     if let Some(spell) = &unit.combat_spell {
         head.push_str(&format!(" Combat spell: {} [{}].", spell.name, spell.tag));
     }
+    // Last of all, after `; ` and before the line's closing full stop, where the engine prints it
+    // (`unit.cpp`, `Unit::WriteReport`) and where the parser looks for it (ah-q418s).
+    if let Some(description) = &unit.description {
+        head.pop();
+        head.push_str(&format!("; {description}."));
+    }
 
     head
 }
@@ -632,6 +638,47 @@ mod tests {
             })
             .contains("Combat spell"),
             "a unit with no spell writes no section at all"
+        );
+    }
+
+    /// The description goes last, after `; ` and before the closing full stop, where the engine
+    /// prints it (`unit.cpp`, `Unit::WriteReport`), so a reparse reads it back whole (ah-q418s).
+    #[test]
+    fn writes_a_units_description_so_a_reparse_reads_it_back() {
+        let unit = ReportUnit {
+            unit_id: "7954".to_string(),
+            name: "Pyromancer".to_string(),
+            own: true,
+            skills: vec![Skill {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string(),
+                level: 3,
+                points: 180,
+            }],
+            combat_spell: Some(CombatSpell {
+                name: "fire".to_string(),
+                tag: "FIRE".to_string(),
+            }),
+            description: Some("Burns; things [often].".to_string()),
+            ..ReportUnit::default()
+        };
+
+        let line = unit_line(&unit);
+
+        assert!(
+            line.ends_with(" Combat spell: fire [FIRE]; Burns; things [often].."),
+            "the description goes last: {line}"
+        );
+        let read = parse_unit(&line, true, "1:7,53", None).expect("the written line parses");
+        assert_eq!(read.description, unit.description);
+        assert_eq!(read.combat_spell, unit.combat_spell);
+        assert!(
+            !unit_line(&ReportUnit {
+                description: None,
+                ..unit
+            })
+            .contains("; "),
+            "a unit with no description writes no separator"
         );
     }
 
