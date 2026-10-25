@@ -52,3 +52,32 @@ export function wrappedFocusIndex(index: number, count: number, backwards: boole
   }
   return (index + (backwards ? count - 1 : 1)) % count;
 }
+
+/**
+ * Where Show errors lands: the first stop of the F8 walk whose problem is an error (ah-koleq).
+ *
+ * `stops` is the walk's own list, already in document order, and the index counts into all of it -
+ * warnings included - so the position beside the problem buttons reads right and › / F8 carries on
+ * from there. `null` when no error sits on an order line (every one belongs to a hex), which is
+ * when Show errors opens the to-check panel's Problems tab instead.
+ */
+export function firstErrorStop(stops: readonly { problem: { severity: string } }[]): number | null {
+  const index = stops.findIndex((stop) => stop.problem.severity === "error");
+  return index === -1 ? null : index;
+}
+
+/** An export pressed while the check was still running, and what it was pressed against. */
+export type ParkedOrdersExport = { kind: OrdersExportKind; gameId: string | null; report: string };
+
+/**
+ * Whether a waiting export has lapsed: the player switched game or loaded a new report since
+ * pressing it, so it would save orders they never meant to export. A lapsed export is dropped
+ * silently - nothing saved, nothing shown.
+ */
+export function parkedExportLapsed(
+  parked: ParkedOrdersExport,
+  gameId: string | null,
+  report: string
+): boolean {
+  return parked.gameId !== gameId || parked.report !== report;
+}

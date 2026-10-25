@@ -205,7 +205,13 @@ import { SendOrdersDialog } from "./SendOrdersDialog";
 import { NewAgeFetchDialog } from "./NewAgeFetchDialog";
 import { NewAgeSendDialog } from "./NewAgeSendDialog";
 import { OrdersExportWarningDialog } from "./OrdersExportWarningDialog";
-import { ordersExportStep, type OrdersExportKind } from "./ordersExportGuard";
+import {
+  firstErrorStop,
+  ordersExportStep,
+  parkedExportLapsed,
+  type OrdersExportKind,
+  type ParkedOrdersExport
+} from "./ordersExportGuard";
 import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
 import { ownDeclarations, teachingDeclarerFor } from "../teachingPermission";
@@ -4614,9 +4620,10 @@ export function AppShell({
    *
    * An export pressed while the checker is still on the latest typing is parked in
    * `pendingOrdersExport` until that check finishes, so the count asked about is always the count
-   * of the orders being saved. Nothing here persists: the question is asked every time.
+   * of the orders being saved - unless the player switched game or loaded a new report meanwhile,
+   * when it is dropped. Nothing here persists: the question is asked every time.
    */
-  const [pendingOrdersExport, setPendingOrdersExport] = useState<OrdersExportKind | null>(null);
+  const [pendingOrdersExport, setPendingOrdersExport] = useState<ParkedOrdersExport | null>(null);
   const [ordersExportWarning, setOrdersExportWarning] = useState<{
     kind: OrdersExportKind;
     errorCount: number;
@@ -4633,7 +4640,7 @@ export function AppShell({
       const step = ordersExportStep(checked, ordersErrorCount);
       switch (step.kind) {
         case "wait":
-          setPendingOrdersExport(kind);
+          setPendingOrdersExport({ kind, gameId: openGameId, report: rawReport });
           return;
         case "save":
           deliverOrdersExport(kind);
@@ -4642,16 +4649,39 @@ export function AppShell({
           setOrdersExportWarning({ kind, errorCount: step.errorCount });
       }
     },
-    [checked, ordersErrorCount, deliverOrdersExport]
+    [checked, ordersErrorCount, deliverOrdersExport, openGameId, rawReport]
   );
 
-  // The parked export, resolved on the render its check finishes.
+  // The parked export, resolved on the render its check finishes - or dropped silently if the game
+  // or the report changed under it. Compared here rather than cleared by an effect of its own, so no
+  // ordering of effects can let a lapsed export through in the commit where both change.
   useEffect(() => {
-    if (pendingOrdersExport !== null && checked === "current") {
-      setPendingOrdersExport(null);
-      resolveOrdersExport(pendingOrdersExport);
+    if (pendingOrdersExport === null) {
+      return;
     }
-  }, [pendingOrdersExport, checked, resolveOrdersExport]);
+    if (parkedExportLapsed(pendingOrdersExport, openGameId, rawReport)) {
+      setPendingOrdersExport(null);
+      return;
+    }
+    if (checked === "current") {
+      setPendingOrdersExport(null);
+      resolveOrdersExport(pendingOrdersExport.kind);
+    }
+  }, [pendingOrdersExport, checked, resolveOrdersExport, openGameId, rawReport]);
+
+  // Show errors: the first error on an order line, landed on exactly as an F8 stop is; the to-check
+  // panel's Problems tab only when no error sits on one.
+  const showOrdersErrors = useCallback(() => {
+    setOrdersExportWarning(null);
+    const step = firstErrorStop(problemTargets);
+    if (step !== null) {
+      landOnStop(step);
+      return;
+    }
+    // The Problems tab whatever was open last, as `openTurnReportEvents` does for Events.
+    setReportTab("problems");
+    setOpenPopover("report");
+  }, [problemTargets, landOnStop]);
 
   const cancelOrdersExport = useCallback(() => {
     setOrdersExportWarning(null);
@@ -6612,12 +6642,7 @@ export function AppShell({
             deliverOrdersExport(ordersExportWarning.kind);
           }}
           onCancel={cancelOrdersExport}
-          onShowErrors={() => {
-            setOrdersExportWarning(null);
-            // The Problems tab whatever was open last, as `openTurnReportEvents` does for Events.
-            setReportTab("problems");
-            setOpenPopover("report");
-          }}
+          onShowErrors={showOrdersErrors}
         />
       )}
       {newAgeSendPhase === null || newAgeWorld === null ? null : (

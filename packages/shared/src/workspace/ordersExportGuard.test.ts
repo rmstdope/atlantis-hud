@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ordersExportStep, ordersExportWarningText, wrappedFocusIndex } from "./ordersExportGuard";
+import {
+  firstErrorStop,
+  ordersExportStep,
+  ordersExportWarningText,
+  parkedExportLapsed,
+  wrappedFocusIndex
+} from "./ordersExportGuard";
 
 describe("ordersExportStep", () => {
   it("waits while a check for the orders on screen has not finished", () => {
@@ -49,5 +55,33 @@ describe("wrappedFocusIndex", () => {
   it("starts at the first or last button when focus is on none of them", () => {
     expect(wrappedFocusIndex(-1, 3, false)).toBe(0);
     expect(wrappedFocusIndex(-1, 3, true)).toBe(2);
+  });
+});
+
+describe("firstErrorStop", () => {
+  const stop = (severity: string) => ({ problem: { severity } });
+
+  it("is the first error in walk order, counted into the whole walk so the position reads right", () => {
+    expect(firstErrorStop([stop("warning"), stop("error"), stop("error")])).toBe(1);
+    expect(firstErrorStop([stop("error"), stop("warning")])).toBe(0);
+  });
+
+  it("is null when no error sits on an order line, which sends Show errors to Problems instead", () => {
+    expect(firstErrorStop([stop("warning"), stop("warning")])).toBeNull();
+    expect(firstErrorStop([])).toBeNull();
+  });
+});
+
+describe("parkedExportLapsed", () => {
+  const parked = { kind: "plain" as const, gameId: "g1", report: "turn 3" };
+
+  it("keeps an export waiting on the same game and report", () => {
+    expect(parkedExportLapsed(parked, "g1", "turn 3")).toBe(false);
+  });
+
+  it("drops it after a switch of game or a new report", () => {
+    expect(parkedExportLapsed(parked, "g2", "turn 3")).toBe(true);
+    expect(parkedExportLapsed(parked, "g1", "turn 4")).toBe(true);
+    expect(parkedExportLapsed(parked, null, "")).toBe(true);
   });
 });

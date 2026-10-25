@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { expectOrders, fillOrders, loadReport, selectHex, selectUnit, waitForValidation } from "./gameSetup";
+import {
+  expectOrders,
+  fillOrders,
+  loadReport,
+  openOrders as openOrdersOf,
+  ordersInput,
+  selectHex,
+  selectUnit,
+  waitForValidation
+} from "./gameSetup";
 
 /**
  * Exporting orders that still carry an error warns and asks, but never refuses (ah-koleq).
@@ -12,6 +21,8 @@ import { expectOrders, fillOrders, loadReport, selectHex, selectUnit, waitForVal
 
 /** "Seven of Eight", the player's unit in Inholm at (7,53). */
 const OWN_UNIT = "18642";
+/** Another of the player's units, at (26,52). */
+const OTHER_OWN_UNIT = "13401";
 /** An unclosed quote: the one syntax error the bead was found with. */
 const ONE_ERROR = 'DESCRIBE UNIT "Outlaw of Sherwood';
 /** An unquoted description of several words is a warning, not an error (ah-vs4tp). */
@@ -100,16 +111,39 @@ test("Export anyway saves the orders as they are, from both order exports", asyn
   }
 });
 
-test("Show errors opens the to-check panel on Problems and exports nothing", async ({ page }) => {
-  await withOneError(page);
+test("Show errors goes to the first error, in another unit, and exports nothing", async ({ page }) => {
+  // The error in one unit, a warning in another: the walk has two stops, and Show errors must pass
+  // over the warning whichever comes first in the document.
+  await loadReport(page, "Export warning smoke");
+  await openOrdersOf(page, OTHER_OWN_UNIT, "1:26,52");
+  await fillOrders(page, ONE_ERROR);
+  await openOrdersOf(page, OWN_UNIT);
+  await fillOrders(page, WARNING_ONLY);
+  await waitForValidation(page);
+  await expect(page.getByTestId("orders-status-errors")).toHaveText("0 errors");
   const download = downloadWithin(page);
 
   await pressExport(page);
   await page.getByTestId("export-warning-show-errors").click();
 
   await expect(page.getByTestId("export-warning-panel")).toHaveCount(0);
-  await expect(page.getByTestId("turn-report")).toBeVisible();
-  await expect(page.getByTestId("turn-report-tab-problems")).toHaveAttribute("aria-selected", "true");
+  // That unit's orders are open, focus is in them, and the broken order is selected.
+  await expectOrders(page, /"Outlaw of Sherwood$/mu);
+  await expect(ordersInput(page)).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => window.getSelection()?.toString() ?? ""))
+    .not.toBe("");
+  expect(ONE_ERROR).toContain(await page.evaluate(() => window.getSelection()?.toString() ?? ""));
+  // The walk stands on that stop among all the problems, warnings included (the report's own
+  // advisory findings among them), so F8 carries on from there to the next one.
+  const walk = page.getByTestId("walk-position");
+  await expect(walk).toHaveAttribute("data-position", /^\d+\/\d+$/u);
+  const [at, of] = (await walk.getAttribute("data-position"))!.split("/").map(Number);
+  expect(of).toBeGreaterThan(1);
+  await page.keyboard.press("F8");
+  await expect(walk).toHaveAttribute("data-position", `${(at % of) + 1}/${of}`);
+  // Not the to-check panel: that is only for errors no order line carries.
+  await expect(page.getByTestId("turn-report")).not.toBeVisible();
   expect(await download).toBe("none");
 });
 
