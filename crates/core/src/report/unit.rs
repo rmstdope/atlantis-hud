@@ -756,7 +756,11 @@ mod tests {
                  Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30); {written}."
             );
             let unit = parse_unit(&line, true, "1:1,1", None).expect("unit should parse");
-            assert_eq!(unit.description.as_deref(), Some(kept), "written {written:?}");
+            assert_eq!(
+                unit.description.as_deref(),
+                Some(kept),
+                "written {written:?}"
+            );
         }
     }
 
@@ -779,8 +783,8 @@ mod tests {
              Skills: stealth [STEA] 2 (90).",
             "- Odd; name (77), Borg; TNG (95), behind, 5 orcs [ORC].",
         ] {
-            let unit = parse_unit(line, line.starts_with('*'), "1:1,1", None)
-                .expect("unit should parse");
+            let unit =
+                parse_unit(line, line.starts_with('*'), "1:1,1", None).expect("unit should parse");
             assert_eq!(unit.description, None, "{line}");
         }
     }
