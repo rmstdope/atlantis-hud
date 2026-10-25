@@ -5,7 +5,8 @@ import { unitDescriptionLine } from "./unitDescription";
 /** Only what the rule reads of a preview: the unit as the orders leave it, and the changes. */
 const previewOf = (description: string | undefined, original: string) => ({
   unit: aReportUnit({ description }),
-  changes: [{ field: "description", original }]
+  changes: [{ field: "description", original }],
+  formed: false
 });
 
 describe("the description line of the Unit panel (ah-q418s)", () => {
@@ -22,7 +23,7 @@ describe("the description line of the Unit panel (ah-q418s)", () => {
 
   it("keeps the report's text under a preview that does not change it", () => {
     const unit = aReportUnit({ description: "Old hand" });
-    const preview = { unit, changes: [{ field: "name", original: "Walker" }] };
+    const preview = { unit, changes: [{ field: "name", original: "Walker" }], formed: false };
     expect(unitDescriptionLine(unit, preview)).toEqual({ text: "Old hand", predicted: false });
   });
 
@@ -44,5 +45,18 @@ describe("the description line of the Unit panel (ah-q418s)", () => {
     expect(
       unitDescriptionLine(aReportUnit({ description: "Old hand" }), previewOf(undefined, "Old hand"))
     ).toEqual({ text: "no description", predicted: true, tooltip: "was: Old hand" });
+  });
+
+  it("is predicted for a unit this month's FORM creates, which no report described", () => {
+    // A formed unit has no report original, so the core records no change for it: its whole
+    // description is the orders' own, and the report had none.
+    const unit = aReportUnit({ unitId: "new-1", description: "Scout" });
+    expect(unitDescriptionLine(unit, { unit, changes: [], formed: true })).toEqual({
+      text: "Scout",
+      predicted: true,
+      tooltip: "was: —"
+    });
+    const bare = aReportUnit({ unitId: "new-1" });
+    expect(unitDescriptionLine(bare, { unit: bare, changes: [], formed: true })).toBeNull();
   });
 });

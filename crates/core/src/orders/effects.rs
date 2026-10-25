@@ -2372,15 +2372,19 @@ pub(crate) fn formed_unit(
 }
 
 /// What `Unit::SetDescribe` keeps of a `DESCRIBE UNIT` token (`unit.cpp`): its `getlegal()`
-/// characters (`astring.cpp`, `islegal`), or no description at all when there is no token or
-/// nothing but spaces survives the filter.
+/// characters (`astring.cpp`, `islegal`), trimmed, or no description at all when there is no
+/// token or nothing but spaces survives the filter.
 fn engine_description(token: Option<&str>) -> Option<String> {
     const LEGAL_PUNCTUATION: &str = "![],. {}@#$%^&*-_+=;:<>?/~'\\`";
     let kept: String = token?
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || LEGAL_PUNCTUATION.contains(*c))
         .collect();
-    (!kept.trim().is_empty()).then_some(kept)
+    // `getlegal` keeps spaces at either end, and the report prints them, but the parser trims
+    // them off (`report::unit::split_description`): trimmed here too, the preview says what the
+    // next report will read as.
+    let kept = kept.trim();
+    (!kept.is_empty()).then(|| kept.to_string())
 }
 
 /// The far side of a movement order, as the arriving row needs it.
@@ -5886,6 +5890,9 @@ mod tests {
             ("DESCRIBE UNIT \"Tall (and) proud\"", Some("Tall and proud")),
             ("DESCRIBE UNIT Merlin's_helper", Some("Merlin's_helper")),
             ("DESCRIBE UNIT \"()\"", None),
+            // The report prints the spaces and the parser trims them, so the next report reads
+            // back what the preview says only if the preview trims too.
+            ("DESCRIBE UNIT \" Fresh hand \"", Some("Fresh hand")),
         ] {
             let response = described_preview(&format!("unit 900\n{order}\n"));
             let unit = only_unit(&response);
