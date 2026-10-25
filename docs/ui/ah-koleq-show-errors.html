@@ -1,0 +1,73 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Export with errors</title><style>:root{--ground:#10151c;--panel:#171d26;--edge:#26303d;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--ok:#4fb783;--danger:#d97070;
+--a-ground:#1b212a;--a-panel:#222933;--a-raised:#2a323d;--a-edge:#46525f;--a-ink:#d4dce6;--a-ink-soft:#a8b4c2;--a-ink-dim:#99a4b2;--a-brass:#e0b25a;--a-ok:#4fb783;--a-warn:#d9a441;--a-danger:#e89494;--a-select:#5aa9de;--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 24px 64px}
+header,main{max-width:1180px;margin:0 auto}
+h1{font-size:25px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:96ch;margin-top:10px;font-size:14px}
+p.lede{color:var(--brass-bright);font-style:italic;margin-top:12px;max-width:96ch}
+h3.sec{margin:34px 0 4px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:12px;max-width:96ch}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:16px;margin-bottom:18px}
+.notes{list-style:none;font-size:12.5px;color:var(--ink-soft);display:grid;gap:4px;margin-top:12px;padding:0}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}.notes li.con::before{content:"\2212 ";color:var(--danger)}.notes li.n::before{content:"\00b7 ";color:var(--ink-dim)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+@media (max-width:900px){.split{grid-template-columns:1fr}}
+.cap{font:10.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:7px}
+/* app */
+.app{position:relative;width:100%;height:400px;overflow:hidden;border-radius:6px;border:1px solid #000;background:var(--a-ground);color:var(--a-ink);font:13px/1.35 var(--mono)}
+.app.tall{height:470px}
+.ahead{height:36px;display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:1px solid var(--a-edge);background:var(--a-panel);white-space:nowrap}
+.ahead .wm{color:var(--a-brass);letter-spacing:.06em}.ahead .soft{color:var(--a-ink-soft)}
+.chip{border:1px solid var(--a-edge);background:var(--a-raised);border-radius:4px;padding:1px 8px}
+.chip.warn{border-color:var(--a-warn);color:var(--a-warn);background:transparent}
+.ahead .right{margin-left:auto;display:flex;gap:10px}
+.btn{border:1px solid var(--a-edge);background:var(--a-raised);color:var(--a-ink);border-radius:4px;padding:3px 10px;font:inherit}
+.btn.on{border-color:var(--a-brass)}
+.btn.primary{border-color:var(--a-brass);color:var(--a-brass)}
+.btn.focus{outline:2px solid var(--a-select);outline-offset:1px}
+.mapbg{position:absolute;inset:36px 0 0 0;background:repeating-linear-gradient(60deg,#1f2731 0 22px,#1b222b 22px 44px)}
+.orders{position:absolute;right:10px;top:48px;width:300px;border:1px solid var(--a-edge);background:var(--a-panel);border-radius:6px;font-size:12px}
+.orders .h{padding:5px 8px;border-bottom:1px solid var(--a-edge);color:var(--a-ink-soft)}
+.orders pre{margin:0;padding:6px 8px;font:12px/1.5 var(--mono);color:var(--a-ink)}
+.orders .err{text-decoration:underline wavy var(--a-danger)}
+.orders .st{border-top:1px solid var(--a-edge);padding:4px 8px;display:flex;gap:10px;color:var(--a-ink-soft)}
+.danger{color:var(--a-danger)}.warn{color:var(--a-warn)}.okc{color:var(--a-ok)}.dim{color:var(--a-ink-dim)}
+.menu{position:absolute;top:40px;right:96px;width:290px;border:1px solid var(--a-edge);background:var(--a-raised);border-radius:6px;padding:4px;box-shadow:0 10px 20px #0008;z-index:5}
+.menu .it{padding:4px 8px;border-radius:4px;display:flex;justify-content:space-between}
+.menu .it.hov{background:var(--a-panel)}
+.menu .it.off{opacity:.4}
+.menu hr{border:0;border-top:1px solid var(--a-edge);margin:4px 0}
+.backdrop{position:absolute;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:9}
+.dlg{width:26rem;border:1px solid var(--a-edge);background:var(--a-raised);border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 10px 20px #000a;font-size:13px;white-space:normal}
+.dlg h2{font:inherit;color:var(--a-ink)}
+.dlg p{color:var(--a-ink-soft)}
+.dlg .row{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.dlg .row .sp{flex:1}
+.tag{font:9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#1b212a;background:var(--brass);border-radius:3px;padding:3px 5px}
+.rec{color:var(--ok);font-size:11px;letter-spacing:1.4px;text-transform:uppercase}
+.narrow{width:380px}
+</head><body><header><h1>Export with errors <span>— the agreed confirmation</span></h1><p class="lede">The player is warned how many errors there are and asked to confirm. They are never stopped from exporting.</p></header><main>
+.orders .sel{background:rgba(90,169,222,.28)}
+.orders .h{display:flex;align-items:center;gap:6px}.orders .h .sp{flex:1}
+.pos{color:var(--a-brass);font-size:11px;background:rgba(217,164,65,.14);border-radius:3px;padding:0 4px}
+.walkb{color:var(--a-ink-dim)}
+.panel{position:absolute;top:40px;left:330px;width:360px;border:1px solid var(--a-edge);background:var(--a-raised);border-radius:6px;box-shadow:0 10px 20px #0008;z-index:5;font-size:12px}
+.panel .tabs{display:flex;gap:2px;border-bottom:1px solid var(--a-edge);padding:4px 6px 0}
+.panel .tabs span{padding:3px 8px;color:var(--a-ink-soft)}.panel .tabs span.on{color:var(--a-ink);border-bottom:2px solid var(--a-brass)}
+.panel .grp{padding:6px 8px 2px;color:var(--a-ink-dim);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+.panel .row{padding:3px 8px 3px 14px;display:flex;gap:8px}.panel .row.hov{background:var(--a-panel)}
+.new{outline:1px dashed var(--a-brass);outline-offset:2px;border-radius:4px}
+.flow{display:flex;gap:10px;align-items:center;color:var(--ink-dim);font-size:12px;margin:6px 0 10px}
+</style></head><body>
+<header><h1>Show errors <span>— Option A: go to the first error</span></h1><p class="lede">Show errors closes the dialog and jumps straight to the first error in the orders — the same landing as the ‹ › problem buttons and F8 — with the broken order selected in its unit's orders.</p></header><main>
+<h3 class="sec">1 · After pressing Show errors <span class="tag">chosen</span></h3>
+<p>The first error in document order may be in another unit: the map selects that unit's hex and its orders open, exactly as an F8 step does. The position beside the problem buttons counts all problems, warnings too, so the player can keep stepping with › or F8.</p>
+<div class="card"><div class="cap">landed on the first error — Outlaw (412), line 2 selected</div><div class="app tall"><div class="ahead"><span class="wm">ATLANTIS HUD</span><span class="soft">Arcanum · Merchant Guild (27) · Turn 14</span><span class="chip warn">⚠ 4 to check ▾</span><span class="right"><span class="btn">Import</span><span class="btn">Export ▾</span><span class="btn">Send</span><span class="btn">⚙</span></span></div><div class="mapbg"></div><div class="orders" style="width:340px"><div class="h">Orders — Outlaw (412)<span class="sp"></span><span class="walkb">‹</span><span class="pos">1/5</span><span class="walkb">›</span></div><pre>@work
+<span class="err sel">describe unit "Outlaw of Sherwood</span>
+study COMB</pre><div class="st"><span class="danger">1 error</span><span class="okc">0 warnings</span><span class="dim">2 elsewhere</span></div></div></div>
+<ul class="notes"><li>One press from the warning to the broken line, with the text cursor in it — fix it and export again.</li><li>The same landing players already know from the problem buttons and F8; nothing new to learn.</li><li class="con">Shows one error at a time; the rest are reached with › / F8 (which also stop on warnings).</li><li class="n">Keyboard: focus lands in the orders text on the selected order.</li></ul></div>
+<h3 class="sec">2 · Rare: no error can be placed on an order line</h3>
+<p>A few errors belong to a hex rather than to an order line (for example an unknown building), and the problem buttons cannot land on them. When <b>none</b> of the errors can be landed on, Show errors falls back to the original agreement: the "to check" chip's panel opens on its Problems tab, where those hex errors are listed.</p>
+<div class="card"><div class="cap">fallback — only hex-level errors</div><div class="app"><div class="ahead"><span class="wm">ATLANTIS HUD</span><span class="soft">Arcanum · Merchant Guild (27) · Turn 14</span><span class="chip warn">⚠ 4 to check ▾</span><span class="right"><span class="btn">Import</span><span class="btn focus">Export ▾</span><span class="btn">Send</span><span class="btn">⚙</span></span></div><div class="mapbg"></div><div class="panel"><div class="tabs"><span class="on">Problems</span><span>Events</span></div><div class="grp">Hex 1:7,53</div><div class="row hov"><span class="danger">✖</span>Unknown object 4 — Outlaw (412)</div></div></div></div>
+</main></body></html>
