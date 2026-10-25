@@ -508,6 +508,24 @@ pub struct UnreadableLine {
 mod tests {
     use super::*;
 
+    /// The TypeScript says `description?: string`, so a unit without one carries no key at all -
+    /// never `null` - and a payload stored before the field existed still reads (ah-q418s).
+    #[test]
+    fn a_unit_without_a_description_writes_no_description_key() {
+        let bare = serde_json::to_value(ReportUnit::default()).expect("serialises");
+        assert!(bare.get("description").is_none(), "{bare}");
+
+        let described = ReportUnit {
+            description: Some("Merlin's helper".to_string()),
+            ..ReportUnit::default()
+        };
+        let value = serde_json::to_value(&described).expect("serialises");
+        assert_eq!(value["description"], "Merlin's helper");
+
+        let read: ReportUnit = serde_json::from_value(bare).expect("reads back");
+        assert_eq!(read.description, None);
+    }
+
     #[test]
     fn item_amount_new_leaves_needs_unset() {
         let item = ItemAmount::new(57, "grain", "GRAI");
