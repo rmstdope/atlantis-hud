@@ -101,6 +101,8 @@ R34 The player silences an advisory check everywhere at once, or hides the probl
     Proven by: tests/smoke/workspace.spec.ts "a silenced advisory check disappears everywhere at once"
 R56 The player mends a marked problem with its quick fix from the editor, in one step that undo takes back.
     Proven by: tests/smoke/orders-editor.spec.ts "Add quotes mends a description the game would cut to its first word"
+R57 Exporting orders that still have errors asks first; the player can cancel, go to the first error, or export anyway.
+    Proven by: tests/smoke/orders-export-warning.spec.ts "exporting orders with an error asks first, and Cancel exports nothing"
 
 ## Movement
 
