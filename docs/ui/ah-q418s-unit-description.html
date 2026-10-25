@@ -1,0 +1,77 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chosen — a unit’s description in the Unit panel</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--select:#4a9fd8;--warn:#d9a441;--danger:#d97070;}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,main{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+header p,.why{color:var(--ink-soft);max-width:90ch;margin-top:10px;font-size:14px}
+.row{display:flex;gap:24px;flex-wrap:wrap;margin-top:22px}
+.cap{color:var(--ink-dim);font:11px/1.4 'Helvetica Neue',Arial,sans-serif;letter-spacing:.6px;text-transform:uppercase;margin-bottom:6px}
+.pane{width:330px;background:var(--panel);border:1px solid var(--edge);border-radius:5px;font:12px/1.45 'Helvetica Neue',Arial,sans-serif}
+.pane.narrow{width:240px}
+.tb{display:flex;gap:8px;align-items:baseline;padding:5px 10px;border-bottom:1px solid var(--edge);background:var(--raised)}
+.tb .t{color:var(--brass);font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase}
+.tb .h{color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.body{padding:8px 10px}
+.fac{margin-bottom:8px}.fac b{font-weight:500}.own{color:var(--brass)}.foe{color:var(--danger)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:1px 12px}
+dt{color:var(--ink-dim)} dd{color:var(--ink)}
+.sec{margin-top:9px}
+.sec h5{color:var(--brass);font-size:10px;letter-spacing:1.2px;text-transform:uppercase;font-weight:normal;margin-bottom:3px;border-top:1px solid var(--edge-soft);padding-top:6px}
+.soft{color:var(--ink-soft)} .dim{color:var(--ink-dim)}
+.desc{color:var(--ink-soft);font-style:italic;margin:-3px 0 8px;overflow-wrap:anywhere}
+.desc.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:2px}
+.more{color:var(--select);font-size:11.5px;margin-bottom:8px;display:inline-block}
+.pred{color:var(--brass);font-style:italic}
+dd.wrap{overflow-wrap:anywhere}
+.note{color:var(--ink-dim);font-size:13px;margin-top:6px;max-width:330px}
+</style></head><body><header><h1><span>ah-q418s</span> · Chosen — a unit’s description in the Unit panel</h1><p>The description exactly as the report printed it, no quotation marks. Everything we agreed: under the faction line, in full, an order’s new text in italic brass.</p></header><main><div class="row"><div><p class="cap">Your unit</p><div class="pane"><div class="tb"><span class="t">Unit</span><span class="h">— Aldric (1234)</span></div><div class="body">
+<p class="fac"><b class="own">Henrik’s Riders (42)</b> · your faction</p><p class="desc">Merlin’s helper</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div></div><div><p class="cap">A foreign unit</p><div class="pane"><div class="tb"><span class="t">Unit</span><span class="h">— Gatekeeper (5177)</span></div><div class="body">
+<p class="fac"><b class="foe">Iron Pact (17)</b> · not your faction</p><p class="desc">Toll keeper of the eastern ford. Pay or turn back.</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div></div><div><p class="cap">No description</p><div class="pane"><div class="tb"><span class="t">Unit</span><span class="h">— Scout (1240)</span></div><div class="body">
+<p class="fac"><b class="own">Henrik’s Riders (42)</b> · your faction</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div><p class=note>Nothing extra.</p></div><div><p class="cap">Long, narrow panel — in full</p><div class="pane narrow"><div class="tb"><span class="t">Unit</span><span class="h">— Aldric (1234)</span></div><div class="body">
+<p class="fac"><b class="own">Henrik’s Riders (42)</b> · your faction</p><p class="desc">Second of the Riders, sworn at the Moot of the Grey Hills in the year of the long winter; carries the banner, keeps the ledgers, answers to the Marshal alone and to no one else on this side of the river, whatever the heralds say.</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div></div><div><p class="cap">An order changing it</p><div class="pane"><div class="tb"><span class="t">Unit</span><span class="h">— Aldric (1234)</span></div><div class="body">
+<p class="fac"><b class="own">Henrik’s Riders (42)</b> · your faction</p><p class="desc pred">Banner bearer</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div><p class=note>Hover: “was: Merlin’s helper”.</p></div><div><p class="cap">An order giving one to a unit that had none</p><div class="pane"><div class="tb"><span class="t">Unit</span><span class="h">— Scout (1240)</span></div><div class="body">
+<p class="fac"><b class="own">Henrik’s Riders (42)</b> · your faction</p><p class="desc pred">Outrider</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div><p class=note>Hover: “was: —” (as changed flags do today).</p></div><div><p class="cap">An order clearing it</p><div class="pane"><div class="tb"><span class="t">Unit</span><span class="h">— Aldric (1234)</span></div><div class="body">
+<p class="fac"><b class="own">Henrik’s Riders (42)</b> · your faction</p><p class="desc pred">no description</p>
+<dl><dt>Hex</dt><dd>(12,8)</dd><dt>Men</dt><dd>1 leader</dd><dt>Weight</dt><dd>10</dd></dl>
+
+<div class="sec"><h5>Movement</h5><p class="soft">Walking · 15 / 15</p></div>
+<div class="sec"><h5>Flags</h5><p class="soft">behind · avoid</p></div>
+<div class="sec"><h5>Skills <span class="dim">2</span></h5><p class="soft">Combat 2 · Riding 1</p></div>
+</div></div><p class=note>Hover: “was: Merlin’s helper”.</p></div></div></main></body></html>
