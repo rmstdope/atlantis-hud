@@ -1,5 +1,6 @@
 import type { Diagnostic } from "@codemirror/lint";
-import type { OrderDiagnostic } from "@atlantis/core-client";
+import type { OrderDiagnostic, OrderFix } from "@atlantis/core-client";
+import type { EditorView } from "@codemirror/view";
 
 /**
  * A unit's diagnostics as CodeMirror wants them: absolute offsets into the text on screen.
@@ -65,10 +66,50 @@ export function toEditorDiagnostics(
       // A pooled shortfall is reported against the hex, so this line's own mark can only point at
       // where the numbers are. CodeMirror renders an action as a button in the tooltip, which is
       // reachable from the keyboard where an anchor in the message would not be (`ah-eurs`).
-      actions: shortfallActions(problem, pointers)
+      actions: fixActions(problem, from) ?? shortfallActions(problem, pointers)
     });
   }
   return result;
+}
+
+/**
+ * A diagnostic's quick fix as its one button (`ah-vs4tp`). CodeMirror maps a mark through every
+ * edit and hands the action the mark's current start, so the fix is placed relative to that rather
+ * than to a line number an edit above may have moved; `column` is the mark's column when it was
+ * placed.
+ */
+function fixActions(problem: OrderDiagnostic, column: number): Diagnostic["actions"] {
+  const fix = problem.fix;
+  if (fix === undefined) {
+    return undefined;
+  }
+  return [
+    {
+      name: fix.label,
+      apply: (view, from) => applyOrderFix(view, from + fix.columnStart - column, fix)
+    }
+  ];
+}
+
+/**
+ * Applies `fix` with its range starting at `at`, as one change and so one undo step - but only
+ * while that range still holds what the fix was written for. Validation is debounced, so a press
+ * can arrive after the line changed; a fix that no longer fits does nothing, and the next
+ * validation places a fresh one.
+ */
+export function applyOrderFix(
+  view: Pick<EditorView, "state" | "dispatch">,
+  at: number,
+  fix: OrderFix
+): void {
+  const to = at + fix.columnEnd - fix.columnStart;
+  if (at < 0 || to > view.state.doc.length) {
+    return;
+  }
+  if (view.state.sliceDoc(at, to) !== fix.replaced) {
+    return;
+  }
+  view.dispatch(view.state.update({ changes: { from: at, to, insert: fix.insert } }));
 }
 
 /** Where a pooled-shortfall pointer's button can take the player; see `toEditorDiagnostics`. */
