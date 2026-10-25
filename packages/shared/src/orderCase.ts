@@ -118,12 +118,19 @@ export function bareWords(
 const FREE_TEXT_ORDERS: ReadonlySet<string> = new Set(["DESCRIBE", "NAME"]);
 
 /**
- * Where a line's free text begins: just past the target of a `DESCRIBE` or `NAME`, or `null` for
- * any other line. Everything from there on is prose the player typed, and never re-cased (ah-dh3x4).
+ * Where a line's unquoted free text begins: just past the target of a `DESCRIBE` or `NAME`, or
+ * `null` for any other line. Everything from there on is prose the player typed, and never
+ * re-cased (ah-dh3x4).
+ *
+ * A description or name that opens with a quote - the form both rules pages use in their examples,
+ * `DESCRIBE UNIT "Merlin's helper"` - is that quoted run and nothing more. `bareWords` already
+ * skips it, so `null` is the answer there too, and a word typed after the closing quote is cased as
+ * it always was.
  */
 function freeTextStart(line: string): number | null {
-  const match = /^(\s*@?)([A-Za-z]+)\s+\S+/u.exec(line);
+  const match = /^(\s*@?)([A-Za-z]+)\s+\S+\s*/u.exec(line);
   if (!match || !FREE_TEXT_ORDERS.has((match[2] as string).toUpperCase())) return null;
+  if (line[match[0].length] === '"') return null;
   return match[0].length;
 }
 

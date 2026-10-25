@@ -275,6 +275,12 @@ describe("free-text arguments of DESCRIBE and NAME", () => {
     });
   });
 
+  it("takes a quoted name as the whole free text, so a word after the closing quote is cased", () => {
+    expect(uppercaseLine('name unit "Seven of Nine" move', prose, "origins")).toBe(
+      'NAME UNIT "Seven of Nine" MOVE'
+    );
+  });
+
   it("keeps casing keywords on other orders", () => {
     expect(uppercaseLine("move of", prose, "origins")).toBe("MOVE OF");
   });
