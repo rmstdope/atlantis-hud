@@ -132,6 +132,8 @@ test("an export pressed while the check is still running waits for it", async ({
 
   // No wait for the check: the press lands while it is still debounced or in flight.
   await fillOrders(page, ONE_ERROR);
+  // The premise: the press lands while the check is still pending, or the test proves nothing.
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-validation", "pending");
   await pressExport(page);
   await expect(page.getByRole("dialog", { name: "Export orders with 1 error?", exact: true })).toBeVisible();
   await page.getByTestId("export-warning-cancel").click();
@@ -139,6 +141,7 @@ test("an export pressed while the check is still running waits for it", async ({
   // And the other way: an error fixed just before the press is not counted.
   await fillOrders(page, "@work");
   await expectOrders(page, /^@work\n?$/u);
+  await expect(page.getByTestId("turn-report-chip")).toHaveAttribute("data-validation", "pending");
   const downloading = page.waitForEvent("download");
   await pressExport(page);
   await downloading;
@@ -160,6 +163,11 @@ test("Tab stays among the dialog's three buttons", async ({ page }) => {
   await page.keyboard.press("Tab");
   await expect(cancel).toBeFocused();
   await page.keyboard.press("Shift+Tab");
+  await expect(showErrors).toBeFocused();
+
+  // A click on the words does not let the next Tab walk out behind the darkened area.
+  await page.getByTestId("export-warning-panel").locator("p").click();
+  await page.keyboard.press("Tab");
   await expect(showErrors).toBeFocused();
 });
 

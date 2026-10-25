@@ -59,8 +59,10 @@ export function OrdersExportWarningView({
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        // Focusable, so a click on the words keeps focus inside and the next Tab is still ours.
+        tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="flex w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
+        className="flex outline-none w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <h2 className="text-ink">{title}</h2>
         <p className="text-ink-soft">{body}</p>

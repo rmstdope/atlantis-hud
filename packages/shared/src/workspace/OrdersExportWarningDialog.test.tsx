@@ -10,6 +10,8 @@ describe("the export warning dialog", () => {
     const markup = renderToStaticMarkup(<OrdersExportWarningView errorCount={3} {...callbacks()} />);
     expect(markup).toContain('role="dialog"');
     expect(markup).toContain('aria-modal="true"');
+    // A click on the words keeps focus in the dialog, so Tab still wraps among its buttons.
+    expect(markup).toContain('tabindex="-1"');
     expect(markup).toContain('aria-label="Export orders with 3 errors?"');
     expect(markup).toContain(">Export orders with 3 errors?</h2>");
     expect(markup).toContain(
