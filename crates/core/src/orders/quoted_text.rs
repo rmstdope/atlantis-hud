@@ -439,6 +439,29 @@ mod tests {
     }
 
     #[test]
+    fn the_worlds_own_semicolon_rule_decides_where_an_unclosed_text_ends() {
+        let line = "DESCRIBE UNIT \"Outlaw of Sher;wood";
+        let span = lex_line(line, None)
+            .unterminated_quote
+            .expect("the line has an unclosed quote");
+
+        // New Origins keeps a semicolon in the middle of a word, so the text runs to the line end.
+        let origins = unclosed(line, span, None).expect("re-worded");
+        assert_eq!(origins.fix.insert, "\"Outlaw of Sher;wood\"");
+
+        // Trident's `rules/orders`: a semicolon ends whatever word it lands in.
+        let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
+            .expect("committed ruleset");
+        let found = unclosed(line, span, Some(&trident)).expect("re-worded");
+        assert_eq!(found.fix.replaced, "\"Outlaw of Sher");
+        assert_eq!(found.fix.insert, "\"Outlaw of Sher\"");
+        assert_eq!(
+            (found.column_start, found.column_end),
+            columns_of(line, "\"Outlaw of Sher")
+        );
+    }
+
+    #[test]
     fn an_unclosed_quote_anywhere_else_keeps_todays_words() {
         // The game keeps "Outlaw" here, so neither consequence sentence would be true.
         assert_eq!(unclosed_on("DESCRIBE UNIT Outlaw \"of Sherwood"), None);

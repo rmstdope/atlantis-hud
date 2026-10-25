@@ -1648,6 +1648,9 @@ test("Close the quote mends a description the game would clear", async ({ page }
   await expect(page.getByTestId("orders-diagnostics")).toContainText(
     "the closing double quote is missing, so the description will be cleared"
   );
+  // Still the error it always was, counted in the error total.
+  await expect(page.getByTestId("orders-status")).toContainText(/^1 error(?!s)/);
+
   await marked.hover();
   const button = page.locator(".cm-tooltip-lint .cm-diagnosticAction");
   await expect(button).toHaveText("Close the quote");
@@ -1656,4 +1659,8 @@ test("Close the quote mends a description the game would clear", async ({ page }
 
   await expectOrders(page, /^DESCRIBE UNIT "Outlaw of Sherwood" ; my note\n?$/);
   await expect(page.getByTestId("orders-input").locator(".cm-lintRange-error")).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expectOrders(page, /^DESCRIBE UNIT "Outlaw of Sherwood ; my note\n?$/);
 });
