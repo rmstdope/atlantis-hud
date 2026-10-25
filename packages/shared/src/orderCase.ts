@@ -109,13 +109,38 @@ export function bareWords(
   return words;
 }
 
+/**
+ * The orders whose last argument is the player's own free text: `rules/describe` gives
+ * `DESCRIBE UNIT [new description]` and `rules/name` gives `NAME UNIT [new name]`, each a target
+ * keyword followed by prose. Every other open argument in the grammar (`crates/core/src/orders/
+ * grammar.rs`, `Arg::Tail`) is still order syntax - a spell's arguments, a faction's types.
+ */
+const FREE_TEXT_ORDERS: ReadonlySet<string> = new Set(["DESCRIBE", "NAME"]);
+
+/**
+ * Where a line's free text begins: just past the target of a `DESCRIBE` or `NAME`, or `null` for
+ * any other line. Everything from there on is prose the player typed, and never re-cased (ah-dh3x4).
+ */
+function freeTextStart(line: string): number | null {
+  const match = /^(\s*@?)([A-Za-z]+)\s+\S+/u.exec(line);
+  if (!match || !FREE_TEXT_ORDERS.has((match[2] as string).toUpperCase())) return null;
+  return match[0].length;
+}
+
+/** The bare words of a line the editor may re-case: `bareWords`, less any free text. */
+function caseableWords(line: string, syntax: OrderCommentSyntax): BareWord[] {
+  const words = bareWords(line, syntax);
+  const start = freeTextStart(line);
+  return start === null ? words : words.filter((word) => word.from < start);
+}
+
 /** One line with every keyword uppercased. Returns the line unchanged when nothing matches. */
 export function uppercaseLine(
   line: string,
   vocabulary: Vocabulary,
   syntax: OrderCommentSyntax
 ): string {
-  const matches = bareWords(line, syntax).filter((word) => isKeyword(word.text, vocabulary));
+  const matches = caseableWords(line, syntax).filter((word) => isKeyword(word.text, vocabulary));
   let result = line;
   for (let i = matches.length - 1; i >= 0; i -= 1) {
     const word = matches[i] as BareWord;
@@ -148,7 +173,7 @@ export function keywordCaseChanges(
   const changes: CaseChange[] = [];
   let lineStart = 0;
   for (const line of text.split("\n")) {
-    for (const word of bareWords(line, syntax)) {
+    for (const word of caseableWords(line, syntax)) {
       if (!isKeyword(word.text, vocabulary)) continue;
       const insert = word.text.toUpperCase();
       if (insert === word.text) continue;
@@ -190,7 +215,7 @@ export function keywordJustFinished(
   // `at` may sit past the word's own end when the player typed trailing punctuation - `move n,`
   // then a space - which `bareWords` strips from the span. Anything between the two must be that
   // punctuation and nothing else, so `move n, ` still shouts and `move n x ` does not.
-  const word = bareWords(line, syntax).find(
+  const word = caseableWords(line, syntax).find(
     (candidate) =>
       candidate.to <= at && /^[,.]*$/.test(line.slice(candidate.to, at))
   );

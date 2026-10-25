@@ -223,3 +223,53 @@ describe("the selected world's comment boundary", () => {
     expect(uppercaseLine("work;note", vocabulary, "origins")).toBe("work;note");
   });
 });
+
+// ah-dh3x4: `rules/describe` and `rules/name` end in free text - "[new description]", "[new
+// name]" - which is the player's prose, not order syntax, so a word in it that happens to be a
+// keyword ("of", from an item name like "potion of healing") must keep the case it was typed in.
+describe("free-text arguments of DESCRIBE and NAME", () => {
+  const prose = buildVocabulary(["DESCRIBE", "NAME", "UNIT", "OBJECT", "OF", "MOVE"]);
+
+  it("leaves an unquoted description exactly as typed", () => {
+    expect(uppercaseLine("describe unit Outlaw of Sherwood", prose, "origins")).toBe(
+      "DESCRIBE UNIT Outlaw of Sherwood"
+    );
+    expect(uppercaseLine("DESCRIBE UNIT Outlaw of Sherwood", prose, "origins")).toBe(
+      "DESCRIBE UNIT Outlaw of Sherwood"
+    );
+  });
+
+  it("leaves an unquoted name exactly as typed, behind a repeat prefix too", () => {
+    expect(uppercaseKeywords("@name object Move of the Day", prose, "origins")).toBe(
+      "@NAME OBJECT Move of the Day"
+    );
+  });
+
+  it("does not shout a keyword just finished inside a description", () => {
+    const line = "DESCRIBE UNIT Outlaw of";
+    expect(keywordJustFinished(line, line.length, prose, "origins")).toBeNull();
+  });
+
+  it("offers no case change inside a description", () => {
+    expect(
+      keywordCaseChanges("move\nDESCRIBE UNIT Outlaw of Sherwood", prose, null, "origins")
+    ).toEqual([{ from: 0, to: 4, insert: "MOVE" }]);
+  });
+
+  it("still cases the order and its target while they are typed", () => {
+    expect(keywordJustFinished("describe", 8, prose, "origins")).toEqual({
+      from: 0,
+      to: 8,
+      upper: "DESCRIBE",
+    });
+    expect(keywordJustFinished("DESCRIBE unit", 13, prose, "origins")).toEqual({
+      from: 9,
+      to: 13,
+      upper: "UNIT",
+    });
+  });
+
+  it("keeps casing keywords on other orders", () => {
+    expect(uppercaseLine("move of", prose, "origins")).toBe("MOVE OF");
+  });
+});
