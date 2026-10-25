@@ -210,22 +210,30 @@ test("Tab stays among the dialog's three buttons", async ({ page }) => {
 test("on a narrow window Cancel and Export anyway wrap together, still on the right", async ({ page }) => {
   await withOneError(page);
   await pressExport(page);
-  await page.setViewportSize({ width: 340, height: 700 });
+  // Narrow enough that the three buttons cannot share a line in any shell's fonts - at 340px they
+  // did on CI's Linux, and nothing wrapped - and wide enough for the pair to share one.
+  const width = 300;
+  await page.setViewportSize({ width, height: 700 });
 
-  const panel = await page.getByTestId("export-warning-panel").boundingBox();
-  const show = await page.getByTestId("export-warning-show-errors").boundingBox();
-  const cancel = await page.getByTestId("export-warning-cancel").boundingBox();
-  const exportAnyway = await page.getByTestId("export-warning-export").boundingBox();
-  expect(panel && show && cancel && exportAnyway).toBeTruthy();
-
-  // Inside the window, with a margin on each side.
-  expect(panel!.x).toBeGreaterThan(0);
-  expect(panel!.x + panel!.width).toBeLessThan(340);
-  // Show errors on the first line; the pair together on a lower one.
-  expect(cancel!.y).toBeGreaterThan(show!.y + show!.height - 1);
-  expect(Math.abs(cancel!.y - exportAnyway!.y)).toBeLessThan(1);
-  // Still on the right: Export anyway ends at the panel's padding.
-  expect(panel!.x + panel!.width - (exportAnyway!.x + exportAnyway!.width)).toBeLessThan(20);
+  const box = (id: string) => page.getByTestId(id).boundingBox();
+  // Polled: the layout settles after the resize.
+  await expect(async () => {
+    const [panel, show, cancel, exportAnyway] = await Promise.all([
+      box("export-warning-panel"),
+      box("export-warning-show-errors"),
+      box("export-warning-cancel"),
+      box("export-warning-export")
+    ]);
+    expect(panel && show && cancel && exportAnyway).toBeTruthy();
+    // Inside the window, with a margin on each side.
+    expect(panel!.x).toBeGreaterThan(0);
+    expect(panel!.x + panel!.width).toBeLessThan(width);
+    // Show errors on the first line; the pair together on a lower one.
+    expect(cancel!.y).toBeGreaterThan(show!.y + show!.height - 1);
+    expect(Math.abs(cancel!.y - exportAnyway!.y)).toBeLessThan(1);
+    // Still on the right: Export anyway ends at the panel's padding.
+    expect(panel!.x + panel!.width - (exportAnyway!.x + exportAnyway!.width)).toBeLessThan(20);
+  }).toPass({ timeout: 5_000 });
 });
 
 test("the palette's turn actions do nothing over the warning", async ({ page }) => {
