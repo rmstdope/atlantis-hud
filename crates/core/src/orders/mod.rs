@@ -35,6 +35,7 @@ pub mod parser;
 /// Core-internal: the one `rules/sequenceofevents` phase order both `semantics` and `silver` read.
 mod phases;
 pub mod production_overview;
+pub(crate) mod quoted_text;
 pub mod request;
 pub mod semantics;
 pub mod shelter;
@@ -238,6 +239,7 @@ fn into_diagnostic(finding: semantics::Finding) -> OrderDiagnostic {
         formed: finding.formed,
         counted_in: finding.counted_in,
         problems_in: finding.problems_in,
+        fix: finding.fix,
         severity: OrderDiagnosticSeverity::Warning,
     }
 }
@@ -450,5 +452,101 @@ mod tests {
             semantics::CheckOptions::default(),
         );
         assert_eq!(only_code(&result, "unknown-object").region_id, None);
+    }
+
+    #[test]
+    fn a_name_cut_short_is_a_warning_on_its_hex_with_a_fix_and_has_a_switch() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, region) = first_unit_and_hex(&base);
+        let source = format!("unit {id}\nDESCRIBE UNIT Outlaw of Sherwood\n");
+
+        let on = validate_turn(
+            &source,
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        let diagnostic = only_code(&on, "name-cut-short");
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Warning);
+        assert_eq!(diagnostic.line_start, Some(2));
+        assert_eq!(diagnostic.region_id.as_deref(), Some(region.as_str()));
+        let fix = diagnostic.fix.as_ref().expect("Add quotes");
+        assert_eq!(fix.label, "Add quotes");
+        assert_eq!(fix.insert, "\"Outlaw of Sherwood\"");
+
+        let off = validate_turn(
+            &source,
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions {
+                disabled: [semantics::codes::NAME_CUT_SHORT.as_str().to_string()].into(),
+                ..semantics::CheckOptions::default()
+            },
+        );
+        assert!(
+            off.diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != "name-cut-short"),
+            "{:?}",
+            off.diagnostics
+        );
+    }
+
+    #[test]
+    fn an_unclosed_quote_on_a_describe_is_still_an_error_with_the_switch_off() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, _) = first_unit_and_hex(&base);
+        let off = validate_turn(
+            &format!("unit {id}\nDESCRIBE UNIT \"Outlaw of Sherwood\n"),
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions {
+                disabled: [semantics::codes::NAME_CUT_SHORT.as_str().to_string()].into(),
+                ..semantics::CheckOptions::default()
+            },
+        );
+        let diagnostic = only_code(&off, "unterminated-quote");
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+        assert_eq!(
+            diagnostic.message,
+            "the closing double quote is missing, so the description will be cleared"
+        );
+        assert!(diagnostic.fix.is_some());
+    }
+
+    #[test]
+    fn a_fix_is_sent_camel_cased_and_left_out_when_there_is_none() {
+        let (base, ruleset) = build_object_fixture();
+        let (id, _) = first_unit_and_hex(&base);
+        let result = validate_turn(
+            &format!("unit {id}\nNAME UNIT Robin Hood\nAVOID 7\n"),
+            Some(&ruleset),
+            Some(&base),
+            semantics::CheckOptions::default(),
+        );
+        let json = serde_json::to_value(&result.diagnostics).expect("serialises");
+        let cut = json
+            .as_array()
+            .expect("a list")
+            .iter()
+            .find(|diagnostic| diagnostic["code"] == "name-cut-short")
+            .expect("the warning");
+        assert_eq!(
+            cut["fix"],
+            serde_json::json!({
+                "label": "Add quotes",
+                "columnStart": 10,
+                "columnEnd": 20,
+                "replaced": "Robin Hood",
+                "insert": "\"Robin Hood\"",
+            })
+        );
+        let other = json
+            .as_array()
+            .expect("a list")
+            .iter()
+            .find(|diagnostic| diagnostic["code"] != "name-cut-short")
+            .expect("another diagnostic");
+        assert!(other.get("fix").is_none(), "{other}");
     }
 }

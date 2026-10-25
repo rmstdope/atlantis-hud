@@ -754,6 +754,12 @@ export const WARNING_GROUPS: readonly {
         title: "Pillaging without the men",
         description:
           "A PILLAGE order where the units ordering it have too few combat ready men between them to take the money."
+      },
+      {
+        code: "name-cut-short",
+        title: "Names and descriptions the game will cut short",
+        description:
+          "A NAME or DESCRIBE order of several words without double quotes, so the game keeps only the first."
       }
     ]
   },

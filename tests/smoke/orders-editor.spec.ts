@@ -1602,3 +1602,65 @@ test("a landing-hex jump made with the Region panel folded never flashes later",
   await expect(page.getByTestId("region-problems")).toContainText("arriving by sea");
   await expect(page.getByTestId("region-problems").locator("[data-flash]")).toHaveCount(0);
 });
+
+/**
+ * `ah-vs4tp`: an unquoted DESCRIBE of several words is warned, only the dropped words underlined,
+ * and the hover box's "Add quotes" - reached from the keyboard like any of its buttons - rewrites
+ * the line in one undoable step.
+ */
+test("Add quotes mends a description the game would cut to its first word", async ({ page }) => {
+  await openEditor(page);
+  await fillOrders(page, "DESCRIBE UNIT Outlaw of Sherwood");
+
+  const marked = page.getByTestId("orders-input").locator(".cm-lintRange-warning", {
+    hasText: "of Sherwood"
+  });
+  await expect(marked).toHaveCount(1);
+  await expect(page.getByTestId("orders-diagnostics")).toContainText(
+    "only “Outlaw” will be kept: a description of more than one word needs double quotes"
+  );
+  await marked.hover();
+  const button = page.locator(".cm-tooltip-lint .cm-diagnosticAction");
+  await expect(button).toHaveText("Add quotes");
+  await button.focus();
+  await button.press("Enter");
+
+  await expectOrders(page, /^DESCRIBE UNIT "Outlaw of Sherwood"\n?$/);
+  await expect(page.getByTestId("orders-input").locator(".cm-lintRange-warning")).toHaveCount(0);
+  await expect(page.getByTestId("orders-diagnostics")).not.toContainText("will be kept");
+
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expectOrders(page, /^DESCRIBE UNIT Outlaw of Sherwood\n?$/);
+});
+
+/**
+ * `ah-vs4tp`: a DESCRIBE whose quote is never closed stays the blocking error it always was, says
+ * what the game will do, and "Close the quote" closes it before the player's comment.
+ */
+test("Close the quote mends a description the game would clear", async ({ page }) => {
+  await openEditor(page);
+  await fillOrders(page, 'DESCRIBE UNIT "Outlaw of Sherwood ; my note');
+
+  const marked = page.getByTestId("orders-input").locator(".cm-lintRange-error", {
+    hasText: "Outlaw of Sherwood"
+  });
+  await expect(marked).toHaveCount(1);
+  await expect(page.getByTestId("orders-diagnostics")).toContainText(
+    "the closing double quote is missing, so the description will be cleared"
+  );
+  // Still the error it always was, counted in the error total.
+  await expect(page.getByTestId("orders-status")).toContainText(/^1 error(?!s)/);
+
+  await marked.hover();
+  const button = page.locator(".cm-tooltip-lint .cm-diagnosticAction");
+  await expect(button).toHaveText("Close the quote");
+  await button.focus();
+  await button.press("Enter");
+
+  await expectOrders(page, /^DESCRIBE UNIT "Outlaw of Sherwood" ; my note\n?$/);
+  await expect(page.getByTestId("orders-input").locator(".cm-lintRange-error")).toHaveCount(0);
+  await expect(page.getByTestId("orders-status")).toContainText("0 errors");
+
+  await ordersInput(page).press("ControlOrMeta+z");
+  await expectOrders(page, /^DESCRIBE UNIT "Outlaw of Sherwood ; my note\n?$/);
+});

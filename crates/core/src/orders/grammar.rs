@@ -126,7 +126,7 @@ const SPOILS: &[&str] = &["NONE", "WALK", "RIDE", "FLY", "SWIM", "SAIL", "ALL"];
 /// `rules/describe`: "The last four are completely identical and serve to modify the description of
 /// the object you are currently in." OBJECT is taken as the canonical one of those four, so that
 /// DESCRIBE and NAME name the same word.
-const DESCRIBABLE: &[Keyword] = &[
+pub(crate) const DESCRIBABLE: &[Keyword] = &[
     Keyword::plain("UNIT"),
     Keyword::plain("OBJECT"),
     Keyword::alias("BUILDING", "OBJECT"),
@@ -139,7 +139,7 @@ const DESCRIBABLE: &[Keyword] = &[
 /// `rules/name` documents four. The engine also accepts BUILDING, SHIP and STRUCTURE for OBJECT and
 /// VILLAGE and TOWN for CITY; the rules page is silent about them, so they are here on a navigator
 /// report (2026-09-03) rather than on a lookup.
-const NAMEABLE: &[Keyword] = &[
+pub(crate) const NAMEABLE: &[Keyword] = &[
     Keyword::plain("UNIT"),
     Keyword::plain("FACTION"),
     Keyword::plain("OBJECT"),

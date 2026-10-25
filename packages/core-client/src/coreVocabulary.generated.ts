@@ -62,7 +62,8 @@ export const ADVISORY_CHECK_CODES = [
   "study-gains-nothing",
   "leaders-and-men-mixed",
   "discard-from-shared-stock",
-  "work-earns-nothing"
+  "work-earns-nothing",
+  "name-cut-short"
 ] as const;
 
 export type AdvisoryCheckCode = (typeof ADVISORY_CHECK_CODES)[number];

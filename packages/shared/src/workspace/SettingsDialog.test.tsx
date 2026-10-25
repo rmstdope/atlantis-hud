@@ -92,6 +92,23 @@ describe("the warnings tab's coverage of the core's codes", () => {
   });
 
   /**
+   * `ah-vs4tp`. The words are the navigator's, from the bead's agreed experience; the place - last
+   * in Orders, beside the other checks on what an order's text says - is the plan's.
+   */
+  it("offers the name-cut-short advisory last in the Orders group", () => {
+    const orders = WARNING_GROUPS.find((group) => group.heading === "Orders");
+    if (!orders) {
+      throw new Error("the Orders group is missing");
+    }
+    expect(orders.entries[orders.entries.length - 1]).toEqual({
+      code: "name-cut-short",
+      title: "Names and descriptions the game will cut short",
+      description:
+        "A NAME or DESCRIBE order of several words without double quotes, so the game keeps only the first."
+    });
+  });
+
+  /**
    * `ah-7ale.2.2.1`. The words, the heading and the position are the navigator's decision, recorded
    * in the family's agreed experience: a Transport group of its own, last, because no existing
    * group fits a shipment the game will not carry.

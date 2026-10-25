@@ -1,4 +1,8 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
+import { history, undo } from "@codemirror/commands";
+import type { Diagnostic } from "@codemirror/lint";
+import { EditorState, type Transaction } from "@codemirror/state";
+import type { EditorView } from "@codemirror/view";
 import { describe, expect, it, vi } from "vitest";
 import { toEditorDiagnostics } from "./orderLint";
 
@@ -200,5 +204,76 @@ describe("the pooled-shortfall pointer's action", () => {
   it("offers no button on a landing-hex marker with nowhere to send it, never the wrong hex", () => {
     const result = toEditorDiagnostics("STUDY FISH", [landing], { here: vi.fn() });
     expect(result[0].actions).toBeUndefined();
+  });
+});
+
+describe("a diagnostic's quick fix", () => {
+  const line = "DESCRIBE UNIT Outlaw of Sherwood";
+  const addQuotes = problem({
+    code: "name-cut-short",
+    severity: "warning",
+    message: "only “Outlaw” will be kept: a description of more than one word needs double quotes",
+    columnStart: 21,
+    columnEnd: 32,
+    fix: {
+      label: "Add quotes",
+      columnStart: 14,
+      columnEnd: 32,
+      replaced: "Outlaw of Sherwood",
+      insert: '"Outlaw of Sherwood"'
+    }
+  });
+
+  /** An editor as an action sees one: a state, and a way to change it. */
+  function editor(doc: string) {
+    const target = {
+      state: EditorState.create({ doc, extensions: [history()] }),
+      dispatch(transaction: Transaction) {
+        target.state = transaction.state;
+      }
+    };
+    return target;
+  }
+
+  /** Presses the diagnostic's one button, as CodeMirror would: with its current span. */
+  function press(target: ReturnType<typeof editor>, diagnostic: Diagnostic) {
+    const [action] = diagnostic.actions ?? [];
+    action.apply(target as unknown as EditorView, diagnostic.from, diagnostic.to);
+  }
+
+  it("is offered as one button named by its label", () => {
+    const [diagnostic] = toEditorDiagnostics(line, [addQuotes]);
+    expect(diagnostic.actions?.map((action) => action.name)).toEqual(["Add quotes"]);
+  });
+
+  it("rewrites the line, and one undo restores it", () => {
+    const target = editor(`unit 12\n${line}`);
+    const [diagnostic] = toEditorDiagnostics(target.state.doc.toString(), [
+      { ...addQuotes, lineStart: 2, lineEnd: 2 }
+    ]);
+    press(target, diagnostic);
+    expect(target.state.doc.toString()).toBe('unit 12\nDESCRIBE UNIT "Outlaw of Sherwood"');
+    undo(target);
+    expect(target.state.doc.toString()).toBe(`unit 12\n${line}`);
+  });
+
+  it("leaves a line alone that changed since the fix was made", () => {
+    const [diagnostic] = toEditorDiagnostics(line, [addQuotes]);
+    const target = editor("DESCRIBE UNIT Outlaw of Nottingham");
+    press(target, diagnostic);
+    expect(target.state.doc.toString()).toBe("DESCRIBE UNIT Outlaw of Nottingham");
+  });
+
+  it("is placed from where the mark now stands, so an edit earlier in the text does not move it", () => {
+    const [diagnostic] = toEditorDiagnostics(line, [addQuotes]);
+    const target = editor(`; a note\n${line}`);
+    // CodeMirror maps a mark through every edit; the press arrives with the mark's new place.
+    press(target, { ...diagnostic, from: diagnostic.from + 9, to: diagnostic.to + 9 });
+    expect(target.state.doc.toString()).toBe('; a note\nDESCRIBE UNIT "Outlaw of Sherwood"');
+  });
+
+  it("gives a diagnostic without one no button", () => {
+    const [diagnostic] = toEditorDiagnostics("WROK", [problem({})]);
+    expect(diagnostic.actions).toBeUndefined();
   });
 });

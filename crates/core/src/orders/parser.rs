@@ -73,15 +73,30 @@ impl Document {
     /// `#atlantis`/`#end` pair, a unit needing a number, and every order's argument shape.
     fn visit(&mut self, event: Event<'_>, ruleset: Option<&Ruleset>) {
         match event {
-            Event::Broken { number, span, .. } => {
-                // The rest of the line cannot be read, so nothing else about it is worth saying.
-                self.error(
-                    number,
-                    span.0,
-                    span.1,
-                    "unterminated-quote",
-                    "a quotation mark is never closed".to_string(),
-                );
+            Event::Broken { number, text, span } => {
+                // The rest of the line cannot be read, so nothing else about it is worth saying -
+                // except, on a NAME or DESCRIBE whose text the quote opens, what the game will do
+                // with it, and the one press that mends it (`ah-vs4tp`).
+                if let Some(unclosed) = super::quoted_text::unclosed(text, span, ruleset) {
+                    self.error(
+                        number,
+                        unclosed.column_start,
+                        unclosed.column_end,
+                        "unterminated-quote",
+                        unclosed.message,
+                    );
+                    if let Some(error) = self.diagnostics.last_mut() {
+                        error.fix = Some(unclosed.fix);
+                    }
+                } else {
+                    self.error(
+                        number,
+                        span.0,
+                        span.1,
+                        "unterminated-quote",
+                        "a quotation mark is never closed".to_string(),
+                    );
+                }
             }
             Event::Directive(line) => {
                 self.read_directive(line.number, line.command, line.arguments)
@@ -280,6 +295,7 @@ impl Document {
             formed: None,
             counted_in: None,
             problems_in: None,
+            fix: None,
             severity: OrderDiagnosticSeverity::Error,
         });
     }
@@ -374,6 +390,7 @@ impl Document {
             formed: None,
             counted_in: None,
             problems_in: None,
+            fix: None,
             severity,
         });
     }
@@ -876,6 +893,35 @@ mod tests {
     fn a_quote_that_is_never_closed_is_an_error() {
         let diagnostic = only("NAME UNIT \"Merlin");
         assert_eq!(diagnostic.code, "unterminated-quote");
+    }
+
+    #[test]
+    fn an_unterminated_quote_on_a_describe_says_the_description_will_be_cleared() {
+        let diagnostic = only("DESCRIBE UNIT \"Outlaw of Sherwood ; my note");
+        assert_eq!(diagnostic.code, "unterminated-quote");
+        assert_eq!(diagnostic.severity, OrderDiagnosticSeverity::Error);
+        assert_eq!(
+            diagnostic.message,
+            "the closing double quote is missing, so the description will be cleared"
+        );
+        assert_eq!(
+            (diagnostic.column_start, diagnostic.column_end),
+            (Some(14), Some(33))
+        );
+        let fix = diagnostic.fix.expect("Close the quote");
+        assert_eq!(fix.label, "Close the quote");
+        assert_eq!(fix.insert, "\"Outlaw of Sherwood\"");
+    }
+
+    #[test]
+    fn an_unterminated_quote_on_any_other_order_keeps_its_words_and_has_no_fix() {
+        let diagnostic = only("CLAIM \"12");
+        assert_eq!(diagnostic.message, "a quotation mark is never closed");
+        assert_eq!(
+            (diagnostic.column_start, diagnostic.column_end),
+            (Some(6), Some(9))
+        );
+        assert_eq!(diagnostic.fix, None);
     }
 
     // --- blocks ---------------------------------------------------------------------------
