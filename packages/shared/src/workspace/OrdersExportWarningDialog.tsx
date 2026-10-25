@@ -42,6 +42,9 @@ export function OrdersExportWarningView({
       data-testid="export-warning-backdrop"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) {
+          // Without this the press's own mousedown moves focus to the page once the dialog is gone,
+          // taking it straight back off the Export button `onCancel` returned it to.
+          event.preventDefault();
           onCancel();
         }
       }}

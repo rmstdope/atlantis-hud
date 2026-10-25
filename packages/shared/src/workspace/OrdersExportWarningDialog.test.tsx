@@ -51,12 +51,16 @@ describe("the export warning dialog", () => {
     const onPointerDown = findByTestId(view, "export-warning-backdrop").props.onPointerDown as (event: {
       target: unknown;
       currentTarget: unknown;
+      preventDefault: () => void;
     }) => void;
     const backdrop = {};
-    onPointerDown({ target: {}, currentTarget: backdrop });
+    onPointerDown({ target: {}, currentTarget: backdrop, preventDefault: () => {} });
     expect(calls.onCancel).not.toHaveBeenCalled();
-    onPointerDown({ target: backdrop, currentTarget: backdrop });
+    const preventDefault = vi.fn();
+    onPointerDown({ target: backdrop, currentTarget: backdrop, preventDefault });
     expect(calls.onCancel).toHaveBeenCalledOnce();
+    // Or the press's own mousedown takes focus back off the Export button.
+    expect(preventDefault).toHaveBeenCalledOnce();
     expect(calls.onExport).not.toHaveBeenCalled();
   });
 });
