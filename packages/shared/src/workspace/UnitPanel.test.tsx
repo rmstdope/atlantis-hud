@@ -568,3 +568,93 @@ describe("a unit filled in from a merged report (ah-oqxn)", () => {
     expect(draw()).not.toContain("merged-band");
   });
 });
+
+describe("a unit's description in the unit pane (ah-q418s)", () => {
+  const changedTo = (description: string | undefined, original: string): UnitPreview => ({
+    unit: aReportUnit({ description }),
+    status: "present",
+    changes: [{ field: "description", original }],
+    arrivingFrom: null,
+    departingTo: null,
+    aboard: null,
+    uncounted: [],
+    takenUnshown: [],
+    produced: [],
+    built: [],
+    created: [],
+    refusedCasts: [],
+    transportSent: [],
+    transportReceived: [],
+    transportTargetIssues: [],
+    shipmentUnmeasured: false,
+    itemChanges: [],
+    dissolvesInto: null,
+    formed: false,
+    dissolving: false,
+    skillMerges: [],
+    reportedSkills: [],
+    recruitsUnmerged: false,
+    menOfUnknownSkill: [],
+    study: null
+  });
+
+  it("sits under the faction line and above the figures, in soft italic, without quotes", () => {
+    const html = draw({ unit: aReportUnit({ description: "Merlin's helper" }) });
+    const line = html.match(/<p data-testid="unit-description"[^>]*>([^<]*)<\/p>/);
+
+    expect(line?.[1]).toBe("Merlin&#x27;s helper");
+    expect(line?.[0]).toContain("italic");
+    expect(line?.[0]).toContain("text-ink-soft");
+    expect(line?.[0]).not.toContain("data-predicted");
+    expect(html.indexOf("your faction")).toBeLessThan(html.indexOf('data-testid="unit-description"'));
+    expect(html.indexOf('data-testid="unit-description"')).toBeLessThan(html.indexOf("<dl"));
+  });
+
+  it("is shown the same for a foreign unit", () => {
+    const html = draw({ unit: aReportUnit({ own: false, description: "Toll keeper" }) });
+
+    expect(html).toContain("not your faction");
+    expect(html).toMatch(/<p data-testid="unit-description" class="[^"]*text-ink-soft[^"]*">Toll keeper<\/p>/);
+  });
+
+  it("draws nothing for a unit without one", () => {
+    expect(draw({ unit: aReportUnit() })).not.toContain("unit-description");
+  });
+
+  it("wraps a long description in full rather than cutting it", () => {
+    const long = "Second of the Riders, ".repeat(20).trim();
+    const html = draw({ unit: aReportUnit({ description: long }) });
+
+    expect(html).toContain(long);
+    expect(html).toContain("[overflow-wrap:anywhere]");
+    expect(html).not.toContain("line-clamp");
+  });
+
+  it("shows the description an order leaves in italic brass, with the report's on hover", () => {
+    const html = draw({
+      unit: aReportUnit({ description: "Old hand" }),
+      preview: changedTo("Banner bearer", "Old hand")
+    });
+    const line = html.match(/<p data-testid="unit-description"[^>]*>([^<]*)<\/p>/);
+
+    expect(line?.[1]).toBe("Banner bearer");
+    expect(line?.[0]).toContain("text-brass");
+    expect(line?.[0]).toContain('data-predicted="true"');
+    expect(line?.[0]).toContain('title="was: Old hand"');
+  });
+
+  it("appears with was: — for a unit the report showed without one", () => {
+    const html = draw({ unit: aReportUnit(), preview: changedTo("Outrider", "") });
+
+    expect(html).toMatch(/title="was: —"[^>]*>Outrider<\/p>/);
+  });
+
+  it("says no description when an order clears it", () => {
+    const html = draw({
+      unit: aReportUnit({ description: "Old hand" }),
+      preview: changedTo(undefined, "Old hand")
+    });
+
+    expect(html).toMatch(/title="was: Old hand"[^>]*>no description<\/p>/);
+  });
+});
