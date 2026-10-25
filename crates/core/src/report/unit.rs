@@ -74,19 +74,25 @@ fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
     (head, sections)
 }
 
-/// The unit line with the unit's description, if it has one, cut off.
+/// The unit line with the unit's description, if it has one, cut off - and the description.
 ///
 /// The engine writes a description last, as `; <description>` before the line's closing full stop
 /// (`unit.cpp`, `Unit::WriteReport`), so left in place it lands inside whichever section ended the
 /// line and the last skill, study entry or item fails to read (ah-2mus1). A description, like a
 /// unit or faction name, may contain `;`, `,`, `[`, `.` or `:`, but never a parenthesis
 /// (`astring.cpp`, `islegal`), while every unit line carries at least its own `(id)`. So the
-/// description is whatever follows the first `; ` after the line's last `)`.
-fn without_description(body: &str) -> &str {
+/// description is whatever follows the first `; ` after the line's last `)`, less the one closing
+/// full stop the engine adds after it (ah-q418s).
+fn split_description(body: &str) -> (&str, Option<String>) {
     let after_last_paren = body.rfind(')').map_or(0, |at| at + 1);
     match body[after_last_paren..].find("; ") {
-        Some(at) => &body[..after_last_paren + at],
-        None => body,
+        Some(at) => {
+            let cut = after_last_paren + at;
+            let text = body[cut + 2..].trim_end();
+            let text = text.strip_suffix('.').unwrap_or(text).trim();
+            (&body[..cut], (!text.is_empty()).then(|| text.to_string()))
+        }
+        None => (body, None),
     }
 }
 
@@ -121,7 +127,8 @@ pub fn parse_unit(
         .or_else(|| body.strip_prefix("- "))
         .unwrap_or(body);
 
-    let (head, sections) = split_sections(without_description(without_marker));
+    let (without_description, description) = split_description(without_marker);
+    let (head, sections) = split_sections(without_description);
     let (name, unit_id, mut rest) = split_leading_id(&head)?;
 
     let mut bad_field = false;
@@ -146,6 +153,7 @@ pub fn parse_unit(
         movement: None,
         structure_id: structure_id.map(str::to_string),
         read: UnitRead::Complete,
+        description,
     };
 
     // Fields are walked one at a time rather than split up front, because a faction name may
@@ -731,6 +739,50 @@ mod tests {
             unit.combat_spell.map(|spell| spell.tag),
             Some("FIRE".to_string())
         );
+    }
+
+    /// `unit.cpp`, `Unit::WriteReport`: `"; " + describe`, then the line's closing `"."` - so the
+    /// description is everything between, verbatim, its own full stop included (ah-q418s).
+    #[test]
+    fn a_units_description_is_kept_verbatim() {
+        for (written, kept) in [
+            ("Who goes there?", "Who goes there?"),
+            ("Who goes there.", "Who goes there."),
+            ("Stop; who, goes [there]", "Stop; who, goes [there]"),
+            ("Merlin's_helper", "Merlin's_helper"),
+        ] {
+            let line = format!(
+                "* Scout (1234), Borg (73), behind, leader [LEAD]. Weight: 10. \
+                 Capacity: 0/0/15/0. Skills: combat [COMB] 1 (30); {written}."
+            );
+            let unit = parse_unit(&line, true, "1:1,1", None).expect("unit should parse");
+            assert_eq!(unit.description.as_deref(), Some(kept), "written {written:?}");
+        }
+    }
+
+    #[test]
+    fn a_foreign_units_description_is_kept() {
+        let unit = parse_unit(
+            "- Odd; name (77), Borg; TNG (95), behind, 5 orcs [ORC]; In need [of] help?.",
+            false,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        assert_eq!(unit.description.as_deref(), Some("In need [of] help?"));
+    }
+
+    #[test]
+    fn a_unit_without_a_description_has_none() {
+        for line in [
+            "* Scout (1234), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: stealth [STEA] 2 (90).",
+            "- Odd; name (77), Borg; TNG (95), behind, 5 orcs [ORC].",
+        ] {
+            let unit = parse_unit(line, line.starts_with('*'), "1:1,1", None)
+                .expect("unit should parse");
+            assert_eq!(unit.description, None, "{line}");
+        }
     }
 
     /// A foreign unit shows no sections, so the description follows its items; names may carry a

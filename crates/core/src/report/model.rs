@@ -279,6 +279,15 @@ pub struct ReportUnit {
     /// How much of this unit's line the parser read. See [`UnitRead`].
     #[serde(default)]
     pub read: UnitRead,
+    /// The unit's description, verbatim, as its line printed it after `; ` (set in game with
+    /// `DESCRIBE UNIT`, `rules/describe`). Absent when the line carries none (ah-q418s).
+    //
+    // `skip_serializing_if` with `ts(optional)`, as `FieldChange::cause` does: the TypeScript says
+    // `description?: string`, a key that is absent rather than `null`, and the wire must agree.
+    // `serde(default)` reads payloads stored before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -366,6 +375,7 @@ impl Default for ReportUnit {
             movement: None,
             structure_id: None,
             read: UnitRead::Complete,
+            description: None,
         }
     }
 }

@@ -2365,6 +2365,9 @@ pub(crate) fn formed_unit(
         structure_id: parent.structure_id.clone(),
         // A unit the orders form is written by this application, not read from a report.
         read: crate::report::model::UnitRead::Complete,
+        // `parseorders.cpp` `ProcessFormOrder` takes a fresh `Unit` from `GetNewUnit`, whose
+        // constructor leaves `describe` unset: the former's description is not copied.
+        description: None,
     }
 }
 
