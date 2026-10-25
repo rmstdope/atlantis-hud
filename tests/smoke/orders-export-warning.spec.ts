@@ -112,8 +112,8 @@ test("Export anyway saves the orders as they are, from both order exports", asyn
 });
 
 test("Show errors goes to the first error, in another unit, and exports nothing", async ({ page }) => {
-  // The error in one unit, a warning in another: the walk has two stops, and Show errors must pass
-  // over the warning whichever comes first in the document.
+  // The error in one unit, warnings before it in walk order (18642's and the report's own advisory
+  // findings, asserted below): Show errors must pass over them to the error.
   await loadReport(page, "Export warning smoke");
   await openOrdersOf(page, OTHER_OWN_UNIT, "1:26,52");
   await fillOrders(page, ONE_ERROR);
@@ -139,6 +139,8 @@ test("Show errors goes to the first error, in another unit, and exports nothing"
   const walk = page.getByTestId("walk-position");
   await expect(walk).toHaveAttribute("data-position", /^\d+\/\d+$/u);
   const [at, of] = (await walk.getAttribute("data-position"))!.split("/").map(Number);
+  // The premise: warnings come before the error in walk order, so landing here skipped them.
+  expect(at).toBeGreaterThan(1);
   expect(of).toBeGreaterThan(1);
   await page.keyboard.press("F8");
   await expect(walk).toHaveAttribute("data-position", `${(at % of) + 1}/${of}`);
@@ -224,4 +226,23 @@ test("on a narrow window Cancel and Export anyway wrap together, still on the ri
   expect(Math.abs(cancel!.y - exportAnyway!.y)).toBeLessThan(1);
   // Still on the right: Export anyway ends at the panel's padding.
   expect(panel!.x + panel!.width - (exportAnyway!.x + exportAnyway!.width)).toBeLessThan(20);
+});
+
+test("the palette's turn actions do nothing over the warning", async ({ page }) => {
+  // The palette can be summoned over the dialog; importing under it would put a new turn's orders
+  // behind a count that was made for the old one.
+  await withOneError(page);
+  await pressExport(page);
+  await expect(page.getByTestId("export-warning-panel")).toBeVisible();
+
+  const chooser = page
+    .waitForEvent("filechooser", { timeout: 1_500 })
+    .then(() => "opened" as const)
+    .catch(() => "none" as const);
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("import reports");
+  await page.keyboard.press("Enter");
+
+  expect(await chooser).toBe("none");
+  await expect(page.getByTestId("export-warning-panel")).toBeVisible();
 });

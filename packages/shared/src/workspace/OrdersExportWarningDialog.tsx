@@ -8,7 +8,10 @@ type Callbacks = {
   onExport: () => void;
   /** Cancel, Escape and a press on the darkened area. Nothing is exported. */
   onCancel: () => void;
-  /** Nothing is exported; the "to check" chip's panel opens on Problems. */
+  /**
+   * Nothing is exported; the walk lands on the first error in the orders, or - when no error sits
+   * on an order line - the "to check" chip's panel opens on Problems.
+   */
   onShowErrors: () => void;
 };
 

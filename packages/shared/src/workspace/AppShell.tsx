@@ -4856,12 +4856,15 @@ export function AppShell({
   runTurnAction.current = (id) => {
     // The palette can be summoned over an open Fetch or Send window, whose backdrop covers the
     // header; the header's buttons cannot be pressed then, so the rows do nothing either. Otherwise
-    // a Fetch row would reset a running fetch to its form, and Send would stack over Fetch.
+    // a Fetch row would reset a running fetch to its form, and Send would stack over Fetch. The
+    // export warning too (ah-koleq): a report imported under it would leave its count describing
+    // orders that are no longer the ones Export anyway saves.
     if (
       fetchPhase !== null ||
       originsPhase !== null ||
       sendPhase !== null ||
-      newAgeSendPhase !== null
+      newAgeSendPhase !== null ||
+      ordersExportWarning !== null
     ) {
       return;
     }
