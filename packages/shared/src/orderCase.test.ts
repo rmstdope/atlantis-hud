@@ -239,6 +239,12 @@ describe("free-text arguments of DESCRIBE and NAME", () => {
     );
   });
 
+  it("leaves the description alone on an indented line, as inside a FORM block", () => {
+    expect(uppercaseLine("  describe unit Outlaw of Sherwood", prose, "origins")).toBe(
+      "  DESCRIBE UNIT Outlaw of Sherwood"
+    );
+  });
+
   it("leaves an unquoted name exactly as typed, behind a repeat prefix too", () => {
     expect(uppercaseKeywords("@name object Move of the Day", prose, "origins")).toBe(
       "@NAME OBJECT Move of the Day"
