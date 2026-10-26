@@ -289,6 +289,28 @@ describe("the prose-only fast path", () => {
     expect(runsEverything([".cerebro/trapsxmd"])).toBe(true);
   });
 
+  it("takes the fast path for the beads export, exact-matched (ah-05qnp)", () => {
+    // .beads/issues.jsonl is generated from the bead database and committed by the release
+    // script; only scripts/beadsExport.ts and scripts/release.ts read it, and neither runs in CI
+    // against the committed copy (beadsExport.test.ts writes its own in a temporary repository).
+    // Each export-only push to main used to cost a full run, about 37 runner-minutes.
+    expect(runsEverything([".beads/issues.jsonl"])).toBe(false);
+    expect(runsEverything([".beads/issues.jsonl", "docs/release-notes.md"])).toBe(false);
+    expect(runsNative([".beads/issues.jsonl"])).toBe(false);
+
+    // Mixed with code it still runs everything.
+    expect(runsEverything([".beads/issues.jsonl", "scripts/release.ts"])).toBe(true);
+
+    // The rest of .beads/ is read by bd and its hooks, so it is not exempt; and the match is exact.
+    expect(runsEverything([".beads/config.yaml"])).toBe(true);
+    expect(runsEverything([".beads/metadata.json"])).toBe(true);
+    expect(runsEverything([".beads/issues.jsonl.bak"])).toBe(true);
+    expect(runsEverything(["x.beads/issues.jsonl"])).toBe(true);
+    expect(runsEverything(["xbeads/issues.jsonl"])).toBe(true);
+    expect(runsEverything([".beads/sub/issues.jsonl"])).toBe(true);
+    expect(runsEverything([".beads/issuesxjsonl"])).toBe(true);
+  });
+
   it("runs everything for a diff mixing root prose with a source file", () => {
     expect(runsEverything(["README.md", "scripts/release.ts"])).toBe(true);
   });

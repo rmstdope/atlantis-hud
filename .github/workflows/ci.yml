@@ -42,6 +42,11 @@ jobs:
   # project.conf is read by scripts/runGate.ts and scripts/verificationSkill.test.ts, the cerebro
   # submodule carries the gate scripts, and a file nobody has named yet runs everything until it is.
   #
+  # One generated file joins them, exact-matched (ah-05qnp): .beads/issues.jsonl, the bead export
+  # the release script commits. Only scripts/beadsExport.ts and scripts/release.ts read it, run by
+  # people rather than CI, and beadsExport.test.ts writes its own copy in a temporary repository.
+  # The rest of .beads/ is not exempt: config.yaml, metadata.json and hooks/ are read by bd.
+  #
   # A push to main is judged the same way, on the diff from its old head to its new one.
   #
   # .github/workflows/ is the exception to that exception, and runs everything - see the gate
@@ -114,13 +119,14 @@ jobs:
           # path (a PR that only retargets the symlink lists "CLAUDE.md" itself, not its target).
           # Five .cerebro/ declarations are exempt the same exact-matched way; see the job comment
           # for why those five and no more.
+          # The beads export, .beads/issues.jsonl, is exempt exact-matched too; see the job comment.
           #
           # Anchored on the directory or the whole filename, and the dots escaped: `^docs` would let
           # `docsite/build.ts` skip the suite, an unescaped `.claude` would match `xclaude/`, and an
           # unanchored `README\.md` would let `README.md.ts` skip it too.
           if [ -z "$FILES" ] \
             || echo "$FILES" | grep -q '^\.github/workflows/' \
-            || echo "$FILES" | grep -qvE '^((docs|\.claude|\.github)/|README\.md$|CLAUDE\.md$|\.cerebro/(roster\.conf|agents\.conf|requirements\.md|test-architecture\.md|traps\.md)$)'; then
+            || echo "$FILES" | grep -qvE '^((docs|\.claude|\.github)/|README\.md$|CLAUDE\.md$|\.cerebro/(roster\.conf|agents\.conf|requirements\.md|test-architecture\.md|traps\.md)$|\.beads/issues\.jsonl$)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "code=false" >> "$GITHUB_OUTPUT"
