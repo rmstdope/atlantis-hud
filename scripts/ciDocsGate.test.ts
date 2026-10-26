@@ -306,6 +306,7 @@ describe("the prose-only fast path", () => {
     expect(runsEverything([".beads/metadata.json"])).toBe(true);
     expect(runsEverything([".beads/issues.jsonl.bak"])).toBe(true);
     expect(runsEverything(["x.beads/issues.jsonl"])).toBe(true);
+    expect(runsEverything(["xbeads/issues.jsonl"])).toBe(true);
     expect(runsEverything([".beads/sub/issues.jsonl"])).toBe(true);
     expect(runsEverything([".beads/issuesxjsonl"])).toBe(true);
   });
