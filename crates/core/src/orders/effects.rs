@@ -4468,8 +4468,9 @@ impl Working {
 
         for pending in pending {
             // The sender's month cannot pay the bill, so the game ships nothing
-            // (`rules/economy_transport`, the agreed record): no goods move and no row is written.
-            // The shortfall sentence is this case's one message (`ah-7ale.4`).
+            // (`rules/economy_transport`, the agreed record): nothing is sent or charged, and the
+            // shortfall sentence is this case's one message (`ah-7ale.4`). What the sharers lent
+            // it still ends on the sender, below (`ah-b7g4d`).
             let refused_for_fee = self
                 .refused_shipments
                 .contains(&(pending.sender, pending.line));
