@@ -437,6 +437,11 @@ describe("an imported orders file follows the units to where the report shows th
     expect(importedOrdersDocument(handWritten, [forest(["12"])], "origins")).toBe(handWritten);
   });
 
+  it("leaves a unit under a heading of the player's own that names no hex", () => {
+    const ownHeading = ['#atlantis 95 "secret"', "", ";*** my scouts ***", "", "unit 12", "work", "", "#end"].join("\n");
+    expect(importedOrdersDocument(ownHeading, [forest(["12"])], "origins")).toBe(ownHeading);
+  });
+
   it("leaves a unit under a heading for its own hex, however that heading is worded", () => {
     const reworded = WRITTEN_BEFORE_THE_MOVE.replace(
       ";*** plain (1,1) in Avon ***",

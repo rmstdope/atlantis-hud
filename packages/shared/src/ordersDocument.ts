@@ -540,7 +540,8 @@ function bannerHex(banner: string): string | null {
  * A block moves only when the banner above it names a *different hex* from `bannerOf`'s answer.
  * Left where it stands: a unit `bannerOf` cannot place (`null`); an id with more than one block; a
  * block with no banner above it at all (a file written by hand, or under `OPTION TEMPLATE OFF`,
- * names no hex, so none of it is wrong); a block under a banner for the right hex worded
+ * names no hex, so none of it is wrong), or under a `;***` line that names no hex - a player's own
+ * heading, kept with what they put under it; a block under a banner for the right hex worded
  * differently; and a unit owning a `FORM` whose section still holds a stale `unit new-<n>` block,
  * since `repairFormedUnitBlocks` finds that `FORM` by the section it shares with the stale block.
  * A unit moving to a hex the document already has a banner for joins that banner, whatever its
@@ -581,6 +582,7 @@ export function rehomeUnitBlocks(
         ({ block, from, wanted }) =>
           wanted !== null &&
           from !== null &&
+          bannerHex(from) !== null &&
           counts.get(block.unitId) === 1 &&
           bannerHex(from) !== bannerHex(wanted) &&
           !(formOwners.has(block.unitId) && staleSections.has(from))
