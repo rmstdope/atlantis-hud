@@ -702,6 +702,12 @@ pub enum ItemChangeCause {
     /// has no receiver. Silver, and the monsters the engine releases from the unit's own stock, are
     /// never recorded so (`ah-84b1`).
     LentForDiscard,
+    /// Drawn from this sharing unit for another unit's exact `TRANSPORT`/`DISTRIBUTE`, whose own
+    /// stock fell short: the engine cuts an exact amount to `Unit::GetSharedNum` and spends it with
+    /// `Unit::ConsumeShared` (../Atlantis `runorders.cpp`, `RunTransportOrders`; `rules/share`).
+    /// [`ItemChange::borrower`] is the unit whose shipment it was, and `other` the shipment's
+    /// receiver as [`ItemChangeCause::TransportedOut`] names it (`ah-iidht`).
+    LentForTransport,
     /// Collected by this unit's `TAKE FROM`.
     Took,
     /// Collected from this unit by another unit's `TAKE FROM`.
@@ -802,8 +808,10 @@ pub struct ItemChange {
     pub unit_price: Option<i64>,
     pub other: Option<ItemChangeParty>,
     /// The unit whose order this unit's goods paid for: `Some` only on
-    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), and
-    /// on [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`).
+    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), on
+    /// [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`), and on
+    /// [`ItemChangeCause::LentForTransport`], where `other` is the shipment's receiver
+    /// (`ah-iidht`).
     //
     // `skip_serializing_if` is load-bearing, as on `FieldChange::cause`: the TypeScript says
     // `borrower?:`, a key that may be absent and is never `null`.
@@ -4439,6 +4447,24 @@ impl Working {
                 .entry(pending.sender)
                 .or_insert_with(|| self.units[pending.sender].unit.items.clone());
         }
+        // The sharers each sender's exact shipments may draw on, and what they hold as the phase
+        // opens: an exact amount is cut to `Unit::GetSharedNum` and spent with
+        // `Unit::ConsumeShared` (../Atlantis `runorders.cpp`, `RunTransportOrders`;
+        // `rules/share`; `ah-iidht`). A sharer's goods move once in a phase like anybody's, so
+        // they are read from the same allowance.
+        let mut lenders_of: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for pending in pending {
+            if matches!(pending.amount, super::forms::Amount::Exact(_))
+                && !lenders_of.contains_key(&pending.sender)
+            {
+                lenders_of.insert(pending.sender, self.lending_sharers(pending.sender));
+            }
+        }
+        for &lender in lenders_of.values().flatten() {
+            allowance
+                .entry(lender)
+                .or_insert_with(|| self.units[lender].unit.items.clone());
+        }
 
         for pending in pending {
             // The sender's month cannot pay the bill, so the game ships nothing
@@ -4459,7 +4485,31 @@ impl Working {
             // No GIVE permission is asked: `TRANSPORT` has its own gate, `can_be_transported`,
             // checked below - the two lists are not the same (`IENT` may not be given but may be
             // transported).
-            let moving = self.tags_moved_from(&held, &pending.what, &pending.amount);
+            // An exact amount counts the sharers' goods too, men and silver excepted: men are
+            // never pooled (`pooled_items`), and an exact silver shipment's draw is the SILVER
+            // column's (`ah-9yvv`). `ALL` ships the sender's own alone (`amt = u->items.GetNum`).
+            let lenders: Vec<usize> = match pending.amount {
+                super::forms::Amount::Exact(_) => {
+                    lenders_of.get(&pending.sender).cloned().unwrap_or_default()
+                }
+                _ => Vec::new(),
+            };
+            let moving = if lenders.is_empty() {
+                self.tags_moved_from(&held, &pending.what, &pending.amount)
+            } else {
+                let mut pooled = held.clone();
+                for lender in &lenders {
+                    for item in allowance.get(lender).into_iter().flatten() {
+                        if item.amount > 0
+                            && !self.ruleset.is_man(&item.tag)
+                            && !item.tag.eq_ignore_ascii_case(SILVER_TAG)
+                        {
+                            add_item(&mut pooled, &item.name, &item.tag, item.amount);
+                        }
+                    }
+                }
+                self.tags_moved_from(&pooled, &pending.what, &pending.amount)
+            };
             // An order over goods the sender does not hold has nothing to retain, and nothing to
             // explain - except a refusal of one named item, which the order's warning reports
             // whatever the stock and the name, and the hover says alike: GIVE runs before
@@ -4606,24 +4656,69 @@ impl Working {
                     ));
                     continue;
                 }
-                // Re-resolved by tag rather than kept from the snapshot, exactly as `give` does:
-                // an earlier transport in this same document may have emptied a stock ahead of
-                // this one and shifted every index after it.
-                let Some(live) =
-                    find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
-                else {
-                    continue;
+                // The sender's own stock goes first, and what it lacks is drawn on the sharers in
+                // report order (`Unit::ConsumeShared`, `ah-iidht`); with no sharer to draw on the
+                // sender's own allowance already bounds `moved`.
+                let own = if lenders.is_empty() {
+                    moved
+                } else {
+                    allowance
+                        .get(&pending.sender)
+                        .and_then(|allowed| {
+                            find_item(&self.ruleset, allowed, &tag).map(|at| allowed[at].amount)
+                        })
+                        .unwrap_or(0)
+                        .clamp(0, moved)
                 };
-                take_item(&mut self.units[pending.sender].unit.items, live, moved);
-                // Resolved the same way the live list above is, rather than by exact tag
-                // equality: an allowance that failed to find its row would silently stay
-                // undecremented, and the item could then move a second time in this phase -
-                // exactly the rule this phase pass exists to enforce (`ah-d0ku`).
-                if let Some(allowed) = allowance.get_mut(&pending.sender) {
-                    if let Some(index) = find_item(&self.ruleset, allowed, &tag) {
-                        take_item(allowed, index, moved);
+                if own > 0 || lenders.is_empty() {
+                    // Re-resolved by tag rather than kept from the snapshot, exactly as `give`
+                    // does: an earlier transport in this same document may have emptied a stock
+                    // ahead of this one and shifted every index after it.
+                    let Some(live) =
+                        find_item(&self.ruleset, &self.units[pending.sender].unit.items, &tag)
+                    else {
+                        continue;
+                    };
+                    take_item(&mut self.units[pending.sender].unit.items, live, own);
+                    // Resolved the same way the live list above is, rather than by exact tag
+                    // equality: an allowance that failed to find its row would silently stay
+                    // undecremented, and the item could then move a second time in this phase -
+                    // exactly the rule this phase pass exists to enforce (`ah-d0ku`).
+                    if let Some(allowed) = allowance.get_mut(&pending.sender) {
+                        if let Some(index) = find_item(&self.ruleset, allowed, &tag) {
+                            take_item(allowed, index, own);
+                        }
                     }
                 }
+                let mut draws: Vec<(usize, i64)> = Vec::new();
+                let mut owing = moved - own;
+                for &lender in &lenders {
+                    if owing <= 0 {
+                        break;
+                    }
+                    let Some(allowed) = allowance.get_mut(&lender) else {
+                        continue;
+                    };
+                    let Some(at) = find_item(&self.ruleset, allowed, &tag) else {
+                        continue;
+                    };
+                    let Some(live) = find_item(&self.ruleset, &self.units[lender].unit.items, &tag)
+                    else {
+                        continue;
+                    };
+                    let take = allowed[at]
+                        .amount
+                        .min(self.units[lender].unit.items[live].amount)
+                        .clamp(0, owing);
+                    if take == 0 {
+                        continue;
+                    }
+                    take_item(allowed, at, take);
+                    take_item(&mut self.units[lender].unit.items, live, take);
+                    owing -= take;
+                    draws.push((lender, take));
+                }
+                let moved = own + draws.iter().map(|(_, take)| take).sum::<i64>();
                 sent[pending.sender].push((
                     pending.sequence,
                     TransportSent {
@@ -4651,6 +4746,42 @@ impl Working {
                         },
                         |receiver| self.units[receiver].as_party(),
                     );
+                    // What the sharers made up: a loan on each sharer's row for this shipment,
+                    // and a draw on the sender's, so the goods pass through it (`ah-iidht`).
+                    let sender_party = self.units[pending.sender].as_party();
+                    for &(lender, take) in &draws {
+                        let lender_party = self.units[lender].as_party();
+                        self.units[lender].item_log.record(
+                            ItemChange {
+                                tag: tag.clone(),
+                                name: name.clone(),
+                                delta: -take,
+                                cause: ItemChangeCause::LentForTransport,
+                                line: None,
+                                unit_price: None,
+                                other: Some(receiver_party.clone()),
+                                borrower: Some(sender_party.clone()),
+                                is_man,
+                                plural: None,
+                            },
+                            Stock::Moved,
+                        );
+                        self.units[pending.sender].item_log.record(
+                            ItemChange {
+                                tag: tag.clone(),
+                                name: name.clone(),
+                                delta: take,
+                                cause: ItemChangeCause::DrawnFromSharer,
+                                line: None,
+                                unit_price: None,
+                                other: Some(lender_party),
+                                borrower: None,
+                                is_man,
+                                plural: None,
+                            },
+                            Stock::Moved,
+                        );
+                    }
                     // `line` is `None`: what a transport carries is the order's `order_index`,
                     // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
                     self.units[pending.sender].item_log.record(
@@ -12432,6 +12563,197 @@ mod tests {
                     "{world}: five arrived at 5530"
                 );
             }
+        }
+
+        /// `ah-iidht`: an exact TRANSPORT is cut to, and spent from, `Unit::GetSharedNum` - the
+        /// sender's own stock and every sharing faction-mate's in the region - with
+        /// `Unit::ConsumeShared` drawing what the sender lacks on the sharers (../Atlantis
+        /// `runorders.cpp`, `RunTransportOrders`; `rules/share`: a sharing unit shares its
+        /// possessions "with any other unit of your faction that needs them"). So a quartermaster
+        /// holding no picks beside a sharer holding ten ships five of them: the sharer's row lends
+        /// them for the shipment, the quartermaster's draws them and sends them on, and the
+        /// receiver ends the month with them.
+        #[test]
+        fn a_quartermasters_exact_transport_draws_what_it_lacks_on_a_sharer() {
+            let report = report_across_two_hexes().replace(
+                "  * Hauler (6858), Foo (1), leader [LEAD].",
+                "  * Hauler (6858), Foo (1), sharing, leader [LEAD], 10 picks [PICK].",
+            );
+            assert!(
+                report.contains("10 picks [PICK]"),
+                "the fixture gained its sharer"
+            );
+            let response = trident_preview_over(&report, "unit 6857\nTRANSPORT 5530 5 PICK\n");
+
+            let sharer = row(&response, "1:2,2", "6858")
+                .expect("the sharer's row is previewed: its picks leave it");
+            assert_eq!(
+                held(sharer, "PICK"),
+                Some(5),
+                "five of the ten left the sharer"
+            );
+            let lent = sharer
+                .item_changes
+                .iter()
+                .find(|change| change.tag == "PICK")
+                .expect("the sharer's row says where its picks went");
+            assert_eq!(lent.cause, ItemChangeCause::LentForTransport);
+            assert_eq!(lent.delta, -5);
+            assert_eq!(
+                lent.borrower.as_ref().map(|party| party.unit_id.as_str()),
+                Some("6857"),
+                "lent for the quartermaster's TRANSPORT"
+            );
+            assert_eq!(
+                lent.other.as_ref().map(|party| party.unit_id.as_str()),
+                Some("5530"),
+                "to the shipment's receiver"
+            );
+
+            let sender = row(&response, "1:2,2", "6857").expect("the sender is shown");
+            let picks: Vec<(ItemChangeCause, i64, Option<&str>)> = sender
+                .item_changes
+                .iter()
+                .filter(|change| change.tag == "PICK")
+                .map(|change| {
+                    (
+                        change.cause,
+                        change.delta,
+                        change.other.as_ref().map(|party| party.unit_id.as_str()),
+                    )
+                })
+                .collect();
+            assert_eq!(
+                picks,
+                vec![
+                    (ItemChangeCause::DrawnFromSharer, 5, Some("6858")),
+                    (ItemChangeCause::TransportedOut, -5, Some("5530")),
+                ],
+                "the picks pass through the quartermaster"
+            );
+            assert_eq!(
+                held(sender, "PICK"),
+                None,
+                "the quartermaster still holds none"
+            );
+            assert!(sender.transport_target_issues.is_empty());
+
+            let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(
+                held(receiver, "PICK"),
+                Some(5),
+                "five picks arrived at 5530"
+            );
+        }
+
+        /// `ah-iidht`: `Unit::ConsumeShared` spends the sender's own stock first, so a
+        /// quartermaster holding two picks draws only three of an exact five on the sharer; and
+        /// `ALL` ships the sender's own alone (`amt = u->items.GetNum`, ../Atlantis
+        /// `runorders.cpp`), so it draws nothing.
+        #[test]
+        fn a_transport_spends_the_senders_own_stock_first_and_all_draws_on_nobody() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "  * Hauler (6858), Foo (1), leader [LEAD].",
+                    "  * Hauler (6858), Foo (1), sharing, leader [LEAD], 10 picks [PICK].",
+                )
+                .replace(
+                    "leader [LEAD], 15 stone [STON],",
+                    "leader [LEAD], 15 stone [STON], 2 picks [PICK],",
+                );
+            assert!(
+                report.contains("2 picks [PICK]"),
+                "the sender gained its picks"
+            );
+
+            let exact = trident_preview_over(&report, "unit 6857\nTRANSPORT 5530 5 PICK\n");
+            let sharer = row(&exact, "1:2,2", "6858").expect("the sharer lends");
+            assert_eq!(held(sharer, "PICK"), Some(7), "three of the ten were lent");
+            let sender = row(&exact, "1:2,2", "6857").expect("the sender is shown");
+            assert_eq!(held(sender, "PICK"), None, "its own two went first");
+            let receiver = row(&exact, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(held(receiver, "PICK"), Some(5));
+
+            let all = trident_preview_over(&report, "unit 6857\nTRANSPORT 5530 ALL PICK\n");
+            assert!(
+                row(&all, "1:2,2", "6858").is_none_or(|sharer| held(sharer, "PICK") == Some(10)),
+                "ALL leaves the sharer's picks alone"
+            );
+            let receiver = row(&all, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(held(receiver, "PICK"), Some(2), "only the sender's own two");
+        }
+
+        /// `ah-iidht` review, finding 1: `Unit::ConsumeShared` walks the sharers in turn, so a
+        /// shortfall one sharer cannot cover is made up by the next - three picks from the porter
+        /// listed first, the other two from the hauler.
+        #[test]
+        fn a_transport_draws_across_two_sharers_in_report_order() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "  * Hauler (6858), Foo (1), leader [LEAD].",
+                    "  * Hauler (6858), Foo (1), sharing, leader [LEAD], 10 picks [PICK].",
+                )
+                .replace(
+                    "+ Trade Post [1] : Caravanserai.",
+                    "* Porter (6859), Foo (1), sharing, leader [LEAD], 3 picks [PICK]. \
+                     Weight: 13. Capacity: 0/0/15/0.\n+ Trade Post [1] : Caravanserai.",
+                );
+            assert!(
+                report.contains("Porter (6859)"),
+                "the fixture gained its porter"
+            );
+
+            let response = trident_preview_over(&report, "unit 6857\nTRANSPORT 5530 5 PICK\n");
+            let porter = row(&response, "1:2,2", "6859").expect("the porter lends");
+            assert_eq!(held(porter, "PICK"), None, "all three of the porter's");
+            let hauler = row(&response, "1:2,2", "6858").expect("the hauler lends");
+            assert_eq!(held(hauler, "PICK"), Some(8), "and two of the hauler's");
+            let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(held(receiver, "PICK"), Some(5));
+        }
+
+        /// `ah-iidht` review, finding 1: a sharer's goods move once in a phase like anybody's, so
+        /// two senders drawing on one sharer in the same phase share its ten picks - the porter,
+        /// higher on the report, takes its six, and the packer's six is cut to the four left
+        /// (`rules/sequenceofevents`; `runorders.cpp`, `amt = u->GetSharedNum`).
+        #[test]
+        fn two_senders_drawing_on_one_sharer_share_what_it_holds() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "  * Hauler (6858), Foo (1), leader [LEAD].",
+                    "  * Hauler (6858), Foo (1), sharing, leader [LEAD], 10 picks [PICK].",
+                )
+                .replace(
+                    "+ Trade Post [1] : Caravanserai.",
+                    "* Porter (6859), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                     * Packer (6860), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                     + Trade Post [1] : Caravanserai.",
+                );
+            assert!(
+                report.contains("Packer (6860)"),
+                "the fixture gained its senders"
+            );
+
+            let response = trident_preview_over(
+                &report,
+                "unit 6859\nTRANSPORT 6857 6 PICK\nunit 6860\nTRANSPORT 6857 6 PICK\n",
+            );
+            let hauler = row(&response, "1:2,2", "6858").expect("the hauler lends");
+            assert_eq!(held(hauler, "PICK"), None, "all ten lent, none twice");
+            let quartermaster = row(&response, "1:2,2", "6857").expect("the target is shown");
+            assert_eq!(
+                held(quartermaster, "PICK"),
+                Some(10),
+                "six and four arrived"
+            );
+            let packer = row(&response, "1:2,2", "6860").expect("the packer is shown");
+            let sent: i64 = packer
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::TransportedOut)
+                .map(|change| -change.delta)
+                .sum();
+            assert_eq!(sent, 4, "the packer's six cut to the four left");
         }
 
         /// `ah-7j90`: a DISTRIBUTE carries only what the game transports (`rules/economy_transport`),

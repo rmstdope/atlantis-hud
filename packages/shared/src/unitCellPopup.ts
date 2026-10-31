@@ -641,6 +641,11 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     // `rules/share`): lent for that discard, in the same family as a loan for a GIVE (`ah-84b1`).
     case "lent-for-discard":
       return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to discard`;
+    // A sharer's goods made up another unit's exact TRANSPORT or DISTRIBUTE (`rules/share`;
+    // ../Atlantis `runorders.cpp`, `RunTransportOrders`): lent for that shipment, in the same
+    // family as a loan for a GIVE, with the receiver worded as `transported-out` words it (`ah-iidht`).
+    case "lent-for-transport":
+      return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to send to ${lentReceiver(change.other)}`;
     case "was-given":
       return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
     // A matched EXCHANGE, either way: the line's own up or down says which (`ah-6c76`).
