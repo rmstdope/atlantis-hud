@@ -311,29 +311,50 @@ function withoutBlockAt(lines: string[], headerLine: number, lastLine: number): 
 
 /**
  * The document without the blocks of units outside `unitIds` - a unit that died, or was given
- * away, since the file was written (ah-fe0zo). Its orders go with it, `FORM` blocks included.
+ * away, since the file was written (ah-fe0zo). Its orders go with it, `FORM` blocks included, and
+ * so does a `;***` region heading every one of whose units went: a heading over nothing would be
+ * the only trace left in the file.
  *
  * A `unit new-<n>` block is kept whatever `unitIds` says: it names a unit this turn's `FORM`
  * creates, which no report lists, and {@link repairFormedUnitBlocks} is what folds it back.
  *
- * Removed bottom up, so removing one block never moves the lines of a block above it.
+ * Removed bottom up, so removing one range never moves the lines of a range above it - a heading
+ * always sits above the blocks it announces.
  */
 export function withoutUnitBlocksOutside(
   document: string,
   unitIds: ReadonlySet<string>,
   syntax: OrderCommentSyntax
 ): string {
-  const gone = findUnitBlocks(document, syntax).filter(
-    (block) => formedAlias(block.unitId) === null && !unitIds.has(block.unitId)
-  );
-  if (gone.length === 0) {
+  const blocks = findUnitBlocks(document, syntax);
+  const isGone = (block: UnitBlock) => formedAlias(block.unitId) === null && !unitIds.has(block.unitId);
+  if (!blocks.some(isGone)) {
     return document;
   }
 
   let lines = document.split("\n");
-  for (let index = gone.length - 1; index >= 0; index -= 1) {
-    const block = gone[index];
-    lines = withoutBlockAt(lines, block.headerLine, block.lastLine);
+  const banners = lines.flatMap((line, index) => (REGION_BANNER.test(line.trim()) ? [index] : []));
+  const removals: { kind: "block" | "banner"; first: number; last: number }[] = [];
+  banners.forEach((banner, position) => {
+    const end = banners[position + 1] ?? lines.length;
+    const under = blocks.filter((block) => block.headerLine > banner && block.headerLine < end);
+    if (under.length > 0 && under.every(isGone)) {
+      removals.push({ kind: "banner", first: banner, last: banner });
+    }
+  });
+  for (const block of blocks.filter(isGone)) {
+    removals.push({ kind: "block", first: block.headerLine, last: block.lastLine });
+  }
+
+  removals.sort((left, right) => right.first - left.first);
+  for (const removal of removals) {
+    if (removal.kind === "block") {
+      lines = withoutBlockAt(lines, removal.first, removal.last);
+    } else {
+      // The blank line under a heading goes with it, as the blank above a block goes with that.
+      const through = (lines[removal.first + 1] ?? "x").trim() === "" ? removal.first + 1 : removal.first;
+      lines = [...lines.slice(0, removal.first), ...lines.slice(through + 1)];
+    }
   }
   return lines.join("\n");
 }
