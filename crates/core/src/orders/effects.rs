@@ -808,8 +808,10 @@ pub struct ItemChange {
     pub unit_price: Option<i64>,
     pub other: Option<ItemChangeParty>,
     /// The unit whose order this unit's goods paid for: `Some` only on
-    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), and
-    /// on [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`).
+    /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), on
+    /// [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`), and on
+    /// [`ItemChangeCause::LentForTransport`], where `other` is the shipment's receiver
+    /// (`ah-iidht`).
     //
     // `skip_serializing_if` is load-bearing, as on `FieldChange::cause`: the TypeScript says
     // `borrower?:`, a key that may be absent and is never `null`.
@@ -4450,10 +4452,14 @@ impl Working {
         // `Unit::ConsumeShared` (../Atlantis `runorders.cpp`, `RunTransportOrders`;
         // `rules/share`; `ah-iidht`). A sharer's goods move once in a phase like anybody's, so
         // they are read from the same allowance.
-        let lenders_of: BTreeMap<usize, Vec<usize>> = pending
-            .iter()
-            .map(|pending| (pending.sender, self.lending_sharers(pending.sender)))
-            .collect();
+        let mut lenders_of: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for pending in pending {
+            if matches!(pending.amount, super::forms::Amount::Exact(_))
+                && !lenders_of.contains_key(&pending.sender)
+            {
+                lenders_of.insert(pending.sender, self.lending_sharers(pending.sender));
+            }
+        }
         for &lender in lenders_of.values().flatten() {
             allowance
                 .entry(lender)
@@ -12675,6 +12681,79 @@ mod tests {
             );
             let receiver = row(&all, "1:1,1", "5530").expect("the receiver is shown");
             assert_eq!(held(receiver, "PICK"), Some(2), "only the sender's own two");
+        }
+
+        /// `ah-iidht` review, finding 1: `Unit::ConsumeShared` walks the sharers in turn, so a
+        /// shortfall one sharer cannot cover is made up by the next - three picks from the porter
+        /// listed first, the other two from the hauler.
+        #[test]
+        fn a_transport_draws_across_two_sharers_in_report_order() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "  * Hauler (6858), Foo (1), leader [LEAD].",
+                    "  * Hauler (6858), Foo (1), sharing, leader [LEAD], 10 picks [PICK].",
+                )
+                .replace(
+                    "+ Trade Post [1] : Caravanserai.",
+                    "* Porter (6859), Foo (1), sharing, leader [LEAD], 3 picks [PICK]. \
+                     Weight: 13. Capacity: 0/0/15/0.\n+ Trade Post [1] : Caravanserai.",
+                );
+            assert!(
+                report.contains("Porter (6859)"),
+                "the fixture gained its porter"
+            );
+
+            let response = trident_preview_over(&report, "unit 6857\nTRANSPORT 5530 5 PICK\n");
+            let porter = row(&response, "1:2,2", "6859").expect("the porter lends");
+            assert_eq!(held(porter, "PICK"), None, "all three of the porter's");
+            let hauler = row(&response, "1:2,2", "6858").expect("the hauler lends");
+            assert_eq!(held(hauler, "PICK"), Some(8), "and two of the hauler's");
+            let receiver = row(&response, "1:1,1", "5530").expect("the receiver is shown");
+            assert_eq!(held(receiver, "PICK"), Some(5));
+        }
+
+        /// `ah-iidht` review, finding 1: a sharer's goods move once in a phase like anybody's, so
+        /// two senders drawing on one sharer in the same phase share its ten picks - the porter,
+        /// higher on the report, takes its six, and the packer's six is cut to the four left
+        /// (`rules/sequenceofevents`; `runorders.cpp`, `amt = u->GetSharedNum`).
+        #[test]
+        fn two_senders_drawing_on_one_sharer_share_what_it_holds() {
+            let report = report_across_two_hexes()
+                .replace(
+                    "  * Hauler (6858), Foo (1), leader [LEAD].",
+                    "  * Hauler (6858), Foo (1), sharing, leader [LEAD], 10 picks [PICK].",
+                )
+                .replace(
+                    "+ Trade Post [1] : Caravanserai.",
+                    "* Porter (6859), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                     * Packer (6860), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.\n\
+                     + Trade Post [1] : Caravanserai.",
+                );
+            assert!(
+                report.contains("Packer (6860)"),
+                "the fixture gained its senders"
+            );
+
+            let response = trident_preview_over(
+                &report,
+                "unit 6859\nTRANSPORT 6857 6 PICK\nunit 6860\nTRANSPORT 6857 6 PICK\n",
+            );
+            let hauler = row(&response, "1:2,2", "6858").expect("the hauler lends");
+            assert_eq!(held(hauler, "PICK"), None, "all ten lent, none twice");
+            let quartermaster = row(&response, "1:2,2", "6857").expect("the target is shown");
+            assert_eq!(
+                held(quartermaster, "PICK"),
+                Some(10),
+                "six and four arrived"
+            );
+            let packer = row(&response, "1:2,2", "6860").expect("the packer is shown");
+            let sent: i64 = packer
+                .item_changes
+                .iter()
+                .filter(|change| change.cause == ItemChangeCause::TransportedOut)
+                .map(|change| -change.delta)
+                .sum();
+            assert_eq!(sent, 4, "the packer's six cut to the four left");
         }
 
         /// `ah-7j90`: a DISTRIBUTE carries only what the game transports (`rules/economy_transport`),
