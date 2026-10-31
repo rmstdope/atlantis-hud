@@ -4431,15 +4431,19 @@ export function AppShell({
       return;
     }
 
+    // The file's banners name the hexes its units stood in when it was written; each block is
+    // put under the hex this turn's report shows its unit in (ah-ue5gs).
+    const imported = orders.importedOrdersDocument(pending.text, parsed?.regions ?? []);
+
     void runReported(
       async () => {
-        writeOrdersDocument("external", pending.text);
-        writer.markDirty(game, draftKey, pending.text);
+        writeOrdersDocument("external", imported);
+        writer.markDirty(game, draftKey, imported);
 
         // The import summary counts with the same knowledge the pane shows, so a count that
         // disagreed with the pane is impossible (`ah-3u7c.2.2`).
         const result = await client.validateOrders({
-          rawOrders: pending.text,
+          rawOrders: imported,
           rulesetJson: rulesetText,
           rawReport: rawReport || null,
           disabledCodes: disabledAdvisoryCodes(advisoryChecks),
@@ -4452,7 +4456,7 @@ export function AppShell({
           setOrdersImportSummary({
             unitCount: pending.unitCount,
             diagnostics: result.diagnostics,
-            document: pending.text
+            document: imported
           });
         } else {
           setStatus(
@@ -4465,6 +4469,7 @@ export function AppShell({
     );
   }, [
     pendingOrdersImport,
+    orders,
     client,
     game,
     parsed,
