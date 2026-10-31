@@ -18,6 +18,7 @@ import {
   readUnitOrders,
   regionUnitIdsAt,
   repairFormedUnitBlocks,
+  withoutUnitBlocksOutside,
   reportedLongOrders,
   stripLongOrderLines,
   stripMovementOrderLines,
@@ -29,7 +30,7 @@ import {
 import { diagnosticsForUnit } from "./orderEditor";
 import { formBlockTags } from "./formBlockTags";
 import { contentChanges, indentBlock, indentChanges, lineDepths, tidyInsertion } from "./orderIndent";
-import { describeOrdersImport, unitIdForDiagnostic, unitLabelForDiagnostic } from "./ordersImport";
+import { describeOrdersImport, importedOrdersDocument, unitIdForDiagnostic, unitLabelForDiagnostic } from "./ordersImport";
 import { orderCommentSyntaxFor, type OrderCommentSyntax } from "./rulesets";
 import { studyWritePlan } from "./studyOrdersWrite";
 import { diffOrders } from "./turnDiff";
@@ -53,6 +54,7 @@ export interface OrderProcessing {
   readonly findUnitBlocks: WithoutSyntax<typeof findUnitBlocks>;
   readonly findFormBlocks: WithoutSyntax<typeof findFormBlocks>;
   readonly repairFormedUnitBlocks: WithoutSyntax<typeof repairFormedUnitBlocks>;
+  readonly withoutUnitBlocksOutside: WithoutSyntax<typeof withoutUnitBlocksOutside>;
   readonly regionUnitIdsAt: WithoutSyntax<typeof regionUnitIdsAt>;
   readonly formBlockFor: WithoutSyntax<typeof formBlockFor>;
   readonly blockFor: WithoutSyntax<typeof blockFor>;
@@ -80,6 +82,7 @@ export interface OrderProcessing {
   readonly diagnosticsForUnit: WithoutSyntax<typeof diagnosticsForUnit>;
   readonly formBlockTags: WithoutSyntax<typeof formBlockTags>;
   readonly describeOrdersImport: WithoutSyntax<typeof describeOrdersImport>;
+  readonly importedOrdersDocument: WithoutSyntax<typeof importedOrdersDocument>;
   readonly unitIdForDiagnostic: WithoutSyntax<typeof unitIdForDiagnostic>;
   readonly unitLabelForDiagnostic: WithoutSyntax<typeof unitLabelForDiagnostic>;
   readonly diffOrders: WithoutSyntax<typeof diffOrders>;
@@ -99,6 +102,7 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
     findUnitBlocks: (document) => findUnitBlocks(document, syntax),
     findFormBlocks: (document) => findFormBlocks(document, syntax),
     repairFormedUnitBlocks: (document) => repairFormedUnitBlocks(document, syntax),
+    withoutUnitBlocksOutside: (document, unitIds) => withoutUnitBlocksOutside(document, unitIds, syntax),
     regionUnitIdsAt: (document, region) => regionUnitIdsAt(document, region, syntax),
     formBlockFor: (document, alias, regionUnitIds) => formBlockFor(document, alias, regionUnitIds, syntax),
     blockFor: (document, unitId, regionUnitIds) => blockFor(document, unitId, regionUnitIds, syntax),
@@ -132,6 +136,7 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
       formBlockTags(text, unitId, regionUnitIds, targets, syntax),
     describeOrdersImport: (fileText, currentDocument) =>
       describeOrdersImport(fileText, currentDocument, syntax),
+    importedOrdersDocument: (fileText, regions) => importedOrdersDocument(fileText, regions, syntax),
     unitIdForDiagnostic: (document, diagnostic) => unitIdForDiagnostic(document, diagnostic, syntax),
     unitLabelForDiagnostic: (document, diagnostic) => unitLabelForDiagnostic(document, diagnostic, syntax),
     diffOrders: (older, newer) => diffOrders(older, newer, syntax),

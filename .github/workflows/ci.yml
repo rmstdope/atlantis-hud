@@ -578,8 +578,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # The -dev packages are what `tauri build` links against; webkit2gtk-driver is the
-      # WebKitWebDriver binary tauri-driver proxies to; xvfb gives the app a display.
+      # The -dev packages are what `tauri build` links against; webkitgtk-webdriver is the
+      # WebKitWebDriver binary tauri-driver proxies to (/usr/bin/WebKitWebDriver, where
+      # wdio.conf.ts looks); xvfb gives the app a display. Ubuntu 26.04 renamed that package from
+      # webkit2gtk-driver, which it no longer carries at all (ah-0f0b0).
       #
       # This is the last apt step in the workflow, and so the last place the stall class ah-3c80
       # measured can still land: `apt-get update && install` sitting in_progress for 25-55 minutes,
@@ -612,7 +614,7 @@ jobs:
           for attempt in 1 2; do
             if sudo timeout -k 30s 120s apt-get update \
               && sudo timeout -k 30s 180s apt-get install -y --no-install-recommends \
-                libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev webkit2gtk-driver xvfb; then
+                libwebkit2gtk-4.1-dev libgtk-3-dev libssl-dev libxdo-dev webkitgtk-webdriver xvfb; then
               exit 0
             fi
             echo "::warning::apt install attempt $attempt failed or timed out"

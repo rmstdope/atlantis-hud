@@ -1,7 +1,9 @@
 import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
-import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
+import { repairFormedUnitBlocks } from "./ordersDocument";
+import { ordersExportText } from "./workspace/ordersExport";
+import { describeOrdersImport, importedOrdersDocument, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
 
 /** Shaped exactly like the template a real report carries. */
 const ORDERS_FILE = [
@@ -128,8 +130,18 @@ describe("describing an import before it happens", () => {
   });
 });
 
-function report(overrides: Partial<ReportHeaderInfo> = {}): ParsedReport {
-  return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }) });
+/**
+ * A report whose own units are `ownUnitIds` - by default both units `ORDERS_FILE` has a block for,
+ * so the file describes units that are all still alive this turn.
+ */
+function report(
+  overrides: Partial<ReportHeaderInfo> = {},
+  ownUnitIds: readonly string[] = ["18642", "99001"]
+): ParsedReport {
+  return aParsedReport({
+    header: aReportHeaderInfo({ month: "January", ...overrides }),
+    regions: [aReportRegion({ units: ownUnitIds.map((unitId) => aReportUnit({ unitId })) })]
+  });
 }
 
 const OPEN_GAME = {
@@ -212,6 +224,69 @@ describe("routing a dropped orders file", () => {
       }
     });
   });
+
+  it("leaves out a unit the report no longer lists, so the export carries no block for it (ah-fe0zo)", () => {
+    // 99001 died last month: this turn's report lists only 18642, but the file still has orders
+    // for both.
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report({}, ["18642"]) },
+      ORDERS_FILE,
+      "orders.txt",
+      ""
+    );
+
+    expect(route.kind).toBe("ask");
+    if (route.kind !== "ask") {
+      return;
+    }
+    expect(route.pending.unitCount).toBe(1);
+
+    // Replace writes `pending.text` as the document, and the export writes the document.
+    const exported = ordersExportText(route.pending.text, null, false, "origins");
+    expect(exported).not.toContain("unit 99001");
+    expect(exported).not.toContain("@work");
+    expect(exported).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** mountain (7,53) in Inhead ***",
+        "",
+        "unit 18642",
+        ";Seven of Eight (18642), avoiding, behind, leader [LEAD].",
+        "@claim 50",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("keeps a unit new-n block for the load-time repair to fold into its FORM", () => {
+    const withFormed = ['#atlantis 95 "secret"', "", "unit 18642", "form 1", "end", "", "unit new-1", "STUDY COMB", "", "#end"].join(
+      "\n"
+    );
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report({}, ["18642"]) },
+      withFormed,
+      "orders.txt",
+      ""
+    );
+
+    expect(route.kind === "ask" && route.pending.text).toBe(withFormed);
+  });
+
+  it("leaves out a foreign unit the report shows, since only the player's own units take orders", () => {
+    const parsed = aParsedReport({
+      header: aReportHeaderInfo({ month: "January" }),
+      regions: [
+        aReportRegion({
+          units: [aReportUnit({ unitId: "18642" }), aReportUnit({ unitId: "99001", own: false, factionId: "17" })]
+        })
+      ]
+    });
+    const route = routeOrdersImport({ game: OPEN_GAME, parsed }, ORDERS_FILE, "orders.txt", "");
+
+    expect(route.kind === "ask" && route.pending.text).not.toContain("unit 99001");
+  });
 });
 
 describe("naming a diagnostic's subject", () => {
@@ -261,5 +336,174 @@ describe("routeFileImport", () => {
 
   it("routes an empty selection to a batch of nothing", () => {
     expect(routeFileImport([])).toEqual({ kind: "batch", files: [] });
+  });
+});
+
+describe("an imported orders file follows the units to where the report shows them (ah-ue5gs)", () => {
+  /** Written when unit 12 still stood in the plain; the report on screen has it in the forest. */
+  const WRITTEN_BEFORE_THE_MOVE = [
+    '#atlantis 95 "secret"',
+    "",
+    ";*** plain (1,1) in Avon ***",
+    "",
+    "unit 12",
+    "work",
+    "",
+    "unit 13",
+    "tax",
+    "",
+    ";*** forest (2,2) in Bree ***",
+    "",
+    "unit 14",
+    "study COMB",
+    "",
+    "#end"
+  ].join("\n");
+
+  const plain = (unitIds: string[]) =>
+    aReportRegion({
+      coordinate: { x: 1, y: 1, z: 1 },
+      terrain: "plain",
+      province: "Avon",
+      units: unitIds.map((unitId) => aReportUnit({ unitId }))
+    });
+  const forest = (unitIds: string[]) =>
+    aReportRegion({
+      coordinate: { x: 2, y: 2, z: 1 },
+      terrain: "forest",
+      province: "Bree",
+      units: unitIds.map((unitId) => aReportUnit({ unitId }))
+    });
+  const swamp = (unitIds: string[]) =>
+    aReportRegion({
+      coordinate: { x: 3, y: 3, z: 1 },
+      terrain: "swamp",
+      province: "Cole",
+      units: unitIds.map((unitId) => aReportUnit({ unitId }))
+    });
+
+  it("puts a unit that moved under the heading of the hex it is in now", () => {
+    expect(
+      importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [plain(["13"]), forest(["12", "14"])], "origins")
+    ).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** plain (1,1) in Avon ***",
+        "",
+        "unit 13",
+        "tax",
+        "",
+        ";*** forest (2,2) in Bree ***",
+        "",
+        "unit 14",
+        "study COMB",
+        "",
+        "unit 12",
+        "work",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("writes the heading of a hex the file never named, and drops a heading left with no units", () => {
+    expect(
+      importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [swamp(["12", "13"]), forest(["14"])], "origins")
+    ).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** forest (2,2) in Bree ***",
+        "",
+        "unit 14",
+        "study COMB",
+        "",
+        ";*** swamp (3,3) in Cole ***",
+        "",
+        "unit 12",
+        "work",
+        "",
+        "unit 13",
+        "tax",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("leaves a file with no headings at all as written", () => {
+    const handWritten = ['#atlantis 95 "secret"', "", "unit 12", "work", "", "#end"].join("\n");
+    expect(importedOrdersDocument(handWritten, [forest(["12"])], "origins")).toBe(handWritten);
+  });
+
+  it("leaves a unit under a heading of the player's own that names no hex", () => {
+    const ownHeading = ['#atlantis 95 "secret"', "", ";*** my scouts ***", "", "unit 12", "work", "", "#end"].join("\n");
+    expect(importedOrdersDocument(ownHeading, [forest(["12"])], "origins")).toBe(ownHeading);
+  });
+
+  it("leaves a unit under a heading for its own hex, however that heading is worded", () => {
+    const reworded = WRITTEN_BEFORE_THE_MOVE.replace(
+      ";*** plain (1,1) in Avon ***",
+      ";*** plain (1,1) in Avon, contains Avonmouth [village] ***"
+    );
+    expect(importedOrdersDocument(reworded, [plain(["12", "13"]), forest(["14"])], "origins")).toBe(reworded);
+  });
+
+  it("puts a moved unit under the heading the file already has for its new hex, however worded", () => {
+    const reworded = WRITTEN_BEFORE_THE_MOVE.replace(
+      ";*** forest (2,2) in Bree ***",
+      ";*** forest (2,2) in Bree, contains Breeton [town] ***"
+    );
+    expect(importedOrdersDocument(reworded, [plain(["13"]), forest(["12", "14"])], "origins")).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** plain (1,1) in Avon ***",
+        "",
+        "unit 13",
+        "tax",
+        "",
+        ";*** forest (2,2) in Bree, contains Breeton [town] ***",
+        "",
+        "unit 14",
+        "study COMB",
+        "",
+        "unit 12",
+        "work",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("keeps a FORM's owner beside a stale unit new-n block, so the load-time repair still folds it in", () => {
+    const staleFormed = [
+      '#atlantis 95 "secret"',
+      "",
+      ";*** plain (1,1) in Avon ***",
+      "unit 12",
+      "form 1",
+      "buy 1 hdwa",
+      "end",
+      "",
+      "unit new-1",
+      "STUDY COMB",
+      "",
+      "#end"
+    ].join("\n");
+    const imported = importedOrdersDocument(staleFormed, [forest(["12"])], "origins");
+    const repair = repairFormedUnitBlocks(imported, "origins");
+    expect(repair.orphaned).toEqual([]);
+    expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
+  });
+
+  it("leaves the file as written when every unit is where it says, or the report does not name one", () => {
+    expect(
+      importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [plain(["12", "13"]), forest(["14"])], "origins")
+    ).toBe(WRITTEN_BEFORE_THE_MOVE);
+    expect(importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [plain(["13"]), forest(["14"])], "origins")).toBe(
+      WRITTEN_BEFORE_THE_MOVE
+    );
   });
 });

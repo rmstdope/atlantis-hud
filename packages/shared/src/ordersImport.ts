@@ -8,8 +8,9 @@
  * and the shell's routing decision can both be tested without a DOM or a core.
  */
 
-import type { OpenedGame, OrderDiagnostic, ParsedReport } from "@atlantis/core-client";
-import { commandsOnly, findUnitBlocks, readUnitOrders } from "./ordersDocument";
+import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportRegion } from "@atlantis/core-client";
+import { commandsOnly, findUnitBlocks, readUnitOrders, regionBannerLine, rehomeUnitBlocks } from "./ordersDocument";
+import { levelFieldOf } from "./hexMapModel";
 import { orderProcessingFor } from "./orderProcessing";
 import type { OrderCommentSyntax } from "./rulesets";
 import { factionLabelOf } from "./reportLoad";
@@ -125,14 +126,19 @@ export function routeOrdersImport(
     };
   }
 
-  const description = orderProcessingFor(game.manifest.metadata.rulesetId).describeOrdersImport(
-    text,
-    ordersDocument
+  // A unit the report no longer lists as the faction's own - it died, say - has no orders to send,
+  // so its block is left out now, silently: the prompt's count, the document Replace writes and
+  // everything exported from it all agree that it is gone (ah-fe0zo).
+  const processing = orderProcessingFor(game.manifest.metadata.rulesetId);
+  const ownUnitIds = new Set(
+    parsed.regions.flatMap((region) => region.units.filter((unit) => unit.own).map((unit) => unit.unitId))
   );
+  const liveText = processing.withoutUnitBlocksOutside(text, ownUnitIds);
+  const description = processing.describeOrdersImport(liveText, ordersDocument);
   return {
     kind: "ask",
     pending: {
-      text,
+      text: liveText,
       fileName,
       factionLabel: factionLabelOf(parsed) ?? "your faction",
       gameId: game.manifest.metadata.gameId,
@@ -267,4 +273,26 @@ export function unitLabelForDiagnostic(
     return `new ${diagnostic.formed.alias}`;
   }
   return unitIdForDiagnostic(document, diagnostic, syntax);
+}
+
+/**
+ * The document an imported orders file becomes, given the regions of the report on screen.
+ *
+ * The file's own text, with each unit's block moved under the banner of the hex the report shows
+ * it in (`rehomeUnitBlocks`, ah-ue5gs): a file written before some units moved names the hexes they
+ * stood in then, and both the orders pane and the exported file are read by hex.
+ */
+export function importedOrdersDocument(
+  fileText: string,
+  regions: readonly ReportRegion[],
+  syntax: OrderCommentSyntax
+): string {
+  const banners = new Map<string, string>();
+  for (const region of regions) {
+    const banner = regionBannerLine(region, levelFieldOf(region.coordinate.z));
+    for (const unit of region.units) {
+      banners.set(unit.unitId, banner);
+    }
+  }
+  return rehomeUnitBlocks(fileText, (unitId) => banners.get(unitId) ?? null, syntax);
 }

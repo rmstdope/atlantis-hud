@@ -19,6 +19,7 @@ import {
   formedAlias,
   regionUnitIdsAt,
   repairFormedUnitBlocks,
+  withoutUnitBlocksOutside,
   hasFactionHeader,
   LONG_ORDER_COMMANDS,
   longOrderOf,
@@ -1725,5 +1726,65 @@ describe("Trident comment boundaries", () => {
     expect(stripMovementOrderLines(orders, "trident")).toBe("");
     expect(stripMovementOrderLines(orders, "origins")).toBe("MOVE;the old plan");
     expect(stripMovementOrderLines("MOVE N;note", "origins")).toBe("");
+  });
+});
+
+describe("withoutUnitBlocksOutside (ah-fe0zo)", () => {
+  const doc = (...lines: string[]) => lines.join("\n");
+  const drop = (document: string, ...kept: string[]) =>
+    withoutUnitBlocksOutside(document, new Set(kept), "origins");
+
+  it("returns the same document when every unit is kept", () => {
+    const document = doc('#atlantis 95 "pw"', "", "unit 1", "@work", "", "#end");
+    expect(drop(document, "1")).toBe(document);
+  });
+
+  it("drops the first block after the #atlantis line", () => {
+    expect(drop(doc('#atlantis 95 "pw"', "", "unit 1", "@work", "", "unit 2", "@tax", "", "#end"), "2")).toBe(
+      doc('#atlantis 95 "pw"', "", "unit 2", "@tax", "", "#end")
+    );
+  });
+
+  it("drops the last block before #end, and two neighbours together", () => {
+    expect(
+      drop(doc('#atlantis 95 "pw"', "", "unit 1", "@work", "", "unit 2", "@tax", "", "unit 3", "@tax", "", "#end"), "1")
+    ).toBe(doc('#atlantis 95 "pw"', "", "unit 1", "@work", "", "#end"));
+  });
+
+  it("drops a dead unit's FORM block along with it", () => {
+    expect(
+      drop(doc('#atlantis 95 "pw"', "", "unit 1", "@work", "", "unit 2", "form 1", "study comb", "end", "", "#end"), "1")
+    ).toBe(doc('#atlantis 95 "pw"', "", "unit 1", "@work", "", "#end"));
+  });
+
+  it("drops a region heading left with no unit under it, and keeps one that still has a unit", () => {
+    expect(
+      drop(
+        doc(
+          '#atlantis 95 "pw"',
+          "",
+          ";*** plain (1,1) in A ***",
+          "",
+          "unit 1",
+          "@work",
+          "",
+          ";*** forest (2,2) in B ***",
+          "",
+          "unit 2",
+          "@work",
+          "",
+          "unit 3",
+          "@work",
+          "",
+          "#end"
+        ),
+        "1"
+      )
+    ).toBe(doc('#atlantis 95 "pw"', "", ";*** plain (1,1) in A ***", "", "unit 1", "@work", "", "#end"));
+  });
+
+  it("keeps a heading over a region whose units are all kept", () => {
+    const document = doc('#atlantis 95 "pw"', "", ";*** plain (1,1) in A ***", "", "unit 1", "@work", "", "#end");
+    expect(drop(document, "1")).toBe(document);
   });
 });
