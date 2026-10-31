@@ -56,6 +56,7 @@ mod a_sharing_student_a_faction_mate_pays_for;
 mod a_short_purchase_says_how_many_it_buys;
 mod a_study_a_sharer_pays_for;
 mod a_theft_is_never_counted;
+mod a_transport_of_an_item_the_game_will_not_ship;
 mod a_transport_to_a_unit_that_cannot_receive_it;
 mod a_unit_read_without_its_money;
 mod an_arriving_crew_lends_upkeep_after_the_residents;
