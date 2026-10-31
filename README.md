@@ -215,8 +215,8 @@ the smoke suite rather than a third project in it.
 
 `test:native` drives the real desktop binary over Tauri IPC and is Linux-only: WebKitGTK is the one
 webview that speaks WebDriver, so on macOS and Windows this suite runs in CI rather than locally.
-On Linux it needs `webkit2gtk-driver` installed, `cargo install tauri-driver --locked`, and a shell
-built first:
+On Linux it needs `webkitgtk-webdriver` installed (`webkit2gtk-driver` on Ubuntu 24.04 and older),
+`cargo install tauri-driver --locked`, and a shell built first:
 
 ```bash
 pnpm --filter @atlantis/desktop exec vite build
