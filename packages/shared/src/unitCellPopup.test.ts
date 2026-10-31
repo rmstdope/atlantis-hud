@@ -3931,6 +3931,38 @@ describe("the items popup's cause sentences", () => {
     expect(notes.join(" ")).not.toContain("gave 14 to Unit (4840)");
   });
 
+  // `ah-iidht`: a sharer's goods made up another unit's exact TRANSPORT (../Atlantis
+  // `runorders.cpp`, `RunTransportOrders`; `rules/share`), and passed through the sender.
+  it("says a sharer lent the goods for another unit's TRANSPORT, naming the sender and the receiver", () => {
+    expect(
+      notesFor({
+        items: [{ name: "picks", tag: "PICK", amount: 5 }],
+        itemChanges: [
+          moved({
+            tag: "PICK",
+            name: "picks",
+            cause: "lent-for-transport",
+            delta: -5,
+            other: { unitId: "5530", name: "Sender" },
+            borrower: { unitId: "6857", name: "Quartermaster" }
+          })
+        ]
+      })[0]
+    ).toBe("picks: lent 5 for Quartermaster (6857) to send to Sender (5530).");
+  });
+
+  it("says a shipment drawn from a sharer passes through its sender", () => {
+    expect(
+      notesFor({
+        items: [],
+        itemChanges: [
+          moved({ tag: "PICK", name: "picks", cause: "drawn-from-sharer", delta: 5, other: { unitId: "6858", name: "Hauler" } }),
+          moved({ tag: "PICK", name: "picks", cause: "transported-out", delta: -5, other: { unitId: "5530", name: "Sender" } })
+        ]
+      })[0]
+    ).toBe("picks: drew 5 from Hauler (6858)'s shared stock, sent 5 to Sender (5530).");
+  });
+
   // `ah-84b1`: a sharer's goods made up another unit's numbered GIVE 0 (`rules/give`, `rules/share`).
   it("says a sharer lent the goods for another unit's discard, naming the discarder", () => {
     expect(
