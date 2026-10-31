@@ -475,6 +475,137 @@ export function regionUnitIdsAt(
   return ids;
 }
 
+/** The `;***` banner a line stands under, trimmed, or `null` when no banner comes before it. */
+function bannerAbove(lines: readonly string[], line: number): string | null {
+  for (let index = line - 1; index >= 0; index -= 1) {
+    const trimmed = (lines[index] ?? "").trim();
+    if (REGION_BANNER.test(trimmed)) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+/**
+ * Removes every banner in `banners` that no longer has anything but blank lines beneath it, with
+ * the blank lines that followed it. A banner announcing a region with something else under it - a
+ * unit, or a comment the player wrote - stays.
+ */
+function withoutEmptiedBanners(
+  document: string,
+  banners: ReadonlySet<string>,
+  syntax: OrderCommentSyntax
+): string {
+  const lines = document.split("\n");
+  const kept: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (banners.has(line.trim())) {
+      let next = index + 1;
+      while (next < lines.length && (lines[next] ?? "").trim() === "") {
+        next += 1;
+      }
+      const following = (lines[next] ?? "").trim();
+      if (next >= lines.length || REGION_BANNER.test(following) || isDocumentEnd(following, syntax)) {
+        index = next;
+        continue;
+      }
+    }
+    kept.push(line);
+    index += 1;
+  }
+  return kept.join("\n");
+}
+
+/**
+ * The hex a `;***` banner names - what sits inside its first parentheses, `7,53` or `1,1,underworld`
+ * - or `null` for a line that names none. Two banners for the same hex can still differ in their
+ * wording (another client's, or a settlement that grew since the file was written); this is what
+ * says they are the same heading.
+ */
+function bannerHex(banner: string): string | null {
+  return /\(([^)]*)\)/u.exec(banner)?.[1]?.replace(/\s+/gu, "") ?? null;
+}
+
+/**
+ * The document with every unit block moved under the banner of the hex the unit stands in now.
+ *
+ * An orders file written earlier in the month carries the banners of the hexes its units stood in
+ * then; a unit that has moved since keeps its orders but sits under a heading naming a hex it is no
+ * longer in (ah-ue5gs). Banners are comments (`rules/orders`: "Any text following a semicolon is
+ * considered a comment"), so this changes nothing the server reads - only where a person reading the
+ * file by hex finds each unit.
+ *
+ * A block moves only when the banner above it names a *different hex* from `bannerOf`'s answer.
+ * Left where it stands: a unit `bannerOf` cannot place (`null`); an id with more than one block; a
+ * block with no banner above it at all (a file written by hand, or under `OPTION TEMPLATE OFF`,
+ * names no hex, so none of it is wrong), or under a `;***` line that names no hex - a player's own
+ * heading, kept with what they put under it; a block under a banner for the right hex worded
+ * differently; and a unit owning a `FORM` whose section still holds a stale `unit new-<n>` block,
+ * since `repairFormedUnitBlocks` finds that `FORM` by the section it shares with the stale block.
+ * A unit moving to a hex the document already has a banner for joins that banner, whatever its
+ * wording; otherwise `bannerOf`'s banner is written before `#end`. A banner a move leaves with
+ * nothing under it goes too. A file in which every unit is where it says comes back unchanged.
+ *
+ * Whatever the block holds - orders, comments, `FORM`s - moves with it. A comment written on the
+ * line straight above a `unit` line belongs to the block above it (`findUnitBlocks`), so it stays
+ * with that unit rather than travelling with the one it was written for.
+ */
+export function rehomeUnitBlocks(
+  document: string,
+  bannerOf: (unitId: string) => string | null,
+  syntax: OrderCommentSyntax
+): string {
+  const counts = new Map<string, number>();
+  for (const block of findUnitBlocks(document, syntax)) {
+    counts.set(block.unitId, (counts.get(block.unitId) ?? 0) + 1);
+  }
+
+  const vacated = new Set<string>();
+  let current = document;
+  // One move per pass and recompute, as `repairFormedUnitBlocks` does: every move shifts the line
+  // indices. A moved block lands under a banner for its wanted hex and is never misplaced again,
+  // which is what ends the loop.
+  for (;;) {
+    const lines = current.split("\n");
+    const blocks = findUnitBlocks(current, syntax);
+    const staleSections = new Set(
+      blocks
+        .filter((block) => formedAlias(block.unitId.toLowerCase()) !== null)
+        .map((block) => bannerAbove(lines, block.headerLine))
+    );
+    const formOwners = new Set(findFormBlocks(current, syntax).map((form) => form.unitId));
+    const misplaced = blocks
+      .map((block) => ({ block, from: bannerAbove(lines, block.headerLine), wanted: bannerOf(block.unitId) }))
+      .find(
+        ({ block, from, wanted }) =>
+          wanted !== null &&
+          from !== null &&
+          bannerHex(from) !== null &&
+          counts.get(block.unitId) === 1 &&
+          bannerHex(from) !== bannerHex(wanted) &&
+          !(formOwners.has(block.unitId) && staleSections.has(from))
+      );
+    if (!misplaced) {
+      break;
+    }
+    const { block, from, wanted } = misplaced as { block: UnitBlock; from: string; wanted: string };
+    vacated.add(from);
+    const hex = bannerHex(wanted);
+    const existing = lines.map((line) => line.trim()).find(
+      (line) => REGION_BANNER.test(line) && bannerHex(line) === hex
+    );
+    const orders =
+      block.lastLine >= block.firstLine ? lines.slice(block.firstLine, block.lastLine + 1).join("\n") : "";
+    const without = withoutBlockAt(lines, block.headerLine, block.lastLine).join("\n");
+    const placed = ensureUnitBlock(without, block.unitId, existing ?? wanted.trim(), syntax);
+    current = writeUnitOrders(placed, block.unitId, orders, undefined, syntax);
+  }
+
+  return vacated.size === 0 ? current : withoutEmptiedBanners(current, vacated, syntax);
+}
+
 /**
  * The `FORM` block creating `new-<alias>` in the hex whose reported units are `regionUnitIds`,
  * or `null` when the document has none.
