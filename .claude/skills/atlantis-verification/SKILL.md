@@ -127,7 +127,11 @@ Three steps, in order.
    fn orders_as_the_app_holds_them(report_text: &str, edits: &[(&str, &[&str])]) -> String {
        let template = extract_orders_template(report_text)
            .map(|template| template.text)
-           .unwrap_or_else(|| "#atlantis\n#end".to_string());
+           // No template (OPTION TEMPLATE OFF): seedOrdersDocument's empty document instead.
+           .unwrap_or_else(|| {
+               let faction = parse_report_full(report_text).header.faction_id.unwrap_or_default();
+               format!("#atlantis {faction}\n\n#end")
+           });
        let mut out: Vec<String> = Vec::new();
        let mut editing = false;
        let mut placed: Vec<&str> = Vec::new();
@@ -161,6 +165,8 @@ Three steps, in order.
 
    // Straight after import, before any step: orders_as_the_app_holds_them(&text, &[]).
    // let orders = orders_as_the_app_holds_them(&text, &[("1769", &["TRANSPORT 5 5 PIKE"])]);
+   // `parsed` is the probe's own, already through classify_units: unclassified, every
+   // at_month_end comes back None.
    // let review = review_turn(&parsed, &orders, Some(&ruleset), options);
    ```
 

@@ -106,5 +106,8 @@ describe("the verification skill's probe", () => {
     expect(ruleText).toContain("extract_orders_template");
     expect(ruleText).toContain("fn orders_as_the_app_holds_them");
     expect(ruleText).toContain("seedOrdersDocument");
+    expect(ruleText.replace(/\s+/g, " ")).toContain(
+      "with only the units a step edits replaced by what their orders box holds after it"
+    );
   });
 });
