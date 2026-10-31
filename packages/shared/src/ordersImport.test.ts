@@ -2,7 +2,7 @@ import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportHeaderInfo } from
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import { ordersExportText } from "./workspace/ordersExport";
-import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
+import { describeOrdersImport, importedOrdersDocument, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
 
 /** Shaped exactly like the template a real report carries. */
 const ORDERS_FILE = [
@@ -335,5 +335,108 @@ describe("routeFileImport", () => {
 
   it("routes an empty selection to a batch of nothing", () => {
     expect(routeFileImport([])).toEqual({ kind: "batch", files: [] });
+  });
+});
+
+describe("an imported orders file follows the units to where the report shows them (ah-ue5gs)", () => {
+  /** Written when unit 12 still stood in the plain; the report on screen has it in the forest. */
+  const WRITTEN_BEFORE_THE_MOVE = [
+    '#atlantis 95 "secret"',
+    "",
+    ";*** plain (1,1) in Avon ***",
+    "",
+    "unit 12",
+    "work",
+    "",
+    "unit 13",
+    "tax",
+    "",
+    ";*** forest (2,2) in Bree ***",
+    "",
+    "unit 14",
+    "study COMB",
+    "",
+    "#end"
+  ].join("\n");
+
+  const plain = (unitIds: string[]) =>
+    aReportRegion({
+      coordinate: { x: 1, y: 1, z: 1 },
+      terrain: "plain",
+      province: "Avon",
+      units: unitIds.map((unitId) => aReportUnit({ unitId }))
+    });
+  const forest = (unitIds: string[]) =>
+    aReportRegion({
+      coordinate: { x: 2, y: 2, z: 1 },
+      terrain: "forest",
+      province: "Bree",
+      units: unitIds.map((unitId) => aReportUnit({ unitId }))
+    });
+  const swamp = (unitIds: string[]) =>
+    aReportRegion({
+      coordinate: { x: 3, y: 3, z: 1 },
+      terrain: "swamp",
+      province: "Cole",
+      units: unitIds.map((unitId) => aReportUnit({ unitId }))
+    });
+
+  it("puts a unit that moved under the heading of the hex it is in now", () => {
+    expect(
+      importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [plain(["13"]), forest(["12", "14"])], "origins")
+    ).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** plain (1,1) in Avon ***",
+        "",
+        "unit 13",
+        "tax",
+        "",
+        ";*** forest (2,2) in Bree ***",
+        "",
+        "unit 14",
+        "study COMB",
+        "",
+        "unit 12",
+        "work",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("writes the heading of a hex the file never named, and drops a heading left with no units", () => {
+    expect(
+      importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [swamp(["12", "13"]), forest(["14"])], "origins")
+    ).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** forest (2,2) in Bree ***",
+        "",
+        "unit 14",
+        "study COMB",
+        "",
+        ";*** swamp (3,3) in Cole ***",
+        "",
+        "unit 12",
+        "work",
+        "",
+        "unit 13",
+        "tax",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("leaves the file as written when every unit is where it says, or the report does not name one", () => {
+    expect(
+      importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [plain(["12", "13"]), forest(["14"])], "origins")
+    ).toBe(WRITTEN_BEFORE_THE_MOVE);
+    expect(importedOrdersDocument(WRITTEN_BEFORE_THE_MOVE, [plain(["13"]), forest(["14"])], "origins")).toBe(
+      WRITTEN_BEFORE_THE_MOVE
+    );
   });
 });

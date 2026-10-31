@@ -475,6 +475,107 @@ export function regionUnitIdsAt(
   return ids;
 }
 
+/** The `;***` banner a line stands under, trimmed, or `null` when no banner comes before it. */
+function bannerAbove(lines: readonly string[], line: number): string | null {
+  for (let index = line - 1; index >= 0; index -= 1) {
+    const trimmed = (lines[index] ?? "").trim();
+    if (REGION_BANNER.test(trimmed)) {
+      return trimmed;
+    }
+  }
+  return null;
+}
+
+/**
+ * Removes every banner in `banners` that no longer has anything but blank lines beneath it, with
+ * the blank lines that followed it. A banner announcing a region with something else under it - a
+ * unit, or a comment the player wrote - stays.
+ */
+function withoutEmptiedBanners(
+  document: string,
+  banners: ReadonlySet<string>,
+  syntax: OrderCommentSyntax
+): string {
+  const lines = document.split("\n");
+  const kept: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (banners.has(line.trim())) {
+      let next = index + 1;
+      while (next < lines.length && (lines[next] ?? "").trim() === "") {
+        next += 1;
+      }
+      const following = (lines[next] ?? "").trim();
+      if (next >= lines.length || REGION_BANNER.test(following) || isDocumentEnd(following, syntax)) {
+        index = next;
+        continue;
+      }
+    }
+    kept.push(line);
+    index += 1;
+  }
+  return kept.join("\n");
+}
+
+/**
+ * The document with every unit block moved under the banner of the region the unit stands in now.
+ *
+ * An orders file written earlier in the month carries the banners of the hexes its units stood in
+ * then; a unit that has moved since keeps its orders but sits under a heading naming a hex it is no
+ * longer in (ah-ue5gs). Banners are comments (`rules/orders`: "Any text following a semicolon is
+ * considered a comment"), so this changes nothing the server reads - only where a person reading the
+ * file by hex finds each unit.
+ *
+ * `bannerOf` answers with the banner of the unit's region, or `null` when the report does not place
+ * it; such a unit, and one whose id has more than one block, is left where it stands. A banner a
+ * move leaves with nothing under it goes too. Nothing else moves: a block already under its
+ * region's banner is untouched, so a file in which every unit is where it says comes back
+ * unchanged. Whatever the block holds - orders, comments, `FORM`s - moves with it.
+ */
+export function rehomeUnitBlocks(
+  document: string,
+  bannerOf: (unitId: string) => string | null,
+  syntax: OrderCommentSyntax
+): string {
+  const counts = new Map<string, number>();
+  for (const block of findUnitBlocks(document, syntax)) {
+    counts.set(block.unitId, (counts.get(block.unitId) ?? 0) + 1);
+  }
+
+  const vacated = new Set<string>();
+  let current = document;
+  // One move per pass and recompute, as `repairFormedUnitBlocks` does: every move shifts the line
+  // indices. A moved block lands under its wanted banner and is never misplaced again, which is
+  // what ends the loop.
+  for (;;) {
+    const lines = current.split("\n");
+    const misplaced = findUnitBlocks(current, syntax)
+      .map((block) => ({ block, wanted: bannerOf(block.unitId)?.trim() ?? null }))
+      .find(
+        ({ block, wanted }) =>
+          wanted !== null &&
+          counts.get(block.unitId) === 1 &&
+          bannerAbove(lines, block.headerLine) !== wanted
+      );
+    if (!misplaced) {
+      break;
+    }
+    const { block, wanted } = misplaced;
+    const from = bannerAbove(lines, block.headerLine);
+    if (from !== null) {
+      vacated.add(from);
+    }
+    const orders =
+      block.lastLine >= block.firstLine ? lines.slice(block.firstLine, block.lastLine + 1).join("\n") : "";
+    const without = withoutBlockAt(lines, block.headerLine, block.lastLine).join("\n");
+    const placed = ensureUnitBlock(without, block.unitId, wanted as string, syntax);
+    current = writeUnitOrders(placed, block.unitId, orders, undefined, syntax);
+  }
+
+  return vacated.size === 0 ? current : withoutEmptiedBanners(current, vacated, syntax);
+}
+
 /**
  * The `FORM` block creating `new-<alias>` in the hex whose reported units are `regionUnitIds`,
  * or `null` when the document has none.
