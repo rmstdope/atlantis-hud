@@ -36,6 +36,7 @@ fn report() -> String {
         "  * Broker (5531), Foo (1), leader [LEAD], amulet of true seeing [AMTS], 5 fur [FUR], \
          1000 silver [SILV]. Weight: 15. Capacity: 0/0/15/0. \
          Skills: quartermaster [QUAM] 3 (180).",
+        "* Porter (5533), Foo (1), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0.",
         "",
         "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
         "",
@@ -108,8 +109,7 @@ fn a_transport_of_an_amulet_of_true_seeing_warns_at_the_order() {
             assert_eq!(finding.unit_id.as_deref(), Some("5531"), "{world} {word}");
             assert_eq!(finding.line, Some(2), "{world} {word}");
             assert_eq!(
-                finding.message,
-                format!("AMTS cannot be TRANSPORTed, so this {word} moves nothing."),
+                finding.message, "The game will not transport AMTS, so they stay with this unit.",
                 "{world} {word}"
             );
             assert_eq!(
@@ -121,13 +121,21 @@ fn a_transport_of_an_amulet_of_true_seeing_warns_at_the_order() {
     }
 }
 
-/// Every kind `rules/economy_transport` names, one tag each: a man, a mount, a war machine
-/// (`data/CATP`), and an artifact (`data/RING`, made by `create ring of invisibility`). The warning
-/// does not ask the sender to hold any of it: the engine refuses the line as it is read.
+/// Every kind `rules/economy_transport` names, one tag each: a man, a summoned creature (`data/IMP`,
+/// made by `summon imps`), a ship (`data/COG`), a mount, a war machine (`data/CATP`), and an
+/// artifact (`data/RING`, made by `create ring of invisibility`). The warning does not ask the
+/// sender to hold any of it: the engine refuses the line as it is read.
 #[test]
 fn every_kind_the_rules_forbid_shipping_warns_at_the_order() {
     for (world, rules) in worlds() {
-        for (tag, amount) in [("LEAD", "1"), ("HORS", "2"), ("CATP", "1"), ("RING", "ALL")] {
+        for (tag, amount) in [
+            ("LEAD", "1"),
+            ("IMP", "1"),
+            ("COG", "1"),
+            ("HORS", "2"),
+            ("CATP", "1"),
+            ("RING", "ALL"),
+        ] {
             let orders = format!("unit 5531\nTRANSPORT 6857 {amount} {tag}\n");
             let messages: Vec<String> = findings(rules, &orders)
                 .into_iter()
@@ -136,7 +144,7 @@ fn every_kind_the_rules_forbid_shipping_warns_at_the_order() {
             assert_eq!(
                 messages,
                 vec![format!(
-                    "{tag} cannot be TRANSPORTed, so this TRANSPORT moves nothing."
+                    "The game will not transport {tag}, so they stay with this unit."
                 )],
                 "{world} {tag}"
             );
@@ -150,4 +158,31 @@ fn goods_the_game_ships_are_not_warned_about() {
         let found = findings(rules, "unit 5531\nTRANSPORT 6857 5 FUR\n");
         assert!(found.is_empty(), "{world}: {found:?}");
     }
+}
+
+/// A line that names such an item and also a unit that could not receive it keeps the target's
+/// warning, which the hover shares (`ah-19f7`), and gains the item's. Porter (5533) is no
+/// quartermaster, so the same line with fur is refused for its target alone.
+#[test]
+fn an_item_the_game_will_not_ship_is_warned_about_beside_a_refused_target() {
+    let ruleset = Ruleset::from_json(atlantis_hud_fixtures::RULESET_JSON).expect("loads");
+    let mut parsed = parse_report_full(&report());
+    classify_units(&mut parsed, &ruleset);
+    let codes_on_the_line = |orders: &str| -> Vec<String> {
+        review_turn(&parsed, orders, Some(&ruleset), CheckOptions::default())
+            .findings
+            .into_iter()
+            .filter(|finding| finding.line == Some(2))
+            .map(|finding| finding.code.to_string())
+            .collect()
+    };
+    assert_eq!(
+        codes_on_the_line("unit 5531\nTRANSPORT 5533 1 FUR\n"),
+        vec!["transport-target-refused".to_string()],
+        "the target alone refuses fur"
+    );
+    assert_eq!(
+        codes_on_the_line("unit 5531\nTRANSPORT 5533 1 AMTS\n"),
+        vec!["transport-target-refused".to_string(), CODE.to_string()]
+    );
 }

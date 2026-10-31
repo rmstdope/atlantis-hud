@@ -303,8 +303,10 @@ pub mod codes {
     /// `rules/economy_transport`: "Men (including Leaders), summoned creatures (including
     /// illusionary ones), ships, mounts, war machines, and items created using artifact lore need
     /// to be carried/sailed from one location to another by a unit." The engine refuses the line
-    /// as it reads it (`../Atlantis parseorders.cpp`, `ParseTransportableItem`: "TRANSPORT: Invalid
-    /// item."), and the goods stay with the sender. Always on: the bead asks for the warning and
+    /// as it reads it (`../Atlantis parseorders.cpp`: `ParseTransportableItem`, which matches no
+    /// `DISABLED`, `NOTRANSPORT` or `CANTGIVE` item, so "TRANSPORT: Invalid item."), and the goods
+    /// stay with the sender. Which items those are is [`Ruleset::can_be_transported`]'s reading of
+    /// the rules page, not a copy of the engine's flags. Always on: the bead asks for the warning and
     /// gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const TRANSPORT_ITEM_REFUSED: Code = Code("transport-item-refused");
     /// An `EXCHANGE` between two of our units in one hex that the game will abort: the two lines
@@ -26729,9 +26731,15 @@ fn check_transport_reach(
 /// wrote it (`ah-3bprj`).
 ///
 /// The engine refuses such a line as it reads it, before it looks at the target, the distance or
-/// the sender's stock (`../Atlantis parseorders.cpp`: `ParseTransportableItem` skips every
-/// `NOTRANSPORT` item), so this asks nothing about any of them. The forecast already keeps the goods
-/// with the sender through the same predicate (`effects.rs`, `apply_transports`).
+/// the sender's stock (`../Atlantis parseorders.cpp`: `ParseTransportableItem` matches no
+/// `DISABLED`, `NOTRANSPORT` or `CANTGIVE` item), so this asks nothing about any of them. A target
+/// or reach refusal on the same line is still told by [`check_transport_reach`], unchanged: the
+/// hover explains such a line by its target (`effects.rs`,
+/// `a_refused_target_explains_an_order_that_also_names_an_untransportable_item`) and the two places
+/// must read alike (`ah-19f7`), so dropping it from Problems alone would split them. The forecast already keeps the goods
+/// with the sender through the same predicate (`effects.rs`, `apply_transports`), and the sentence
+/// is the one the unit preview's hover writes for that refusal (`transportSentSentence`), so the
+/// two places read alike (`ah-19f7`).
 fn check_transport_items(
     hex: &Hex<'_>,
     ruleset: Option<&Ruleset>,
@@ -26747,24 +26755,18 @@ fn check_transport_items(
     for ordered in &hex.units {
         for placed in &ordered.intents {
             let Intent::Transport {
-                order,
                 what: Selector::Item(text),
                 ..
             } = &placed.intent
             else {
                 continue;
             };
-            let Some(tag) = resolve_item(text, hex, ordered, ruleset) else {
-                continue;
+            let goods = match resolve_item(text, hex, ordered, ruleset) {
+                Some(tag) if !rules.can_be_transported(&tag) => tag.to_ascii_uppercase(),
+                _ => continue,
             };
-            if rules.can_be_transported(&tag) {
-                continue;
-            }
-            let message = format!(
-                "{} cannot be TRANSPORTed, so this {} moves nothing.",
-                tag.to_ascii_uppercase(),
-                order.word()
-            );
+            let message =
+                format!("The game will not transport {goods}, so they stay with this unit.");
             findings.push(ordered.finding(
                 hex,
                 codes::TRANSPORT_ITEM_REFUSED,
