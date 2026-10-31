@@ -4468,14 +4468,12 @@ impl Working {
 
         for pending in pending {
             // The sender's month cannot pay the bill, so the game ships nothing
-            // (`rules/economy_transport`, the agreed record): no goods move and no row is written.
-            // The shortfall sentence is this case's one message (`ah-7ale.4`).
-            if self
+            // (`rules/economy_transport`, the agreed record): nothing is sent or charged, and the
+            // shortfall sentence is this case's one message (`ah-7ale.4`). What the sharers lent
+            // it still ends on the sender, below (`ah-b7g4d`).
+            let refused_for_fee = self
                 .refused_shipments
-                .contains(&(pending.sender, pending.line))
-            {
-                continue;
-            }
+                .contains(&(pending.sender, pending.line));
             let verdict = judged[pending.sequence];
             let index = order_index.get(&pending.sequence).copied().unwrap_or(0);
             let held = allowance
@@ -4510,6 +4508,17 @@ impl Working {
                 }
                 self.tags_moved_from(&pooled, &pending.what, &pending.amount)
             };
+            if refused_for_fee {
+                // The engine spends the goods with `Unit::ConsumeShared` before it judges the fee,
+                // and an unpaid fee puts every one back on the *sender*
+                // (`u->items.SetNum(t->item, u->items.GetNum(t->item)+amt)`, ../Atlantis
+                // `runorders.cpp`, `RunTransportOrders`): what was drawn on the sharers ends on the
+                // sender, and the sender's own never leaves it (`ah-b7g4d`).
+                if !lenders.is_empty() {
+                    self.return_refused_draws(pending, &mut allowance, &lenders, moving);
+                }
+                continue;
+            }
             // An order over goods the sender does not hold has nothing to retain, and nothing to
             // explain - except a refusal of one named item, which the order's warning reports
             // whatever the stock and the name, and the hover says alike: GIVE runs before
@@ -4690,34 +4699,7 @@ impl Working {
                         }
                     }
                 }
-                let mut draws: Vec<(usize, i64)> = Vec::new();
-                let mut owing = moved - own;
-                for &lender in &lenders {
-                    if owing <= 0 {
-                        break;
-                    }
-                    let Some(allowed) = allowance.get_mut(&lender) else {
-                        continue;
-                    };
-                    let Some(at) = find_item(&self.ruleset, allowed, &tag) else {
-                        continue;
-                    };
-                    let Some(live) = find_item(&self.ruleset, &self.units[lender].unit.items, &tag)
-                    else {
-                        continue;
-                    };
-                    let take = allowed[at]
-                        .amount
-                        .min(self.units[lender].unit.items[live].amount)
-                        .clamp(0, owing);
-                    if take == 0 {
-                        continue;
-                    }
-                    take_item(allowed, at, take);
-                    take_item(&mut self.units[lender].unit.items, live, take);
-                    owing -= take;
-                    draws.push((lender, take));
-                }
+                let draws = self.draw_on_sharers(&mut allowance, &lenders, &tag, moved - own);
                 let moved = own + draws.iter().map(|(_, take)| take).sum::<i64>();
                 sent[pending.sender].push((
                     pending.sequence,
@@ -4748,40 +4730,7 @@ impl Working {
                     );
                     // What the sharers made up: a loan on each sharer's row for this shipment,
                     // and a draw on the sender's, so the goods pass through it (`ah-iidht`).
-                    let sender_party = self.units[pending.sender].as_party();
-                    for &(lender, take) in &draws {
-                        let lender_party = self.units[lender].as_party();
-                        self.units[lender].item_log.record(
-                            ItemChange {
-                                tag: tag.clone(),
-                                name: name.clone(),
-                                delta: -take,
-                                cause: ItemChangeCause::LentForTransport,
-                                line: None,
-                                unit_price: None,
-                                other: Some(receiver_party.clone()),
-                                borrower: Some(sender_party.clone()),
-                                is_man,
-                                plural: None,
-                            },
-                            Stock::Moved,
-                        );
-                        self.units[pending.sender].item_log.record(
-                            ItemChange {
-                                tag: tag.clone(),
-                                name: name.clone(),
-                                delta: take,
-                                cause: ItemChangeCause::DrawnFromSharer,
-                                line: None,
-                                unit_price: None,
-                                other: Some(lender_party),
-                                borrower: None,
-                                is_man,
-                                plural: None,
-                            },
-                            Stock::Moved,
-                        );
-                    }
+                    self.record_sharer_draws(pending.sender, &draws, &name, &tag, &receiver_party);
                     // `line` is `None`: what a transport carries is the order's `order_index`,
                     // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
                     self.units[pending.sender].item_log.record(
@@ -4831,6 +4780,137 @@ impl Working {
                     ));
                 }
             }
+        }
+    }
+
+    /// What `owing` of `tag` the sharers make up, in report order and each bounded by what it
+    /// still holds and what this phase still lets it move (`Unit::ConsumeShared`, `ah-iidht`).
+    /// Each draw is taken off the sharer's live stock and its allowance alike.
+    fn draw_on_sharers(
+        &mut self,
+        allowance: &mut BTreeMap<usize, Vec<crate::report::model::ItemAmount>>,
+        lenders: &[usize],
+        tag: &str,
+        mut owing: i64,
+    ) -> Vec<(usize, i64)> {
+        let mut draws: Vec<(usize, i64)> = Vec::new();
+        for &lender in lenders {
+            if owing <= 0 {
+                break;
+            }
+            let Some(allowed) = allowance.get_mut(&lender) else {
+                continue;
+            };
+            let Some(at) = find_item(&self.ruleset, allowed, tag) else {
+                continue;
+            };
+            let Some(live) = find_item(&self.ruleset, &self.units[lender].unit.items, tag) else {
+                continue;
+            };
+            let take = allowed[at]
+                .amount
+                .min(self.units[lender].unit.items[live].amount)
+                .clamp(0, owing);
+            if take == 0 {
+                continue;
+            }
+            take_item(allowed, at, take);
+            take_item(&mut self.units[lender].unit.items, live, take);
+            owing -= take;
+            draws.push((lender, take));
+        }
+        draws
+    }
+
+    /// A loan on each sharer's row for `sender`'s shipment to `receiver`, and the matching draw on
+    /// the sender's, so the goods pass through it (`ah-iidht`).
+    fn record_sharer_draws(
+        &mut self,
+        sender: usize,
+        draws: &[(usize, i64)],
+        name: &str,
+        tag: &str,
+        receiver: &ItemChangeParty,
+    ) {
+        let is_man = self.ruleset.is_man(tag);
+        let sender_party = self.units[sender].as_party();
+        for &(lender, take) in draws {
+            let lender_party = self.units[lender].as_party();
+            self.units[lender].item_log.record(
+                ItemChange {
+                    tag: tag.to_string(),
+                    name: name.to_string(),
+                    delta: -take,
+                    cause: ItemChangeCause::LentForTransport,
+                    line: None,
+                    unit_price: None,
+                    other: Some(receiver.clone()),
+                    borrower: Some(sender_party.clone()),
+                    is_man,
+                    plural: None,
+                },
+                Stock::Moved,
+            );
+            self.units[sender].item_log.record(
+                ItemChange {
+                    tag: tag.to_string(),
+                    name: name.to_string(),
+                    delta: take,
+                    cause: ItemChangeCause::DrawnFromSharer,
+                    line: None,
+                    unit_price: None,
+                    other: Some(lender_party),
+                    borrower: None,
+                    is_man,
+                    plural: None,
+                },
+                Stock::Moved,
+            );
+        }
+    }
+
+    /// A shipment refused for its fee: what the sender lacked is drawn on the sharers as the
+    /// shipment would have drawn it, and lands on the sender, where the engine leaves it
+    /// (`ah-b7g4d`). Nothing is sent and nothing arrives. The returned goods are not added to the
+    /// sender's allowance: they have already moved this phase (`ah-d0ku`).
+    fn return_refused_draws(
+        &mut self,
+        pending: &PendingTransport,
+        allowance: &mut BTreeMap<usize, Vec<crate::report::model::ItemAmount>>,
+        lenders: &[usize],
+        moving: Vec<(String, String, i64)>,
+    ) {
+        let receiver_party = pending.receiver.map_or_else(
+            || ItemChangeParty {
+                unit_id: pending.to.clone(),
+                name: None,
+                formed_by: None,
+            },
+            |receiver| self.units[receiver].as_party(),
+        );
+        for (name, tag, moved) in moving {
+            if !self.ruleset.can_be_transported(&tag) {
+                continue;
+            }
+            let own = allowance
+                .get(&pending.sender)
+                .and_then(|allowed| {
+                    find_item(&self.ruleset, allowed, &tag).map(|at| allowed[at].amount)
+                })
+                .unwrap_or(0)
+                .clamp(0, moved);
+            let draws = self.draw_on_sharers(allowance, lenders, &tag, moved - own);
+            let drawn: i64 = draws.iter().map(|(_, take)| take).sum();
+            if drawn == 0 {
+                continue;
+            }
+            add_item(
+                &mut self.units[pending.sender].unit.items,
+                &name,
+                &tag,
+                drawn,
+            );
+            self.record_sharer_draws(pending.sender, &draws, &name, &tag, &receiver_party);
         }
     }
 
@@ -16311,6 +16391,63 @@ mod tests {
         let paid = reach_preview(&paid_report, orders, FLAT_MAP);
         assert_eq!(reach_held(&paid, "900", "STON"), 0, "the stone left");
         assert_eq!(reach_held(&paid, "901", "STON"), 5, "and arrived");
+    }
+
+    /// `ah-b7g4d`: an exact shipment spends its goods with `Unit::ConsumeShared` before the fee is
+    /// judged, and a fee the shared money cannot pay puts every one back on the *sender*, not on
+    /// the sharers it drew them from (../Atlantis `runorders.cpp`, `RunTransportOrders`:
+    /// `u->items.SetNum(t->item, u->items.GetNum(t->item)+amt)`; `rules/share`). So in a penniless
+    /// hex, a Quartermaster-5 holding five stone beside a sharer holding four, ordering an exact
+    /// nine, ends the month with all nine and the sharer with none.
+    #[test]
+    fn a_shipment_refused_for_its_fee_leaves_the_sharers_goods_on_the_sender() {
+        let report = reach_report((0, 0), (0, 8), (5, 1)).replace(
+            "1 iron [IRON]. Weight: 61. Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 5 (450).",
+            "1 iron [IRON]. Weight: 61. Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 5 (450).\n  \
+             * Sharer (902), Foo (1), sharing, leader [LEAD], 4 stone [STON]. Weight: 50. \
+             Capacity: 0/0/15/0.",
+        );
+        assert!(
+            report.contains("Sharer (902)"),
+            "the fixture gained its sharer"
+        );
+
+        let response = reach_preview(&report, "unit 900\nTRANSPORT 901 9 STON\n", FLAT_MAP);
+
+        assert_eq!(reach_held(&response, "901", "STON"), 0, "nothing arrived");
+        // An absent row holds what the report gave it, so the row is taken first.
+        let sharer = reach_drawn(&response, "902")
+            .expect("the sharer's row is previewed: its stone leaves it");
+        assert_eq!(
+            reach_held(&response, "902", "STON"),
+            0,
+            "the sharer's four were drawn for the shipment"
+        );
+        let lent: Vec<(ItemChangeCause, i64)> = sharer
+            .item_changes
+            .iter()
+            .filter(|change| change.tag == "STON")
+            .map(|change| (change.cause, change.delta))
+            .collect();
+        assert_eq!(lent, vec![(ItemChangeCause::LentForTransport, -4)]);
+        assert_eq!(
+            reach_held(&response, "900", "STON"),
+            9,
+            "the refused shipment's goods end on the sender"
+        );
+        let sender = reach_unit(&response, "900");
+        let drawn: Vec<(ItemChangeCause, i64)> = sender
+            .item_changes
+            .iter()
+            .filter(|change| change.tag == "STON")
+            .map(|change| (change.cause, change.delta))
+            .collect();
+        assert_eq!(
+            drawn,
+            vec![(ItemChangeCause::DrawnFromSharer, 4)],
+            "drawn on the sharer, and never sent"
+        );
+        assert!(sender.transport_sent.is_empty(), "nothing shipped");
     }
 
     #[test]
