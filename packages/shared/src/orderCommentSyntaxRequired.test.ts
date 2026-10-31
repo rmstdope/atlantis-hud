@@ -67,6 +67,7 @@ const POLICY_OPERATIONS = [
   "diagnosticTargets",
   "diagnosticsForUnit",
   "describeOrdersImport",
+  "importedOrdersDocument",
   "unitIdForDiagnostic",
   "unitLabelForDiagnostic",
   "diffOrders",
@@ -93,7 +94,7 @@ const PolicyOperationsHideSyntaxInputs: {
 describe("the order comment policy lives in one processing context", () => {
   it("constructs every policy operation at the ruleset boundary", () => {
     const orders = orderProcessingFor("neworigins");
-    expect(POLICY_OPERATIONS).toHaveLength(39);
+    expect(POLICY_OPERATIONS).toHaveLength(40);
     for (const operation of POLICY_OPERATIONS) {
       expect(orders[operation]).toBeTypeOf("function");
     }

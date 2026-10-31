@@ -341,6 +341,49 @@ test("an imported orders file's stale unit new-n block is folded into its FORM",
   await expectOrdersNot(page, /unit new-1/);
 });
 
+/**
+ * ah-ue5gs: an orders file written before unit 18642 moved names the hex it stood in then. Its block
+ * is exported under the heading of the hex the report shows it in now, its orders unchanged.
+ */
+const ORDERS_IMPORT_BEFORE_THE_MOVE = [
+  '#atlantis 95 "smoke"',
+  "",
+  ";*** swamp (10,50) in Cebo ***",
+  "",
+  "unit 18642",
+  "@study obse",
+  "",
+  "#end"
+].join("\n");
+
+test("an imported orders file exports each unit under the hex it is in now", async ({ page }, testInfo) => {
+  await loadReport(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await choose(page, "orders-turn-71-moved.txt", ORDERS_IMPORT_BEFORE_THE_MOVE);
+  await page.getByTestId("orders-import-replace").click();
+  await expect(page.getByTestId("orders-import-prompt")).toHaveCount(0);
+  // The import's validation raises the summary dialog for this file; it sits over the whole
+  // workspace until it is closed.
+  const summary = page.getByTestId("orders-import-summary");
+  await expect(summary).toBeVisible();
+  await page.getByTestId("orders-import-summary-close").click();
+  await expect(summary).toHaveCount(0);
+
+  await page.getByTestId("export-menu").click();
+  const downloading = page.waitForEvent("download");
+  await page.getByTestId("export-orders").click();
+  const exported = await downloading;
+  const exportedPath = testInfo.outputPath("orders-moved.txt");
+  await exported.saveAs(exportedPath);
+  const text = readFileSync(exportedPath, "utf8");
+
+  // Only the heading and the block, never the whole file: it carries the faction password.
+  expect(text).toMatch(/;\*\*\* mountain \(7,53\) in Inhead[^\n]*\n\s*unit 18642\n@study obse/u);
+  expect(text).not.toContain("swamp (10,50)");
+});
+
 test("an orders file imports through the confirm prompt", async ({ page }) => {
   await loadReport(page);
   await selectHex(page, "1:7,53");
