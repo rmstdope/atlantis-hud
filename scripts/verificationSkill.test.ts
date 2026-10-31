@@ -87,3 +87,24 @@ describe("the verification skill's wasm core check", () => {
     expect(heading).toBeLessThan(skillMd.indexOf("## The handoff"));
   });
 });
+
+describe("the verification skill's probe", () => {
+  it("starts from the report's orders template and replaces only the unit a step edits (ah-uyq0l)", () => {
+    const skillMd = readFileSync(
+      join(REPO, ".claude", "skills", "atlantis-verification", "SKILL.md"),
+      "utf8"
+    );
+    const section = skillMd.indexOf("## The fixture: pick one, prove it, or build a minimal one");
+    const rule = skillMd.indexOf(
+      "**An expected figure comes from the orders the app holds, not from the bead's orders alone.**"
+    );
+    const batch = skillMd.indexOf("**For a batch, scan rather than pick.**");
+    expect(section).toBeGreaterThanOrEqual(0);
+    expect(rule, "the skill has no rule that the probe starts from the orders template").toBeGreaterThan(section);
+    expect(rule).toBeLessThan(batch);
+    const ruleText = skillMd.slice(rule, batch);
+    expect(ruleText).toContain("extract_orders_template");
+    expect(ruleText).toContain("fn orders_as_the_app_holds_them");
+    expect(ruleText).toContain("seedOrdersDocument");
+  });
+});
