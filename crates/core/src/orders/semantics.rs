@@ -299,6 +299,14 @@ pub mod codes {
     /// Always on: the bead asks for the warning and gives it no switch, so it is in [`ALWAYS_ON`]
     /// and not in [`ALL`].
     pub const TRANSPORT_TARGET_REFUSED: Code = Code("transport-target-refused");
+    /// A `TRANSPORT`/`DISTRIBUTE` of an item the game will not ship at all (`ah-3bprj`).
+    /// `rules/economy_transport`: "Men (including Leaders), summoned creatures (including
+    /// illusionary ones), ships, mounts, war machines, and items created using artifact lore need
+    /// to be carried/sailed from one location to another by a unit." The engine refuses the line
+    /// as it reads it (`../Atlantis parseorders.cpp`, `ParseTransportableItem`: "TRANSPORT: Invalid
+    /// item."), and the goods stay with the sender. Always on: the bead asks for the warning and
+    /// gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
+    pub const TRANSPORT_ITEM_REFUSED: Code = Code("transport-item-refused");
     /// An `EXCHANGE` between two of our units in one hex that the game will abort: the two lines
     /// are not complementary, or a side will not hold what it offers (`rules/exchange`: "If either
     /// unit involved does not have the items it is offering, or if the exchange orders given are
@@ -430,7 +438,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 14] = [
+    pub const ALWAYS_ON: [Code; 15] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -441,6 +449,7 @@ pub mod codes {
         ENTER_NOT_HERE,
         LEAVE_REFUSED_AT_SEA,
         TRANSPORT_TARGET_REFUSED,
+        TRANSPORT_ITEM_REFUSED,
         EXCHANGE_ABORTED,
         PROMOTE_NOT_OWNER,
         PROMOTE_NO_TARGET,
@@ -1107,6 +1116,7 @@ pub fn review_turn(
             &options,
             &mut findings,
         );
+        check_transport_items(hex, ruleset, &options, &mut findings);
         check_take_from_another_faction(hex, &options, &mut findings);
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
@@ -26710,6 +26720,57 @@ fn check_transport_reach(
                 _ => continue,
             };
             findings.push(ordered.finding(hex, code, message, Some(placed)));
+        }
+    }
+}
+
+/// Every `TRANSPORT`/`DISTRIBUTE` in this hex naming an item the game will not ship
+/// (`rules/economy_transport`; [`Ruleset::can_be_transported`]), reported against the unit that
+/// wrote it (`ah-3bprj`).
+///
+/// The engine refuses such a line as it reads it, before it looks at the target, the distance or
+/// the sender's stock (`../Atlantis parseorders.cpp`: `ParseTransportableItem` skips every
+/// `NOTRANSPORT` item), so this asks nothing about any of them. The forecast already keeps the goods
+/// with the sender through the same predicate (`effects.rs`, `apply_transports`).
+fn check_transport_items(
+    hex: &Hex<'_>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TRANSPORT_ITEM_REFUSED) {
+        return;
+    }
+    let Some(rules) = ruleset else {
+        return;
+    };
+    for ordered in &hex.units {
+        for placed in &ordered.intents {
+            let Intent::Transport {
+                order,
+                what: Selector::Item(text),
+                ..
+            } = &placed.intent
+            else {
+                continue;
+            };
+            let Some(tag) = resolve_item(text, hex, ordered, ruleset) else {
+                continue;
+            };
+            if rules.can_be_transported(&tag) {
+                continue;
+            }
+            let message = format!(
+                "{} cannot be TRANSPORTed, so this {} moves nothing.",
+                tag.to_ascii_uppercase(),
+                order.word()
+            );
+            findings.push(ordered.finding(
+                hex,
+                codes::TRANSPORT_ITEM_REFUSED,
+                message,
+                Some(placed),
+            ));
         }
     }
 }
