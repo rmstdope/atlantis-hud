@@ -519,7 +519,17 @@ function withoutEmptiedBanners(
 }
 
 /**
- * The document with every unit block moved under the banner of the region the unit stands in now.
+ * The hex a `;***` banner names - what sits inside its first parentheses, `7,53` or `1,1,underworld`
+ * - or `null` for a line that names none. Two banners for the same hex can still differ in their
+ * wording (another client's, or a settlement that grew since the file was written); this is what
+ * says they are the same heading.
+ */
+function bannerHex(banner: string): string | null {
+  return /\(([^)]*)\)/u.exec(banner)?.[1]?.replace(/\s+/gu, "") ?? null;
+}
+
+/**
+ * The document with every unit block moved under the banner of the hex the unit stands in now.
  *
  * An orders file written earlier in the month carries the banners of the hexes its units stood in
  * then; a unit that has moved since keeps its orders but sits under a heading naming a hex it is no
@@ -527,11 +537,19 @@ function withoutEmptiedBanners(
  * considered a comment"), so this changes nothing the server reads - only where a person reading the
  * file by hex finds each unit.
  *
- * `bannerOf` answers with the banner of the unit's region, or `null` when the report does not place
- * it; such a unit, and one whose id has more than one block, is left where it stands. A banner a
- * move leaves with nothing under it goes too. Nothing else moves: a block already under its
- * region's banner is untouched, so a file in which every unit is where it says comes back
- * unchanged. Whatever the block holds - orders, comments, `FORM`s - moves with it.
+ * A block moves only when the banner above it names a *different hex* from `bannerOf`'s answer.
+ * Left where it stands: a unit `bannerOf` cannot place (`null`); an id with more than one block; a
+ * block with no banner above it at all (a file written by hand, or under `OPTION TEMPLATE OFF`,
+ * names no hex, so none of it is wrong); a block under a banner for the right hex worded
+ * differently; and a unit owning a `FORM` whose section still holds a stale `unit new-<n>` block,
+ * since `repairFormedUnitBlocks` finds that `FORM` by the section it shares with the stale block.
+ * A unit moving to a hex the document already has a banner for joins that banner, whatever its
+ * wording; otherwise `bannerOf`'s banner is written before `#end`. A banner a move leaves with
+ * nothing under it goes too. A file in which every unit is where it says comes back unchanged.
+ *
+ * Whatever the block holds - orders, comments, `FORM`s - moves with it. A comment written on the
+ * line straight above a `unit` line belongs to the block above it (`findUnitBlocks`), so it stays
+ * with that unit rather than travelling with the one it was written for.
  */
 export function rehomeUnitBlocks(
   document: string,
@@ -546,30 +564,40 @@ export function rehomeUnitBlocks(
   const vacated = new Set<string>();
   let current = document;
   // One move per pass and recompute, as `repairFormedUnitBlocks` does: every move shifts the line
-  // indices. A moved block lands under its wanted banner and is never misplaced again, which is
-  // what ends the loop.
+  // indices. A moved block lands under a banner for its wanted hex and is never misplaced again,
+  // which is what ends the loop.
   for (;;) {
     const lines = current.split("\n");
-    const misplaced = findUnitBlocks(current, syntax)
-      .map((block) => ({ block, wanted: bannerOf(block.unitId)?.trim() ?? null }))
+    const blocks = findUnitBlocks(current, syntax);
+    const staleSections = new Set(
+      blocks
+        .filter((block) => formedAlias(block.unitId.toLowerCase()) !== null)
+        .map((block) => bannerAbove(lines, block.headerLine))
+    );
+    const formOwners = new Set(findFormBlocks(current, syntax).map((form) => form.unitId));
+    const misplaced = blocks
+      .map((block) => ({ block, from: bannerAbove(lines, block.headerLine), wanted: bannerOf(block.unitId) }))
       .find(
-        ({ block, wanted }) =>
+        ({ block, from, wanted }) =>
           wanted !== null &&
+          from !== null &&
           counts.get(block.unitId) === 1 &&
-          bannerAbove(lines, block.headerLine) !== wanted
+          bannerHex(from) !== bannerHex(wanted) &&
+          !(formOwners.has(block.unitId) && staleSections.has(from))
       );
     if (!misplaced) {
       break;
     }
-    const { block, wanted } = misplaced;
-    const from = bannerAbove(lines, block.headerLine);
-    if (from !== null) {
-      vacated.add(from);
-    }
+    const { block, from, wanted } = misplaced as { block: UnitBlock; from: string; wanted: string };
+    vacated.add(from);
+    const hex = bannerHex(wanted);
+    const existing = lines.map((line) => line.trim()).find(
+      (line) => REGION_BANNER.test(line) && bannerHex(line) === hex
+    );
     const orders =
       block.lastLine >= block.firstLine ? lines.slice(block.firstLine, block.lastLine + 1).join("\n") : "";
     const without = withoutBlockAt(lines, block.headerLine, block.lastLine).join("\n");
-    const placed = ensureUnitBlock(without, block.unitId, wanted as string, syntax);
+    const placed = ensureUnitBlock(without, block.unitId, existing ?? wanted.trim(), syntax);
     current = writeUnitOrders(placed, block.unitId, orders, undefined, syntax);
   }
 

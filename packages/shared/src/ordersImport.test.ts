@@ -1,6 +1,7 @@
 import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
 import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
+import { repairFormedUnitBlocks } from "./ordersDocument";
 import { ordersExportText } from "./workspace/ordersExport";
 import { describeOrdersImport, importedOrdersDocument, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
 
@@ -429,6 +430,67 @@ describe("an imported orders file follows the units to where the report shows th
         "#end"
       ].join("\n")
     );
+  });
+
+  it("leaves a file with no headings at all as written", () => {
+    const handWritten = ['#atlantis 95 "secret"', "", "unit 12", "work", "", "#end"].join("\n");
+    expect(importedOrdersDocument(handWritten, [forest(["12"])], "origins")).toBe(handWritten);
+  });
+
+  it("leaves a unit under a heading for its own hex, however that heading is worded", () => {
+    const reworded = WRITTEN_BEFORE_THE_MOVE.replace(
+      ";*** plain (1,1) in Avon ***",
+      ";*** plain (1,1) in Avon, contains Avonmouth [village] ***"
+    );
+    expect(importedOrdersDocument(reworded, [plain(["12", "13"]), forest(["14"])], "origins")).toBe(reworded);
+  });
+
+  it("puts a moved unit under the heading the file already has for its new hex, however worded", () => {
+    const reworded = WRITTEN_BEFORE_THE_MOVE.replace(
+      ";*** forest (2,2) in Bree ***",
+      ";*** forest (2,2) in Bree, contains Breeton [town] ***"
+    );
+    expect(importedOrdersDocument(reworded, [plain(["13"]), forest(["12", "14"])], "origins")).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** plain (1,1) in Avon ***",
+        "",
+        "unit 13",
+        "tax",
+        "",
+        ";*** forest (2,2) in Bree, contains Breeton [town] ***",
+        "",
+        "unit 14",
+        "study COMB",
+        "",
+        "unit 12",
+        "work",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("keeps a FORM's owner beside a stale unit new-n block, so the load-time repair still folds it in", () => {
+    const staleFormed = [
+      '#atlantis 95 "secret"',
+      "",
+      ";*** plain (1,1) in Avon ***",
+      "unit 12",
+      "form 1",
+      "buy 1 hdwa",
+      "end",
+      "",
+      "unit new-1",
+      "STUDY COMB",
+      "",
+      "#end"
+    ].join("\n");
+    const imported = importedOrdersDocument(staleFormed, [forest(["12"])], "origins");
+    const repair = repairFormedUnitBlocks(imported, "origins");
+    expect(repair.orphaned).toEqual([]);
+    expect(repair.moved).toEqual([{ alias: "1", orderCount: 1 }]);
   });
 
   it("leaves the file as written when every unit is where it says, or the report does not name one", () => {
