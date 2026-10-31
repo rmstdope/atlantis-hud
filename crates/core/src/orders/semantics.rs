@@ -7806,16 +7806,39 @@ impl Ledger<'_> {
         before: &ShipmentName,
         tag: &str,
         received_earlier: &BTreeMap<(String, String), i64>,
-        shipped: &BTreeMap<String, i64>,
+        shipped: &ShippedThisPhase,
     ) -> i64 {
-        let sender = before.sender.as_str();
+        self.unit_stock_as_shipment_runs(
+            hex,
+            &before.sender,
+            before,
+            tag,
+            received_earlier,
+            shipped,
+        )
+    }
+
+    /// [`Self::stock_as_shipment_runs`] for any unit of the hex, `unit_id`, read as the shipment
+    /// `before` runs: the sender's own stock, or a sharer's it may draw on (`ah-w61rl`). What
+    /// this sub-phase's shipments already spent of it comes off, whether the unit shipped it
+    /// itself or lent it to another sender's.
+    fn unit_stock_as_shipment_runs(
+        &self,
+        hex: &Hex<'_>,
+        unit_id: &str,
+        before: &ShipmentName,
+        tag: &str,
+        received_earlier: &BTreeMap<(String, String), i64>,
+        shipped: &ShippedThisPhase,
+    ) -> i64 {
         let arrived = received_earlier
-            .get(&(sender.to_string(), tag.to_string()))
+            .get(&(unit_id.to_string(), tag.to_string()))
             .copied()
             .unwrap_or_default();
-        (self.transport_holding(hex, sender, tag, before) + arrived
-            - shipment_allowance_used(shipped, tag))
-        .max(0)
+        let used = shipped
+            .get(unit_id)
+            .map_or(0, |by_tag| shipment_allowance_used(by_tag, tag));
+        (self.transport_holding(hex, unit_id, tag, before) + arrived - used).max(0)
     }
 
     /// The item pictures maintenance reads, including the report-wide shipment phase that the
@@ -26723,6 +26746,12 @@ struct SettledShipment {
     target: String,
     tag: String,
     quantity: i64,
+    /// What of `quantity` was drawn on the sender's sharers, by unit number, in the order drawn:
+    /// an exact shipment of goods other than silver is spent with `Unit::ConsumeShared`
+    /// (../Atlantis `runorders.cpp`, `RunTransportOrders`; `rules/share`; `ah-w61rl`), so those
+    /// goods leave the sharers and only the rest leaves the sender. Always empty for silver, whose
+    /// draws are its step of the run's ([`TransportStep::draws`], `ah-9yvv`).
+    drawn: Vec<(String, i64)>,
 }
 
 /// The one judgement of a shipment line from this hex, or `None` for a `NEW` alias no `FORM` in
@@ -26779,12 +26808,23 @@ impl SettledShipment {
                 Some(format!("unit {}", self.target)),
             );
         } else {
-            ledger
-                .transported_goods
-                .entry((self.sender.clone(), self.tag.clone()))
-                .and_modify(|amount| *amount -= self.quantity)
-                .or_insert(-self.quantity);
+            for (unit_id, taken) in self.taken() {
+                *ledger
+                    .transported_goods
+                    .entry((unit_id, self.tag.clone()))
+                    .or_default() -= taken;
+            }
         }
+    }
+
+    /// Who the goods left, and how many each: the sender's own part, then each sharer's draw
+    /// ([`SettledShipment::drawn`]).
+    fn taken(&self) -> Vec<(String, i64)> {
+        let drawn: i64 = self.drawn.iter().map(|(_, amount)| amount).sum();
+        std::iter::once((self.sender.clone(), self.quantity - drawn))
+            .chain(self.drawn.iter().cloned())
+            .filter(|(_, amount)| *amount != 0)
+            .collect()
     }
 
     fn credit_receiver(
@@ -26983,6 +27023,66 @@ fn shipment_lenders(
         .collect()
 }
 
+/// The sharers an exact shipment of goods other than silver by `before`'s sender can draw on as it
+/// runs, by unit number, each with what it still has of `tag` (`unit.cpp`: `GetSharedNum` counts
+/// every sharing faction-mate in the region, and `ConsumeShared` draws on them in turn;
+/// `rules/share`; `ah-w61rl`). In report order, the hex as listed - the reading every item tag
+/// takes ([`Sharing::read`]) and the one the item preview draws in (`apply_transport_phase`).
+/// Men never pool ([`Reading::PerUnit`]), so a shipment of them draws on nobody.
+fn goods_lenders(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    before: &ShipmentName,
+    tag: &str,
+    received_earlier: &BTreeMap<(String, String), i64>,
+    shipped: &ShippedThisPhase,
+) -> Vec<(String, i64)> {
+    let sharing = Sharing::read(hex);
+    if sharing.reading(tag, ledger.ruleset) != Reading::Pooled {
+        return Vec::new();
+    }
+    let Some(sender) = hex.find(&before.sender) else {
+        return Vec::new();
+    };
+    sharing
+        .sharers
+        .iter()
+        .filter(|(_, sharer)| {
+            sharer.unit.unit_id != sender.unit.unit_id
+                && sharer.unit.faction_id == sender.unit.faction_id
+        })
+        .map(|(_, sharer)| {
+            let unit_id = sharer.unit.unit_id.clone();
+            let left = ledger.unit_stock_as_shipment_runs(
+                hex,
+                &unit_id,
+                before,
+                tag,
+                received_earlier,
+                shipped,
+            );
+            (unit_id, left)
+        })
+        .filter(|(_, left)| *left > 0)
+        .collect()
+}
+
+/// [`draws_on_sharers`] for [`goods_lenders`]: `drawn` laid on the sharers in order, each up to
+/// what it has.
+fn draws_on_sharers_by_name(lenders: &[(String, i64)], drawn: i64) -> Vec<(String, i64)> {
+    let mut owing = drawn.max(0);
+    let mut draws = Vec::new();
+    for (lender, left) in lenders {
+        if owing == 0 {
+            break;
+        }
+        let amount = (*left).min(owing);
+        owing -= amount;
+        draws.push((lender.clone(), amount));
+    }
+    draws
+}
+
 /// `drawn` - what a shipment moves beyond its sender's own silver - laid on `lenders` in order,
 /// each up to what it has: the draws its step of the run lends ([`TransportStep::draws`],
 /// `ah-9yvv`).
@@ -27031,13 +27131,12 @@ fn shipping_bills(
         return delivered;
     };
 
+    // What this sub-phase's earlier shipments in the hex already took of each unit's goods
+    // ([`ShippedThisPhase`]).
+    let mut shipped: ShippedThisPhase = BTreeMap::new();
     for ordered in &hex.units {
         let sender = ordered.unit.unit_id.as_str();
         let sender_label = hex.ordered_label(ordered);
-        // What this unit's own earlier shipments already took, by tag: `rules/sequenceofevents`
-        // moves each item "only once in each phase", which `apply_transport_phase`'s allowance
-        // snapshot enforces on the preview's side.
-        let mut shipped: BTreeMap<String, i64> = BTreeMap::new();
         let mut priced_here: Vec<ShipmentPriced> = Vec::new();
         let mut priced_and_refused: Vec<(i64, super::transport::RefusedShipment)> = Vec::new();
         let mut unmeasured = super::transport::UnmeasuredShipments::default();
@@ -27184,10 +27283,25 @@ fn shipping_bills(
                 Vec::new()
             };
             let can_have = held + lenders.iter().map(|(_, left)| left).sum::<i64>();
-            let quantity = match asked {
-                Some(asked) => asked.clamp(0, can_have),
-                None => super::transfers::quantity_moved(amount, held),
+            // Goods other than silver are cut to, and spent from, the same `GetSharedNum`: the
+            // sender's own first, then its sharers' in report order (`ah-w61rl`). Drawn on their
+            // stock as this shipment runs, so a sharer's goods move once in the sub-phase.
+            let goods_lenders = match amount {
+                Amount::Exact(_) if !tag.eq_ignore_ascii_case(SILVER) => {
+                    goods_lenders(ledger, hex, &name, &tag, received_earlier, &shipped)
+                }
+                _ => Vec::new(),
             };
+            let quantity = match (asked, amount) {
+                (Some(asked), _) => asked.clamp(0, can_have),
+                (None, Amount::Exact(asked)) if !goods_lenders.is_empty() => (*asked).clamp(
+                    0,
+                    held + goods_lenders.iter().map(|(_, left)| left).sum::<i64>(),
+                ),
+                (None, _) => super::transfers::quantity_moved(amount, held),
+            };
+            let goods_drawn: Vec<(String, i64)> =
+                draws_on_sharers_by_name(&goods_lenders, quantity - held);
             let mut draws = draws_on_sharers(&lenders, quantity - held);
             if let Some(asked) = asked {
                 if let Some(&check) = ledger.silver_at_transport_check.get(sender) {
@@ -27244,6 +27358,7 @@ fn shipping_bills(
                             quantity,
                             placed,
                             &id,
+                            goods_drawn,
                             &mut shipped,
                         ));
                     }
@@ -27271,6 +27386,7 @@ fn shipping_bills(
                             quantity,
                             placed,
                             &id,
+                            goods_drawn,
                             &mut shipped,
                         ));
                     }
@@ -27317,6 +27433,7 @@ fn shipping_bills(
                             quantity,
                             placed,
                             &id,
+                            goods_drawn,
                             &mut shipped,
                         ));
                         priced_here.push(ShipmentPriced {
@@ -27345,6 +27462,25 @@ fn shipping_bills(
                                 available: purse.max(0),
                             },
                         ));
+                        // The engine has already spent the goods with `ConsumeShared` when it
+                        // finds the fee unaffordable, and puts every one of them back on the
+                        // sender (`runorders.cpp`: `u->items.SetNum(t->item, ... + amt)`), so
+                        // what the sharers lent ends on the sender (`ah-w61rl`).
+                        if !goods_drawn.is_empty() {
+                            let returned = goods_drawn.iter().map(|(_, drawn)| drawn).sum();
+                            delivered.push(settle_shipment_delivery(
+                                ledger,
+                                settled_at,
+                                sender,
+                                &sender_label,
+                                &tag,
+                                returned,
+                                placed,
+                                sender,
+                                goods_drawn,
+                                &mut shipped,
+                            ));
+                        }
                     }
                 }
             }
@@ -27443,7 +27579,7 @@ fn record_nothing_to_ship(
     text: &str,
     amount: &Amount,
     received_earlier: &BTreeMap<(String, String), i64>,
-    shipped: &BTreeMap<String, i64>,
+    shipped: &ShippedThisPhase,
 ) {
     if judged.phase != sub_phase || !matches!(amount, Amount::Exact(moved) if *moved > 0) {
         return;
@@ -27482,7 +27618,8 @@ fn settle_shipment_delivery(
     quantity: i64,
     placed: &PlacedIntent,
     target: &str,
-    shipped: &mut BTreeMap<String, i64>,
+    drawn: Vec<(String, i64)>,
+    shipped: &mut ShippedThisPhase,
 ) -> SettledShipment {
     let shipment = SettledShipment {
         sender: sender.to_string(),
@@ -27490,11 +27627,24 @@ fn settle_shipment_delivery(
         target: target.to_string(),
         tag: tag.to_string(),
         quantity,
+        drawn,
     };
     shipment.debit_sender(ledger, phase, placed);
-    *shipped.entry(tag.to_string()).or_default() += quantity;
+    for (unit_id, taken) in shipment.taken() {
+        *shipped
+            .entry(unit_id)
+            .or_default()
+            .entry(tag.to_string())
+            .or_default() += taken;
+    }
     shipment
 }
+
+/// What each unit's goods have already been spent on by this sub-phase's shipments in its hex, by
+/// unit number and then tag: its own shipments and the draws other senders made on it as a sharer
+/// (`ah-w61rl`). `rules/sequenceofevents` moves each item "only once in each phase", and
+/// `apply_transport_phase`'s allowance snapshot enforces the same on the preview's side.
+type ShippedThisPhase = BTreeMap<String, BTreeMap<String, i64>>;
 
 /// Non-silver shipment quantities do not enter the phase ledger, so their allowance remembers
 /// what earlier shipments in the phase sent. Silver does enter it through [`move_silver`].
@@ -27529,9 +27679,11 @@ fn ship_in_sub_phase(
         *received_earlier
             .entry((shipment.target.clone(), shipment.tag.clone()))
             .or_default() += shipment.quantity;
-        *received_earlier
-            .entry((shipment.sender.clone(), shipment.tag.clone()))
-            .or_default() -= shipment.quantity;
+        for (unit_id, taken) in shipment.taken() {
+            *received_earlier
+                .entry((unit_id, shipment.tag.clone()))
+                .or_default() -= taken;
+        }
     }
     let mut shipped = Vec::new();
     for (hex, ledger) in hexes.iter_mut() {
@@ -64325,6 +64477,7 @@ BUILD
             target: "901".to_string(),
             tag: SILVER.to_string(),
             quantity: 200,
+            drawn: Vec::new(),
         };
 
         assert_eq!(shipment.silver_change_for(&shipment.sender), Some(-200));
@@ -64470,6 +64623,190 @@ BUILD
             transported.at_month_end,
             baseline.at_month_end.map(|silver| silver - 400)
         );
+    }
+
+    // --- goods a sharer funds a shipment with (`ah-w61rl`) --------------------------------------
+    //
+    // `runorders.cpp` (`RunTransportOrders`) cuts an exact amount to `Unit::GetSharedNum` - the
+    // sender's own stock and every sharing faction-mate's in the region (`rules/share`) - and
+    // spends it with `Unit::ConsumeShared` before it prices the shipment on the weight of `amt`.
+    // So a quartermaster that holds none of the goods pays for the ones its sharers lend it, and
+    // the goods leave the sharers.
+
+    /// [`priced_shipping`] with no goods on the quartermaster, beside a sharer holding `goods`.
+    fn priced_shipping_from_a_sharer(
+        goods: &[(i64, &str, &str)],
+        targets: Vec<ReportRegion>,
+    ) -> Vec<ReportRegion> {
+        let mut regions = priced_shipping(5, &[], targets);
+        let mut sharer = sharing(unit("902"));
+        for (amount, name, tag) in goods {
+            sharer = with_item(sharer, *amount, name, tag);
+        }
+        regions[0].units.push(sharer);
+        regions
+    }
+
+    /// `data/quartermaster` prices a Quartermaster 5's shipment at 5 silver per weight unit and
+    /// `data/items` weighs a fur at 1, so the nine furs the sharer lends cost 45.
+    #[test]
+    fn a_shipment_a_sharer_funds_with_goods_is_charged_its_fee() {
+        let targets = || vec![caravanserai_owner("901", 1, 0, 6)];
+        let silver = sender_silver(
+            priced_shipping_from_a_sharer(&[(9, "fur", "FUR")], targets()),
+            "unit 900\nTRANSPORT 901 9 FUR\n",
+            with_map(),
+        );
+        let baseline = sender_silver(
+            priced_shipping_from_a_sharer(&[(9, "fur", "FUR")], targets()),
+            "unit 900\n",
+            with_map(),
+        );
+
+        assert_eq!(
+            shipped(&silver),
+            vec![&SilverChange {
+                amount: -45,
+                cause: SilverChangeCause::Shipped,
+                line: Some(2),
+                other: None,
+                place: None,
+                lands: None,
+            }],
+            "the nine furs the sharer lent are priced"
+        );
+        assert_eq!(
+            silver.at_month_end,
+            baseline.at_month_end.map(|end| end - 45)
+        );
+    }
+
+    /// `Unit::ConsumeShared` spends the sender's own stock first, so a quartermaster holding four
+    /// furs draws five of an exact nine on the sharer and pays for all nine; and the ask is cut to
+    /// what the two hold together (`amt = u->GetSharedNum(t->item)`), so twenty ships the
+    /// thirteen there are.
+    #[test]
+    fn a_shipment_is_priced_on_the_senders_goods_and_the_sharers_together() {
+        let regions = || {
+            let mut regions = priced_shipping_from_a_sharer(
+                &[(9, "fur", "FUR")],
+                vec![caravanserai_owner("901", 1, 0, 6)],
+            );
+            regions[0].units[0] = with_item(regions[0].units[0].clone(), 4, "fur", "FUR");
+            regions
+        };
+        let fee = |orders: &str| {
+            shipped(&sender_silver(regions(), orders, with_map()))
+                .iter()
+                .map(|change| change.amount)
+                .sum::<i64>()
+        };
+
+        assert_eq!(fee("unit 900\nTRANSPORT 901 9 FUR\n"), -45);
+        assert_eq!(
+            fee("unit 900\nTRANSPORT 901 20 FUR\n"),
+            -65,
+            "cut to the thirteen held"
+        );
+    }
+
+    /// `ah-w61rl`, from the `ah-iidht` review: the engine spends the goods with `ConsumeShared`
+    /// before it judges the fee, and a fee the shared money cannot pay puts every one of them back
+    /// on the sender (`runorders.cpp`: `u->items.SetNum(t->item, u->items.GetNum(t->item)+amt)`).
+    /// So a penniless quartermaster's refused shipment of a sharer's grain leaves the grain on the
+    /// quartermaster, which eats it under `CONSUME UNIT` (`rules/economy_maintenance`).
+    #[test]
+    fn a_shipment_refused_for_its_fee_leaves_the_sharers_goods_on_the_sender() {
+        let mut regions = priced_shipping_from_a_sharer(
+            &[(5, "grain", "GRAI")],
+            vec![caravanserai_owner("901", 1, 0, 6)],
+        );
+        regions[0].units[0] = starving(regions[0].units[0].clone());
+        regions[0].units[0]
+            .items
+            .retain(|item| !item.tag.eq_ignore_ascii_case(SILVER));
+        regions[0].units[1] = sharing(starving(regions[0].units[1].clone()));
+        regions[0].units[1] = with_item(regions[0].units[1].clone(), 5, "grain", "GRAI");
+        let report = report(regions);
+
+        let review = review_turn(
+            &report,
+            "unit 900\nCONSUME UNIT\nTRANSPORT 901 5 GRAI\n",
+            Some(&ruleset()),
+            with_map(),
+        );
+        assert!(
+            review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::NOT_ENOUGH_SILVER),
+            "the fee is refused: {:?}",
+            review.findings
+        );
+        let sender = shipment_silver(&review, "900");
+        assert!(sender.own_food_covered > 0, "{sender:?}");
+    }
+
+    /// `rules/transport`: DISTRIBUTE "has the same meaning and syntax" as TRANSPORT, and the
+    /// engine runs both through `RunTransportOrders`, so a quartermaster's DISTRIBUTE draws on the
+    /// sharer's goods alike. Its reach is the flat one, which is free (`rules/economy_transport`:
+    /// "Sending items to a quartermaster no more than 2 hexes away is free"), so only the goods
+    /// are left to tell: the grain leaves the sharer.
+    #[test]
+    fn a_distribute_takes_the_goods_from_the_sharer() {
+        let review = sharer_grain_review(
+            "unit 900\nDISTRIBUTE 903 5 GRAI\n",
+            caravanserai_owner("903", 1, 0, 2),
+        );
+        assert!(
+            !review
+                .findings
+                .iter()
+                .any(|finding| finding.code == codes::TRANSPORT_OUT_OF_REACH),
+            "{:?}",
+            review.findings
+        );
+        let eater = shipment_silver(&review, "904");
+        assert_eq!(eater.faction_food_covered, 0, "{eater:?}");
+    }
+
+    /// The goods leave the sharer, not the quartermaster: grain a sharer lends to a shipment is
+    /// gone by maintenance (`rules/sequenceofevents` runs TRANSPORT before it), so it feeds none
+    /// of the faction-food eaters it would otherwise feed (`rules/economy_maintenance`).
+    #[test]
+    fn grain_a_sharer_lends_to_a_shipment_feeds_no_faction_mate() {
+        let control = sharer_grain_review("unit 900\n", caravanserai_owner("903", 1, 0, 4));
+        assert_eq!(
+            shipment_silver(&control, "904").faction_food_covered,
+            60,
+            "the granary's grain feeds the eater when nothing ships"
+        );
+
+        let review = sharer_grain_review(
+            "unit 900\nTRANSPORT 903 5 GRAI\n",
+            caravanserai_owner("903", 1, 0, 4),
+        );
+        let eater = shipment_silver(&review, "904");
+        assert_eq!(eater.faction_food_covered, 0, "{eater:?}");
+        assert_eq!(eater.upkeep, Some(60), "{eater:?}");
+    }
+
+    /// The quartermaster of [`priced_shipping_from_a_sharer`] holding no grain, beside a sharing
+    /// granary of five grain and a six-man eater, both `CONSUME FACTION`, reviewed with `orders`.
+    fn sharer_grain_review(orders: &str, target: ReportRegion) -> TurnReview {
+        let mut regions = priced_shipping_from_a_sharer(&[], vec![target]);
+        let mut granary = with_item(
+            with_men(with_silver(sharing(starving(unit("902"))), 500), 1),
+            5,
+            "grain",
+            "GRAI",
+        );
+        granary.flags.push("consuming faction's food".to_string());
+        let mut eater = with_men(with_silver(starving(unit("904")), 500), 6);
+        eater.flags = vec!["consuming faction's food".to_string()];
+        regions[0].units[1] = granary;
+        regions[0].units.push(eater);
+        review_turn(&report(regions), orders, Some(&ruleset()), with_map())
     }
 
     /// `data/quartermaster`: shipping between transport structures costs `4-((level+1)/2) * 5`
@@ -70440,6 +70777,7 @@ BUILD
             target: "906".to_string(),
             tag: SILVER.to_string(),
             quantity,
+            drawn: Vec::new(),
         };
         receipt(20).credit_receiver(
             &mut ledger,
