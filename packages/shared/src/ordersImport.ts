@@ -125,14 +125,19 @@ export function routeOrdersImport(
     };
   }
 
-  const description = orderProcessingFor(game.manifest.metadata.rulesetId).describeOrdersImport(
-    text,
-    ordersDocument
+  // A unit the report no longer lists as the faction's own - it died, say - has no orders to send,
+  // so its block is left out now, silently: the prompt's count, the document Replace writes and
+  // everything exported from it all agree that it is gone (ah-fe0zo).
+  const processing = orderProcessingFor(game.manifest.metadata.rulesetId);
+  const ownUnitIds = new Set(
+    parsed.regions.flatMap((region) => region.units.filter((unit) => unit.own).map((unit) => unit.unitId))
   );
+  const liveText = processing.withoutUnitBlocksOutside(text, ownUnitIds);
+  const description = processing.describeOrdersImport(liveText, ordersDocument);
   return {
     kind: "ask",
     pending: {
-      text,
+      text: liveText,
       fileName,
       factionLabel: factionLabelOf(parsed) ?? "your faction",
       gameId: game.manifest.metadata.gameId,
