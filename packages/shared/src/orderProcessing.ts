@@ -18,6 +18,7 @@ import {
   readUnitOrders,
   regionUnitIdsAt,
   repairFormedUnitBlocks,
+  withoutUnitBlocksOutside,
   reportedLongOrders,
   stripLongOrderLines,
   stripMovementOrderLines,
@@ -53,6 +54,7 @@ export interface OrderProcessing {
   readonly findUnitBlocks: WithoutSyntax<typeof findUnitBlocks>;
   readonly findFormBlocks: WithoutSyntax<typeof findFormBlocks>;
   readonly repairFormedUnitBlocks: WithoutSyntax<typeof repairFormedUnitBlocks>;
+  readonly withoutUnitBlocksOutside: WithoutSyntax<typeof withoutUnitBlocksOutside>;
   readonly regionUnitIdsAt: WithoutSyntax<typeof regionUnitIdsAt>;
   readonly formBlockFor: WithoutSyntax<typeof formBlockFor>;
   readonly blockFor: WithoutSyntax<typeof blockFor>;
@@ -99,6 +101,7 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
     findUnitBlocks: (document) => findUnitBlocks(document, syntax),
     findFormBlocks: (document) => findFormBlocks(document, syntax),
     repairFormedUnitBlocks: (document) => repairFormedUnitBlocks(document, syntax),
+    withoutUnitBlocksOutside: (document, unitIds) => withoutUnitBlocksOutside(document, unitIds, syntax),
     regionUnitIdsAt: (document, region) => regionUnitIdsAt(document, region, syntax),
     formBlockFor: (document, alias, regionUnitIds) => formBlockFor(document, alias, regionUnitIds, syntax),
     blockFor: (document, unitId, regionUnitIds) => blockFor(document, unitId, regionUnitIds, syntax),

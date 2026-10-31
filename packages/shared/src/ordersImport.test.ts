@@ -1,6 +1,7 @@
 import type { OpenedGame, OrderDiagnostic, ParsedReport, ReportHeaderInfo } from "@atlantis/core-client";
-import { aParsedReport, aReportHeaderInfo } from "@atlantis/core-client";
+import { aParsedReport, aReportHeaderInfo, aReportRegion, aReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
+import { ordersExportText } from "./workspace/ordersExport";
 import { describeOrdersImport, isOrdersFile, ordersFileFaction, routeFileImport, routeOrdersImport, unitLabelForDiagnostic } from "./ordersImport";
 
 /** Shaped exactly like the template a real report carries. */
@@ -128,8 +129,18 @@ describe("describing an import before it happens", () => {
   });
 });
 
-function report(overrides: Partial<ReportHeaderInfo> = {}): ParsedReport {
-  return aParsedReport({ header: aReportHeaderInfo({ month: "January", ...overrides }) });
+/**
+ * A report whose own units are `ownUnitIds` - by default both units `ORDERS_FILE` has a block for,
+ * so the file describes units that are all still alive this turn.
+ */
+function report(
+  overrides: Partial<ReportHeaderInfo> = {},
+  ownUnitIds: readonly string[] = ["18642", "99001"]
+): ParsedReport {
+  return aParsedReport({
+    header: aReportHeaderInfo({ month: "January", ...overrides }),
+    regions: [aReportRegion({ units: ownUnitIds.map((unitId) => aReportUnit({ unitId })) })]
+  });
 }
 
 const OPEN_GAME = {
@@ -211,6 +222,69 @@ describe("routing a dropped orders file", () => {
         emptiedCount: 0
       }
     });
+  });
+
+  it("leaves out a unit the report no longer lists, so the export carries no block for it (ah-fe0zo)", () => {
+    // 99001 died last month: this turn's report lists only 18642, but the file still has orders
+    // for both.
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report({}, ["18642"]) },
+      ORDERS_FILE,
+      "orders.txt",
+      ""
+    );
+
+    expect(route.kind).toBe("ask");
+    if (route.kind !== "ask") {
+      return;
+    }
+    expect(route.pending.unitCount).toBe(1);
+
+    // Replace writes `pending.text` as the document, and the export writes the document.
+    const exported = ordersExportText(route.pending.text, null, false, "origins");
+    expect(exported).not.toContain("unit 99001");
+    expect(exported).not.toContain("@work");
+    expect(exported).toBe(
+      [
+        '#atlantis 95 "secret"',
+        "",
+        ";*** mountain (7,53) in Inhead ***",
+        "",
+        "unit 18642",
+        ";Seven of Eight (18642), avoiding, behind, leader [LEAD].",
+        "@claim 50",
+        "",
+        "#end"
+      ].join("\n")
+    );
+  });
+
+  it("keeps a unit new-n block for the load-time repair to fold into its FORM", () => {
+    const withFormed = ['#atlantis 95 "secret"', "", "unit 18642", "form 1", "end", "", "unit new-1", "STUDY COMB", "", "#end"].join(
+      "\n"
+    );
+    const route = routeOrdersImport(
+      { game: OPEN_GAME, parsed: report({}, ["18642"]) },
+      withFormed,
+      "orders.txt",
+      ""
+    );
+
+    expect(route.kind === "ask" && route.pending.text).toBe(withFormed);
+  });
+
+  it("leaves out a foreign unit the report shows, since only the player's own units take orders", () => {
+    const parsed = aParsedReport({
+      header: aReportHeaderInfo({ month: "January" }),
+      regions: [
+        aReportRegion({
+          units: [aReportUnit({ unitId: "18642" }), aReportUnit({ unitId: "99001", own: false, factionId: "17" })]
+        })
+      ]
+    });
+    const route = routeOrdersImport({ game: OPEN_GAME, parsed }, ORDERS_FILE, "orders.txt", "");
+
+    expect(route.kind === "ask" && route.pending.text).not.toContain("unit 99001");
   });
 });
 

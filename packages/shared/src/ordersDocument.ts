@@ -310,6 +310,35 @@ function withoutBlockAt(lines: string[], headerLine: number, lastLine: number): 
 }
 
 /**
+ * The document without the blocks of units outside `unitIds` - a unit that died, or was given
+ * away, since the file was written (ah-fe0zo). Its orders go with it, `FORM` blocks included.
+ *
+ * A `unit new-<n>` block is kept whatever `unitIds` says: it names a unit this turn's `FORM`
+ * creates, which no report lists, and {@link repairFormedUnitBlocks} is what folds it back.
+ *
+ * Removed bottom up, so removing one block never moves the lines of a block above it.
+ */
+export function withoutUnitBlocksOutside(
+  document: string,
+  unitIds: ReadonlySet<string>,
+  syntax: OrderCommentSyntax
+): string {
+  const gone = findUnitBlocks(document, syntax).filter(
+    (block) => formedAlias(block.unitId) === null && !unitIds.has(block.unitId)
+  );
+  if (gone.length === 0) {
+    return document;
+  }
+
+  let lines = document.split("\n");
+  for (let index = gone.length - 1; index >= 0; index -= 1) {
+    const block = gone[index];
+    lines = withoutBlockAt(lines, block.headerLine, block.lastLine);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Folds every stale `unit new-<n>` block back into the `FORM` that creates it.
  *
  * Such a block could only be written before ah-ty3s.1 stopped `ensureUnitBlock` making them: it
