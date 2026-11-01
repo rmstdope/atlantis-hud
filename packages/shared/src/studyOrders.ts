@@ -395,7 +395,8 @@ function writtenAheadLine(entries: readonly OrdersEntry[], turn: number): string
   if (lasts.length === 0) {
     return null;
   }
-  const first = turn + 1;
+  // The turn the blocks themselves start at, rather than arithmetic on `turn` (review, round 2).
+  const first = Math.min(...entries.flatMap((entry) => (entry.later[0] === undefined ? [] : [entry.later[0].turn])));
   const last = Math.max(...lasts);
   return first === last
     ? `; Turn ${first} is written ahead as a TURN block — the plan as it stands on turn ${turn}.`
