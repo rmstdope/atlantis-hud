@@ -157,3 +157,46 @@ describe("the verification skill has Psylocke look herself (ah-jq6m8)", () => {
     expect(skillMd()).not.toContain("## The handoff");
   });
 });
+
+describe("the verification skill launches on a free port when the declared one is taken (ah-dgogb)", () => {
+  const skillMd = () =>
+    readFileSync(join(REPO, ".claude", "skills", "atlantis-verification", "SKILL.md"), "utf8");
+  const HEADING = "## When the declared port is taken";
+  const section = () => {
+    const text = skillMd();
+    const start = text.indexOf(HEADING);
+    expect(start, `the skill has no "${HEADING}" section`).toBeGreaterThanOrEqual(0);
+    const next = text.indexOf("\n## ", start + HEADING.length);
+    return text.slice(start, next < 0 ? undefined : next).replace(/\s+/g, " ");
+  };
+
+  it("has the section, before the fixture", () => {
+    const text = skillMd();
+    expect(text.indexOf(HEADING)).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf(HEADING)).toBeLessThan(
+      text.indexOf("## The fixture: pick one, prove it, or build a minimal one")
+    );
+  });
+
+  it("launches the declared command on a free port with strictPort", () => {
+    const text = section();
+    expect(text).toContain("lsof -nP -iTCP");
+    expect(text).toContain("launch_web_port");
+    expect(text).toContain("--strictPort");
+  });
+
+  it("never stops or reuses the other server", () => {
+    expect(section()).toContain("Never stop it and never reuse it");
+  });
+
+  it("uses that port's origin for the snapshot and names it in the report", () => {
+    const text = section();
+    expect(text).toContain("atlantisVerifyStorage.snapshot()");
+    expect(text).toContain("separate browser origin");
+    expect(text).toContain("The report names the port");
+  });
+
+  it("writes no port number, so it cannot drift from project.conf", () => {
+    expect(skillMd()).not.toMatch(/\b5173\b/);
+  });
+});

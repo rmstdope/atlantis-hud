@@ -13,6 +13,8 @@ with a screenshot per criterion, the report written onto the bead before asking,
 adds what only this project knows: which shell to look in and what is handed to the navigator, how
 a fixture is chosen and proved so the look reaches the case, batching, protecting the navigator's
 stored games, the human-check hand-off, exploring near the change, and the shape of the results.
+One place it overrides verify-bead outright: an occupied web port is not a refusal here (*When the
+declared port is taken*).
 
 The navigator's minutes are spent only on what a person must judge. Everything an agent can check
 in the running web shell, you check yourself; a question that asks them to read a cell you could
@@ -56,6 +58,38 @@ is up when the hand-off is asked, and write the navigator's steps into the hand-
 desktop shell keeps its games in files, not in the browser, so the storage snapshot below does not
 cover it: say in the question that the steps run against their own desktop data. A bead whose every
 criterion is desktop-only still gets its report and its hand-off; there is simply no web look.
+
+## When the declared port is taken
+
+`agents/verifier.md` and verify-bead refuse to start when something already listens on the declared
+port, and wait for the navigator. **For the web shell, this skill does not wait: it serves Atlantis
+HUD on a free port instead** (the navigator, 2026-11-01, after a pass was stopped by another
+project's dev server holding the port).
+
+1. Read the declared port with `project-conf launch_web_port` and check it as verifier.md does:
+   `lsof -nP -iTCP:<port> -sTCP:LISTEN`. Exit 1 with no output means it is free: run the declared
+   command on it with `--strictPort` appended (step 3 says why) and skip to step 4. If vite exits
+   with the port already in use, it was taken in the meantime: go on to step 2.
+2. Anything listening that this look did not start is somebody else's. **Never stop it and never
+   reuse it**, and do not ask the navigator about it. Walk upward from the declared port, one at a
+   time, to the first port the same `lsof` check shows free.
+3. Run the declared `launch_web` command, unchanged, from the verification worktree, with
+   `--port <free> --strictPort` appended. pnpm appends extra arguments to the `dev` script, so they
+   reach vite. **`--strictPort` is not optional**: without it vite drifts to yet another port on its
+   own when the one asked for goes, and the port you name is no longer the one serving this build.
+   If vite exits with the port already in use, something took it in the meantime: take the next
+   free one.
+4. From here on, that port is *the shell's port* everywhere this skill says `<port>`: the tab check
+   and the `atlantisVerifyStorage.snapshot()` and `restore()` on its `/favicon.ico`, the look, the
+   mockup comparison and the console. `http://localhost:<free>` is a **separate browser origin**
+   from the declared port's: the navigator's games there are neither visible in it nor touched by
+   it, but an earlier look on the same port may have left data, so the snapshot and restore still
+   run, on the new origin.
+5. Say it in chat in one line before launching ("<declared port> is held by pid <n> (<command>);
+   serving on <free> instead"). **The report names the port** the look ran on, and the pid that
+   held the declared one, in its shell line.
+
+This covers the web shell only. The desktop shell's port still follows verifier.md.
 
 ## The fixture: pick one, prove it, or build a minimal one
 
@@ -455,7 +489,8 @@ The report on each bead follows verify-bead's *Recommend* — its first line is
 `Verification report at <full sha>` — with these sections:
 
 - the bead's title and its batch;
-- the shell, the fixture, the hex, and the storage snapshot's counts;
+- the shell and the port it served on (with the pid that held the declared port, when it was
+  taken), the fixture, the hex, and the storage snapshot's counts;
 - the evidence log, one entry per criterion, with the human checks marked as the navigator's
   answers;
 - **Exploration**: what you tried, and each finding with its sorting;
@@ -497,11 +532,14 @@ report a failure as a mystery:
   broken — rebuild for the shell you are about to run, not whatever the smoke suite left behind.
 - **`vite preview` without `--strictPort` silently serves somebody else's bundle.** A green-looking
   launch on the wrong build looks exactly like a passed verification of the wrong thing. Run the
-  launch command exactly as `project-conf` declares it — it already carries the right flags.
+  launch command as `project-conf` declares it, adding nothing but what *When the declared port is
+  taken* appends for the web shell: the declared web command is plain `vite`, so its
+  `--strictPort` comes from that section, never from the declaration.
 
 ## When the look is over
 
-Restore the storage snapshot from `/favicon.ico` (*Protect the navigator's data*), close the tabs you opened, tell the navigator the origin is theirs again, and stop every
+Restore the storage snapshot from `/favicon.ico` (*Protect the navigator's data*), close the tabs you opened, tell the navigator the origin is theirs again (or, when the look ran on
+a fallback port, that their own origin was never touched), and stop every
 server you started (the shell, the desktop shell, any `http.server` for a mockup), and only those.
 A made fixture and the throwaway probe stay uncommitted in the verification tree, and nothing is
 ever committed from it.
