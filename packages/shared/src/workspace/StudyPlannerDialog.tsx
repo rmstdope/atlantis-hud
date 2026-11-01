@@ -182,9 +182,20 @@ export function StudyPlannerDialog({
   // closing the planner, switching game and a new report all keep it, as agreed.
   const writeCasts = useStudyCastsWriteStore((state) => state.writeCasts);
   const setWriteCasts = useStudyCastsWriteStore((state) => state.setWriteCasts);
+  // Your own mage's orders decide whether the text warns that a repeated month-long order keeps
+  // the later turns from starting (ah-1f87z); an ally's section always warns.
   const orders = useMemo(
-    () => studyOrders({ groups, rows, turns, notices, casts: { tree, write: writeCasts } }),
-    [groups, rows, turns, notices, tree, writeCasts]
+    () =>
+      studyOrders({
+        groups,
+        rows,
+        turns,
+        notices,
+        casts: { tree, write: writeCasts },
+        repeatsLongOrder: (unitId) =>
+          orderProcessing.repeatsLongOrder(orderProcessing.readUnitOrders(ordersDocument, unitId, undefined) ?? "")
+      }),
+    [groups, rows, turns, notices, tree, writeCasts, ordersDocument, orderProcessing]
   );
 
   /**

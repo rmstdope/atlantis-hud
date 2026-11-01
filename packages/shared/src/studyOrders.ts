@@ -151,6 +151,15 @@ export type StudyOrders = {
   allFileName: string;
 };
 
+/**
+ * Said under a mage with nothing written for next turn but later turns, when his orders may repeat
+ * a month-long order: while one repeats, the game never starts a TURN block, only carries it
+ * forward (the engine's template writer, aregion.cpp; ah-1f87z's notes). Put takes the @ off; a
+ * copied or mailed text cannot, so it says so (ah-1f87z, amended).
+ */
+export const REPEAT_WARNING =
+  "if his orders repeat a month-long order (@WORK, @STUDY…), take the @ off, or the turns below never start";
+
 /** `UNIT 1234           ; Ereb` - the code part padded to the column, or one space past it. */
 function annotated(code: string, comment: string, column = COMMENT_COLUMN): string {
   const gap = code.length >= column ? " " : " ".repeat(column - code.length);
@@ -325,7 +334,9 @@ function contributionOf(
   rows: readonly ScheduleRow[],
   notices: readonly PlannerNotice[],
   castFor: (row: ScheduleRow, index: number) => OrdersCast | null,
-  turns: readonly number[]
+  turns: readonly number[],
+  /** Whether his orders may repeat a month-long order - always for an ally's, whose orders can't be seen. */
+  mayRepeat: boolean
 ): { entry: OrdersEntry; lines: string[] } {
   const cast = castFor(row, 0);
   const next = monthOf(row, 0, rows, notices, cast);
@@ -363,7 +374,11 @@ function contributionOf(
     // meant to idle - the navigator's choice.
     return { entry, lines: [`; ${row.name} (${row.unitId}) — nothing planned for this turn`] };
   }
-  const own = next.idle && cast === null ? [{ code: null, comment: "nothing planned" }] : next.lines;
+  const own: OrderLine[] = next.idle && cast === null ? [{ code: null, comment: "nothing planned" }] : [...next.lines];
+  if (next.order === null && later.length > 0 && mayRepeat) {
+    // Under his first line - "; nothing planned", or why next turn's order was refused.
+    own.splice(1, 0, { code: null, comment: REPEAT_WARNING });
+  }
   return {
     entry,
     lines: [
@@ -411,6 +426,12 @@ export function studyOrders(input: {
    * nothing about casts is written - the text is exactly what it was before casts existed.
    */
   casts?: { tree: MagicTree; write: boolean };
+  /**
+   * Whether your own mage's orders repeat a month-long order (ah-1f87z): the warning under a mage
+   * with only later turns is written in your own section only when they do. An ally's orders can't
+   * be seen, so his section always carries it. Absent, none of yours is taken to repeat.
+   */
+  repeatsLongOrder?: (unitId: string) => boolean;
 }): StudyOrders {
   const { groups, rows, turns, notices } = input;
   const castFor = (row: ScheduleRow, index: number): OrdersCast | null =>
@@ -452,7 +473,7 @@ export function studyOrders(input: {
         factionId: group.factionId,
         heading: group.heading,
         source: group.source,
-        entries: mine.map((row) => contributionOf(row, rows, notices, noCasts, turns).entry),
+        entries: mine.map((row) => contributionOf(row, rows, notices, noCasts, turns, false).entry),
         hasCast,
         withheld: { casts: count },
         text: `No mage studies or teaches on turn ${turn}. Tick Also write the casts to write the ${count} planned cast${
@@ -479,7 +500,8 @@ export function studyOrders(input: {
     const entries: OrdersEntry[] = [];
     const body: string[] = [];
     for (const row of mine) {
-      const contribution = contributionOf(row, rows, notices, castFor, turns);
+      const mayRepeat = group.source === "sheet" || (input.repeatsLongOrder?.(row.unitId) ?? false);
+      const contribution = contributionOf(row, rows, notices, castFor, turns, mayRepeat);
       entries.push(contribution.entry);
       body.push(...contribution.lines);
     }

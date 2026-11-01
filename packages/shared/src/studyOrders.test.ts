@@ -872,6 +872,39 @@ describe("studyOrders — later turns as TURN blocks (ah-1f87z)", () => {
     ]);
   });
 
+  // Acceptance, amended after the build came back: while a unit repeats a month-long order its TURN
+  // blocks never start (the engine's template writer, the bead's notes), and the text cannot take
+  // the @ off as Put does - so it says so.
+  const WARNING =
+    "  ; if his orders repeat a month-long order (@WORK, @STUDY…), take the @ off, or the turns below never start";
+
+  it("an_allys_idle_mage_with_later_turns_gets_the_repeat_warning", () => {
+    const orm = aRow({ factionId: "17", unitId: "1290", key: "17/1290", name: "Orm", cells: [idle, study("FIRE", "fire", 1)], standings: [standing({}), standing({})] });
+    expect(run([orm], [], [allyGroup]).sections[0].text.split("\n").slice(-6)).toEqual([
+      "UNIT 1290           ; Orm",
+      "  ; nothing planned",
+      WARNING,
+      "  TURN              ; turn 73",
+      "    STUDY FIRE      ; fire 0 -> 1",
+      "  ENDTURN"
+    ]);
+  });
+
+  it("your_own_idle_mage_gets_the_warning_only_when_his_orders_repeat", () => {
+    const orm = aRow({ unitId: "1290", key: "95/1290", name: "Orm", cells: [idle, study("FIRE", "fire", 1)], standings: [standing({}), standing({})] });
+    const text = (repeats: boolean) =>
+      studyOrders({ groups: [ownGroup], rows: [orm], turns: TURNS, notices: [], repeatsLongOrder: (unitId) => repeats && unitId === "1290" })
+        .sections[0].text.split("\n");
+    expect(text(true).slice(2, 5)).toEqual(["UNIT 1290           ; Orm", "  ; nothing planned", WARNING]);
+    expect(text(false)).not.toContain(WARNING);
+  });
+
+  it("no_warning_without_later_turns_or_with_an_order_next_turn", () => {
+    const quill = aRow({ factionId: "17", unitId: "2201", key: "17/2201", name: "Quill", cells: [study("EART", "earth", 3), study("EART", "earth", 3)], standings: [standing({ EART: 2 }), standing({ EART: 3 })] });
+    const idler = aRow({ factionId: "17", unitId: "2202", key: "17/2202", name: "Idler", cells: [idle, idle], standings: [standing({}), standing({})] });
+    expect(run([quill, idler], [], [allyGroup]).sections[0].text.split("\n")).not.toContain(WARNING);
+  });
+
   it("a_plan_only_past_next_turn_still_gives_a_section", () => {
     const orm = aRow({ unitId: "1290", key: "95/1290", name: "Orm", cells: [idle, study("FIRE", "fire", 1)], standings: [standing({}), standing({})] });
     const orders = run([orm]);
