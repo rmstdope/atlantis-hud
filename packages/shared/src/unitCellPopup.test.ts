@@ -2311,6 +2311,8 @@ describe("the column popups", () => {
       expect(said("produce")).toBe("38 short of what its production costs.");
       expect(said("cast")).toBe("38 short of what its casting costs.");
       expect(said("give")).toBe("38 short of what it gives away.");
+      // A refused TRANSPORT's fee, beside a study refused on its own line (`ah-01c9d`).
+      expect(said("ship")).toBe("38 short of what its shipping costs.");
       expect(said(null)).toBe("38 short of what its orders cost.");
       // A purchase the core could not tie to one line is named the plain way.
       expect(said("buy")).toBe("38 short of what its purchase costs.");

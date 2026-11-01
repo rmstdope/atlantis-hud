@@ -1082,6 +1082,11 @@ pub enum SilverSpender {
     Cast,
     Study,
     Give,
+    /// The fee a `TRANSPORT`/`DISTRIBUTE` is refused for (`rules/economy_transport`: "5 silver per
+    /// weight unit"), where that fee is what makes the month short rather than an earlier order:
+    /// TRANSPORT is the last thing the orders spend on (`rules/sequenceofevents`), so a study
+    /// refused before it is carried on its own and the fee is what is left short (`ah-01c9d`).
+    Ship,
 }
 
 /// What one order does to a unit's silver this month, before either surface decides what to do

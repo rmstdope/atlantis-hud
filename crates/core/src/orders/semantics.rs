@@ -3576,7 +3576,14 @@ fn forecast_hex(
                 forecast.wanted_for_orders = forecast
                     .wanted_for_orders
                     .map(|wanted| wanted.saturating_add(refused));
+                let earlier = forecast.short_for_orders;
                 forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
+                // The fee deepened the shortfall past what an earlier order left short, so the
+                // fee is what the unit is short on, not that earlier order (`ah-01c9d`).
+                if forecast.short_for_orders.unwrap_or(0) > earlier.unwrap_or(0) {
+                    forecast.short_on = Some(super::silver::SilverSpender::Ship);
+                    forecast.short_buy = None;
+                }
             }
             shipped_moves
         })
@@ -65181,6 +65188,31 @@ BUILD
 
     fn unpaid_findings(regions: Vec<ReportRegion>, orders: &str) -> Vec<Finding> {
         review_turn(&report(regions), orders, Some(&ruleset()), with_map()).findings
+    }
+
+    /// `ah-01c9d`, as Psylocke met it: a sender with no silver studies and ships. `rules/
+    /// sequenceofevents` runs STUDY before TRANSPORT, so the study is refused for its $10
+    /// (`data/COMB`) and the shipment for its $45 fee. What the month is short of is the fee, so
+    /// the hover must not name the study as what the unit is short on.
+    #[test]
+    fn a_refused_study_beside_a_refused_shipment_is_not_what_the_fee_is_short_on() {
+        let orders = "unit 900\nSTUDY COMB\nTRANSPORT 901 9 FUR\n";
+        let silver = sender_silver(unpaid_shipping(0), orders, with_map());
+        assert_eq!(
+            silver
+                .refused
+                .iter()
+                .map(|spend| (spend.cause, spend.cost))
+                .collect::<Vec<_>>(),
+            [(SilverChangeCause::Studied, 10)],
+            "the study is refused on its own: {silver:#?}"
+        );
+        assert_eq!(silver.short_for_orders, Some(45), "{silver:#?}");
+        assert_eq!(
+            silver.short_on,
+            Some(crate::orders::silver::SilverSpender::Ship),
+            "the $45 shortfall is the shipping fee, not the $10 study: {silver:#?}"
+        );
     }
 
     /// The agreed record: "The goods stay and the silver stays; no shipping line appears in the

@@ -34,7 +34,8 @@ const SPENDS: Record<NonNullable<UnitSilver["shortOn"]>, string> = {
   produce: "produces",
   cast: "casts",
   study: "studies",
-  give: "gives"
+  give: "gives",
+  ship: "ships"
 };
 
 /**
@@ -71,6 +72,7 @@ export const CANNOT_PAY: Record<NonNullable<UnitSilver["shortOn"]> | "orders", s
   produce: "its production costs",
   cast: "its casting costs",
   give: "it gives away",
+  ship: "its shipping costs",
   orders: "its orders cost"
 };
 
