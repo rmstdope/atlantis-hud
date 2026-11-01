@@ -531,16 +531,17 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     }
   }, [externalRevision, unitId]);
 
-  // The tidy E3 promises, run whenever it *can* run rather than only at mount. The vocabulary
-  // arrives from the core asynchronously, so the first editor created after a page load is built
-  // against an empty set and would otherwise never be tidied (ah-1znc). Keyed on the vocabulary and
-  // the setting as well as the unit, so the same effect catches the setting being turned on with a
-  // unit already open, and a ruleset switch bringing a new catalogue. Keyed on `externalRevision`
-  // too, and declared after the effect that reads it, so a draft restored asynchronously after a
-  // reload is tidied once it is actually in the document rather than while the editor is empty.
+  // The tidy, run when the player switches the setting on with a unit already open (ah-1znc) - and
+  // only then. Opening a unit is looking, not editing: a tidy on open rewrote a template the player
+  // had not touched (`@study obse` became `@STUDY OBSE`) and reported "unsaved changes" they never
+  // made, which the navigator ruled out (ah-bdx8b). So no tidy on a unit change, an external write
+  // or the vocabulary arriving; what the player types or pastes is still shouted as it lands.
+  const ocdWasOn = useRef(orderOcd);
   useEffect(() => {
+    const switchedOn = orderOcd && !ocdWasOn.current;
+    ocdWasOn.current = orderOcd;
     const editor = view.current;
-    if (!editor || !orderOcd || vocabulary.size === 0) {
+    if (!editor || !switchedOn || vocabulary.size === 0) {
       return;
     }
     // The word the caret is inside is left as typed: while typing, this setting only shouts a word
@@ -573,14 +574,15 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       // replaces was. And deliberately no `userEvent`, which is what history groups typing under.
       annotations: [Transaction.addToHistory.of(false)]
     });
-  }, [externalRevision, unitId, orderOcd, vocabulary, orders]);
+  }, [orderOcd, vocabulary, orders]);
 
   // The other half of the tidy: the block ends in exactly one newline, so clicking in the empty
   // space below the last order puts the caret on a fresh line ready to type. External, because the
   // document cannot hold a blank line at the end of a block (`writeUnitOrders` drops it) - so this
   // is what the editor shows rather than an edit to the draft, and sending it to `onChange` would
-  // mark every unit edited merely for being opened. Runs on the tidy's own clock, which is what
-  // leaves Enter free to open as many lines as the player presses it for.
+  // mark every unit edited merely for being opened. Runs as a unit opens or the setting changes,
+  // never per keystroke, which is what leaves Enter free to open as many lines as the player
+  // presses it for.
   useEffect(() => {
     const editor = view.current;
     if (!editor || !orderOcd) {

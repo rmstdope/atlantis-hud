@@ -566,7 +566,30 @@ test("with Order OCD off, nothing is uppercased", async ({ page }) => {
   await expectOrders(page, /^name unit "seven of eight" ?/);
 });
 
-test("orders written before the setting was on are tidied on the first unit opened after a reload", async ({
+/**
+ * Looking is not editing (ah-bdx8b): with Order OCD on, selecting a unit used to tidy its template
+ * on open - `@study obse` became `@STUDY OBSE` and the panel said "unsaved changes" though nothing
+ * had been typed. The setting shouts what the player types; a unit only looked at keeps its bytes.
+ */
+test("with Order OCD on, selecting a unit leaves its untouched orders exactly as they were", async ({
+  page
+}) => {
+  await loadReport(page, "Untouched smoke");
+  // On before any unit is open, so the switch itself has nothing on screen to tidy: whatever
+  // changes below, the selection did it.
+  await enableOrderOcd(page);
+  await selectHex(page, "1:7,53");
+  await selectUnit(page, OWN_UNIT);
+
+  await expectOrders(page, /^@claim 50\n@study obse\n?$/);
+  // The tidy ran in an effect after the editor mounted; give it every chance to land before
+  // asserting it did not.
+  await page.waitForTimeout(1000);
+  await expect(ordersText(page)).resolves.toMatch(/^@claim 50\n@study obse\n?$/);
+  await expect(page.getByTestId("orders-status-save")).not.toContainText("unsaved changes");
+});
+
+test("orders written before the setting was on are left as written when opened after a reload", async ({
   page
 }) => {
   await openEditor(page);
@@ -590,8 +613,12 @@ test("orders written before the setting was on are tidied on the first unit open
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
-  // The first editor mounted since the load: its vocabulary is still in flight when it is built.
-  await expectOrders(page, /^MOVE N\nSTUDY COMBAT/);
+  // Opening a unit is not an edit (ah-bdx8b): the draft is shown as it was saved, even once the
+  // vocabulary has arrived, and nothing is owed.
+  await expectOrders(page, /^move n\nstudy combat/);
+  await page.waitForTimeout(1000);
+  await expect(ordersText(page)).resolves.toMatch(/^move n\nstudy combat/);
+  await expect(page.getByTestId("orders-status-save")).not.toContainText("unsaved changes");
 });
 
 test("turning Order OCD on tidies the unit already on screen", async ({ page }) => {
@@ -859,10 +886,10 @@ test("a problem inside a FORM block tags the creator's FORM line and leads to th
 });
 
 /**
- * With Order OCD on, the creator's editor indents a FORM block's lines by one space and the formed
- * unit's own editor tidies them back to none as it opens - so a landing from the creator, whose
- * stop was counted in the indented text, has to be placed in the dedented line it arrives at, or it
- * selects one character to the right (`ah-2zxh`). Both ways onto the formed unit from its creator:
+ * With Order OCD on, the creator's editor indents a FORM block's lines by one space while the formed
+ * unit's own editor shows them with none - so a landing from the creator, whose stop was counted in
+ * the indented text, has to be placed in the dedented line it arrives at, or it selects one
+ * character to the right (`ah-2zxh`). Both ways onto the formed unit from its creator:
  * the FORM line's tag, and F8.
  */
 test("landing in a formed unit from its creator selects the problem's words when Order OCD indents the FORM block", async ({
