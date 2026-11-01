@@ -646,6 +646,11 @@ function itemCauseClause(change: ItemChange, unit: PreviewedUnit, people: boolea
     // family as a loan for a GIVE, with the receiver worded as `transported-out` words it (`ah-iidht`).
     case "lent-for-transport":
       return `lent ${n}${change.borrower ? ` for ${party(change.borrower)}` : ""} to send to ${lentReceiver(change.other)}`;
+    // The same loan for a shipment the hex could not pay the fee for: the goods end on the
+    // sender and are never sent (`ah-b7g4d`; ../Atlantis `runorders.cpp`, `RunTransportOrders`).
+    // The line alone says so, keeping the receiver and the amount lent (`ah-w5yu0`, the agreed words).
+    case "lent-for-refused-transport":
+      return `lent ${n}${change.borrower ? ` to ${party(change.borrower)}` : ""}, not sent to ${lentReceiver(change.other)}: the hex is short of silver for the fee`;
     case "was-given":
       return `given ${n}${change.other ? ` by ${party(change.other)}` : ""}`;
     // A matched EXCHANGE, either way: the line's own up or down says which (`ah-6c76`).
