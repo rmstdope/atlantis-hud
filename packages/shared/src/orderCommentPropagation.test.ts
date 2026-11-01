@@ -85,7 +85,8 @@ describe("the comment policy reaches every reader of the document", () => {
           order: "STUDY COMB",
           annotation: null,
           skipReason: null,
-          cast: null
+          cast: null,
+          later: []
         } as never
       ],
       banner: () => ";*** plain (1,1) in Nowhere ***",
