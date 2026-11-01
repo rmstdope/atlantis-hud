@@ -1,4 +1,4 @@
-import type { ColumnPopup, PopupLine, PopupStep } from "../unitCellPopup";
+import type { ColumnPopup, PopupChange, PopupLine, PopupStep } from "../unitCellPopup";
 import { popupLabelInk, popupValueInk } from "../unitCellPopup";
 import type { Point } from "../unitTooltip";
 import { UnfinishedMark } from "./UnfinishedMark";
@@ -158,10 +158,9 @@ export function PopupLineValue({ line }: { line: PopupLine }) {
         <>
           {line.change.from}
           <span className="mx-1 text-ink-dim">→</span>
-          {/* A struck line is what will not happen, so its after takes no colour (`ah-44at`). */}
-          <span
-            className={line.struck ? undefined : line.change.direction === "up" ? "text-ok" : "text-danger"}
-          >
+          {/* A struck line is what will not happen, so its after takes no colour (`ah-44at`); a flat
+              pair gained and lost nothing, so its after is plain ink (`ah-yooe9`). */}
+          <span className={line.struck ? undefined : CHANGE_INK[line.change.direction]}>
             {line.value}
           </span>
         </>
@@ -173,6 +172,13 @@ export function PopupLineValue({ line }: { line: PopupLine }) {
     </span>
   );
 }
+
+/** What a pair's second figure is drawn in, by which way it moved. */
+const CHANGE_INK: Record<PopupChange["direction"], string> = {
+  up: "text-ok",
+  down: "text-danger",
+  flat: "text-ink"
+};
 
 /**
  * What each figure in a chain is drawn in (`ah-rgkk.2.3`).
