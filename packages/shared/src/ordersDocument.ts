@@ -1157,6 +1157,54 @@ function atTopLevel(orders: string, syntax: OrderCommentSyntax): boolean[] {
 }
 
 /**
+ * For each line, whether it belongs to one of the unit's own `TURN ... ENDTURN` blocks - the
+ * `TURN` (or `@TURN`) line at depth zero, everything nested in it, and its closing `ENDTURN`.
+ * A `TURN` inside a `FORM` is the formed unit's and is not among them (`rules/form`, `rules/turn`).
+ */
+function inOwnTurnBlock(orders: string, syntax: OrderCommentSyntax): boolean[] {
+  let depth = 0;
+  let inTurn = false;
+  return orders.split("\n").map((line) => {
+    const command = commandOf(line, syntax);
+    if (command === "ENDTURN" || command === "END") {
+      depth = Math.max(0, depth - 1);
+      const was = inTurn;
+      if (depth === 0) {
+        inTurn = false;
+      }
+      return was;
+    }
+    if (command === "FORM" || command === "TURN") {
+      if (depth === 0) {
+        inTurn = command === "TURN";
+      }
+      depth += 1;
+    }
+    return inTurn;
+  });
+}
+
+/** How many `TURN ... ENDTURN` blocks of the unit's own its orders hold (ah-1f87z). */
+export function turnBlockCount(orders: string, syntax: OrderCommentSyntax): number {
+  const own = atTopLevel(orders, syntax);
+  return orders.split("\n").filter((line, index) => own[index] === true && commandOf(line, syntax) === "TURN")
+    .length;
+}
+
+/**
+ * The orders without any of the unit's own `TURN ... ENDTURN` blocks, `@TURN` ones included, so
+ * the study planner's later turns replace them rather than run after them (ah-1f87z). Everything
+ * else, a `FORM` block and any `TURN` inside it included, is left exactly as it was.
+ */
+export function stripTurnBlocks(orders: string, syntax: OrderCommentSyntax): string {
+  const inTurn = inOwnTurnBlock(orders, syntax);
+  return orders
+    .split("\n")
+    .filter((_line, index) => inTurn[index] !== true)
+    .join("\n");
+}
+
+/**
  * The orders with every line the unit itself issued that matches `command` removed, leaving the
  * lines of a nested `FORM` or `TURN` block exactly as they were.
  *

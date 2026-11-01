@@ -31,6 +31,8 @@ import {
   seedOrdersDocument,
   regionBannerLine,
   stripLongOrderLines,
+  stripTurnBlocks,
+  turnBlockCount,
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
@@ -1786,5 +1788,37 @@ describe("withoutUnitBlocksOutside (ah-fe0zo)", () => {
   it("keeps a heading over a region whose units are all kept", () => {
     const document = doc('#atlantis 95 "pw"', "", ";*** plain (1,1) in A ***", "", "unit 1", "@work", "", "#end");
     expect(drop(document, "1")).toBe(document);
+  });
+});
+
+describe("TURN blocks (ah-1f87z)", () => {
+  const orders = [
+    "STUDY FORC",
+    "TURN ; turn 73",
+    "  STUDY FORC",
+    "ENDTURN",
+    "@turn",
+    "  MOVE N",
+    "  FORM 1",
+    "    STUDY COMB",
+    "  END",
+    "@ENDTURN",
+    "FORM 2",
+    "  TURN",
+    "    MOVE S",
+    "  ENDTURN",
+    "END",
+    "claim 200"
+  ].join("\n");
+
+  it("turnBlockCount_counts_the_unit's_own_turn_blocks_only", () => {
+    expect(turnBlockCount(orders, "origins")).toBe(2);
+    expect(turnBlockCount("STUDY FORC", "origins")).toBe(0);
+  });
+
+  it("stripTurnBlocks_removes_turn_and_at_turn_blocks_and_keeps_form_blocks", () => {
+    expect(stripTurnBlocks(orders, "origins")).toBe(
+      ["STUDY FORC", "FORM 2", "  TURN", "    MOVE S", "  ENDTURN", "END", "claim 200"].join("\n")
+    );
   });
 });
