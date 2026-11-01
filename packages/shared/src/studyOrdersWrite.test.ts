@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OrdersCast, OrdersEntry } from "./studyOrders";
-import { WRITE_COMMENT_COLUMN, hasWritableEntry, studyWritePlan } from "./studyOrdersWrite";
+import { WRITE_COMMENT_COLUMN, hasWritableEntry, offeredWritePlan, studyWritePlan } from "./studyOrdersWrite";
 
 const BANNER = ";*** plain (7,53) in Foo ***";
 
@@ -482,8 +482,8 @@ describe("studyWritePlan — later turns (ah-1f87z)", () => {
     );
   });
 
-  it("a_mage_idle_next_turn_with_later_turns_is_written_and_keeps_his_long_order", () => {
-    const result = plan(aDocument("@work", "TURN", "  MOVE N", "ENDTURN"), [
+  it("a_mage_idle_next_turn_with_later_turns_is_written_and_keeps_a_long_order_that_does_not_repeat", () => {
+    const result = plan(aDocument("work", "TURN", "  MOVE N", "ENDTURN"), [
       anEntry({ order: null, annotation: null, skipReason: "nothing planned", later: later().slice(0, 1) })
     ]);
     expect(result.changed).toBe(1);
@@ -491,17 +491,96 @@ describe("studyWritePlan — later turns (ah-1f87z)", () => {
     expect(result.rows[0].detail).toBe("nothing planned — left alone · 1 later turn replaces the 1 already there");
     expect(result.next.split("\n").slice(4, -2)).toEqual([
       "unit 1234",
-      "@work",
+      "work",
       "TURN              ; turn 73",
       "  STUDY FORC      ; force 4",
       "ENDTURN"
     ]);
   });
 
-  it("a_mage_without_later_turns_keeps_his_turn_blocks", () => {
-    const result = plan(aDocument("@work", "TURN", "  MOVE N", "ENDTURN"), [anEntry({ annotation: null })]);
-    expect(result.next.split("\n").slice(4, -2)).toEqual(["unit 1234", "TURN", "  MOVE N", "ENDTURN", "STUDY FORC 4"]);
-    expect(result.rows[0].detail).toBe("STUDY FORC 4 replaces @work");
+  // Acceptance, amended after the build came back: while a unit repeats a month-long order the
+  // game never starts its TURN blocks (aregion.cpp's template writer, the bead's notes), so the @
+  // comes off for this one turn and the plan starts the turn after.
+  it("a_repeating_month_long_order_runs_once_when_later_turns_follow", () => {
+    const result = plan(aDocument("  @WORK            ; repeats every month until changed"), [
+      anEntry({ order: null, annotation: null, skipReason: "nothing planned", later: later().slice(0, 1) })
+    ]);
+    expect(result.rows[0].detail).toBe("WORK replaces @WORK — this turn only · 1 later turn");
+    expect(result.next.split("\n").slice(4, -2)).toEqual([
+      "unit 1234",
+      "  WORK              ; was @WORK — repeating it would keep the turns below from starting",
+      "TURN              ; turn 73",
+      "  STUDY FORC      ; force 4",
+      "ENDTURN"
+    ]);
+  });
+
+  it("a_repeating_order_is_left_alone_without_later_turns", () => {
+    const idle = anEntry({ order: null, annotation: null, skipReason: "nothing planned" });
+    const result = plan(aDocument("@WORK"), [idle]);
+    expect(result.changed).toBe(0);
+    expect(result.rows[0].detail).toBe("nothing planned — left alone");
+    expect(plan(aDocument("@WORK"), [anEntry({ annotation: null })]).next.split("\n").slice(4, -2)).toEqual([
+      "unit 1234",
+      "STUDY FORC 4"
+    ]);
+  });
+
+  // Acceptance, amended: after Put a mage's later turns are exactly the plan's.
+  it("a_mage_without_later_turns_loses_the_turn_blocks_he_holds", () => {
+    const result = plan(aDocument("@work", "TURN", "  MOVE N", "ENDTURN", "TURN", "  STUDY PATT", "ENDTURN"), [
+      anEntry({ annotation: null })
+    ]);
+    expect(result.next.split("\n").slice(4, -2)).toEqual(["unit 1234", "STUDY FORC 4"]);
+    expect(result.rows[0].detail).toBe("STUDY FORC 4 replaces @work · removes the 2 later turns already there");
+  });
+
+  it("a_mage_with_nothing_planned_loses_his_turn_blocks_and_says_so", () => {
+    const result = plan(aDocument("WORK", "TURN", "  STUDY FORC", "ENDTURN"), [
+      anEntry({ order: null, annotation: null, skipReason: "nothing planned" })
+    ]);
+    expect(result.changed).toBe(1);
+    expect(result.rows[0].writes).toBe(true);
+    expect(result.rows[0].detail).toBe("nothing planned — left alone · removes the 1 later turn already there");
+    expect(result.next.split("\n").slice(4, -2)).toEqual(["unit 1234", "WORK"]);
+  });
+
+  it("the_lead_names_later_turns_when_only_stale_ones_are_removed", () => {
+    const result = plan(aDocument("WORK", "TURN", "  STUDY FORC", "ENDTURN"), [anEntry({ annotation: null })]);
+    expect(result.lead).toBe(
+      "1 mage. Each mage's month-long order is replaced, and so are any later turns his orders already hold."
+    );
+  });
+
+  it("units_not_in_the_plan_are_never_touched", () => {
+    const document = [
+      "#atlantis 95",
+      "",
+      BANNER,
+      "",
+      "unit 1234",
+      "WORK",
+      "",
+      "unit 777",
+      "@WORK",
+      "TURN",
+      "  MOVE N",
+      "ENDTURN",
+      "",
+      "#end"
+    ].join("\n");
+    const result = plan(document, [anEntry({ annotation: null, later: later().slice(0, 1) })]);
+    expect(result.next).toContain(["unit 777", "@WORK", "TURN", "  MOVE N", "ENDTURN"].join("\n"));
+  });
+
+  it("offeredWritePlan_offers_a_write_that_only_removes_stale_turns", () => {
+    const idle = anEntry({ order: null, annotation: null, skipReason: "nothing planned" });
+    const stale = plan(aDocument("WORK", "TURN", "  STUDY FORC", "ENDTURN"), [idle]);
+    expect(offeredWritePlan(stale, [idle])).toBe(stale);
+    const nothing = plan(aDocument("WORK"), [idle]);
+    expect(offeredWritePlan(nothing, [idle])).toBeNull();
+    const kept = plan(aDocument("STUDY FORC 4"), [anEntry()]);
+    expect(offeredWritePlan(kept, [anEntry()])).toBe(kept);
   });
 
   it("hasWritableEntry_counts_later_turns", () => {

@@ -19,10 +19,12 @@ import {
   longOrderOf,
   ownOrders,
   readUnitOrders,
+  repeatsLongOrder,
   stripLongOrderLines,
   stripOwnOrders,
   stripTurnBlocks,
   turnBlockCount,
+  unrepeatLongOrders,
   withoutTrailingBlankLines,
   writeUnitOrders
 } from "./ordersDocument";
@@ -124,10 +126,30 @@ export function hasWritableEntry(entries: readonly OrdersEntry[]): boolean {
   return entries.some((entry) => entry.order !== null || entry.cast?.kind === "write" || entry.later.length > 0);
 }
 
-/** `3 later turns`, `1 later turn replaces the 1 already there` - the row's later-turns part. */
-function laterWords(written: number, held: number): string {
+/**
+ * The confirmation to offer for these entries, or null when "Put into my orders" has nothing to do:
+ * a write plan is offered when an entry has something to write, or when the plan changes the
+ * document anyway - a mage whose only change is losing later turns an old plan left (ah-1f87z).
+ */
+export function offeredWritePlan(plan: StudyWritePlan, entries: readonly OrdersEntry[]): StudyWritePlan | null {
+  return hasWritableEntry(entries) || plan.changed > 0 ? plan : null;
+}
+
+/**
+ * `3 later turns`, `1 later turn replaces the 1 already there`, `removes the 2 later turns already
+ * there` - the row's later-turns part, or null when he neither gets nor holds any.
+ */
+function laterWords(written: number, held: number): string | null {
+  if (written === 0) {
+    return held === 0 ? null : `removes the ${held} later turn${held === 1 ? "" : "s"} already there`;
+  }
   const turns = `${written} later turn${written === 1 ? "" : "s"}`;
   return held === 0 ? turns : `${turns} ${written === 1 ? "replaces" : "replace"} the ${held} already there`;
+}
+
+/** The comment a repeated month-long order carries once the write has made it run this turn only. */
+function unrepeatedComment(now: string): string {
+  return `was @${now} — repeating it would keep the turns below from starting`;
 }
 
 /** A previous order as a row names it: trimmed, and cut with an ellipsis when it would wrap. */
@@ -179,7 +201,8 @@ export function studyWritePlan(input: {
   // blocked study, a cast he won't know yet. Any of them means not everything planned is there.
   let leftOutRows = 0;
   let castsKept = 0;
-  let laterWritten = 0;
+  // Rows that write later turns or remove ones an old plan left: either way the lead says so.
+  let laterTouched = 0;
 
   for (const entry of input.entries) {
     const who = `${entry.name} (${entry.unitId})`;
@@ -193,7 +216,10 @@ export function studyWritePlan(input: {
       leftOutRows += 1;
     }
     const laterCount = entry.later.length;
-    if (entry.order === null && castWrites === null && laterCount === 0) {
+    // Every mage in the plan loses the TURN blocks he holds, whether or not the plan writes later
+    // turns for him: after Put his later turns are exactly the plan's (ah-1f87z, amended).
+    const heldBefore = turnBlockCount(readUnitOrders(next, entry.unitId, undefined, syntax) ?? "", syntax);
+    if (entry.order === null && castWrites === null && laterCount === 0 && heldBefore === 0) {
       rows.push({ unitId: entry.unitId, who, detail: skipDetail, writes: false, cast: leftOut });
       continue;
     }
@@ -217,12 +243,27 @@ export function studyWritePlan(input: {
     const base = hadBlock ? next : ensureUnitBlock(next, entry.unitId, banner ?? "", syntax);
     const existing = readUnitOrders(base, entry.unitId, undefined, syntax) ?? "";
     // The plan's later turns replace every TURN block he holds - the game's carried-forward ones
-    // and hand-written ones alike (ah-1f87z, the navigator's choice); with none to write, his
-    // blocks are left exactly as they were.
-    const heldTurns = laterCount === 0 ? 0 : turnBlockCount(existing, syntax);
-    let orders = laterCount === 0 ? existing : stripTurnBlocks(existing, syntax);
+    // and hand-written ones alike (ah-1f87z, the navigator's choice) - and with none to write, the
+    // ones an old plan left go too.
+    const heldTurns = turnBlockCount(existing, syntax);
+    let orders = stripTurnBlocks(existing, syntax);
     let detail = skipDetail;
     let studyWrites = false;
+    let unrepeated = false;
+
+    // While he repeats a month-long order the game never starts a TURN block, only carries it
+    // forward (the engine's template writer, aregion.cpp; ah-1f87z's notes). With nothing written
+    // for next turn his own order is what runs, so it runs once: he spends the month as he would
+    // have, and the plan starts the turn after. With no later turns there is nothing to start.
+    if (entry.order === null && laterCount > 0 && repeatsLongOrder(orders, syntax)) {
+      const step = unrepeatLongOrders(orders, syntax, (now) => annotatedLine(now, unrepeatedComment(now)));
+      orders = step.orders;
+      // The one a row names is the one `longOrderOf` would show, as for any replaced order.
+      const shown = longOrderOf(orders, syntax);
+      const now = step.now.find((one) => shown !== null && shown.startsWith(`${one} `)) ?? step.now.at(-1) ?? "";
+      detail = `${now} replaces @${now} — this turn only`;
+      unrepeated = true;
+    }
 
     if (entry.order !== null) {
       const previous = longOrderOf(existing, syntax);
@@ -266,17 +307,21 @@ export function studyWritePlan(input: {
       const kept = withoutTrailingBlankLines(orders);
       const blocks = turnBlockLines(entry.later, "", WRITE_COMMENT_COLUMN).join("\n");
       orders = kept.trim() === "" ? blocks : `${kept}\n${blocks}`;
-      detail = `${detail} · ${laterWords(laterCount, heldTurns)}`;
-      laterWritten += 1;
+    }
+    const later = laterWords(laterCount, heldTurns);
+    if (later !== null) {
+      detail = `${detail} · ${later}`;
+      laterTouched += 1;
     }
 
     // A cast kept as already there, with no study to write, changes nothing: the block stays as it
     // was, and so does the document, even when it had no block yet.
-    if (studyWrites || castRow?.writes === true || laterCount > 0) {
+    const writes = studyWrites || unrepeated || later !== null;
+    if (writes || castRow?.writes === true) {
       next = writeUnitOrders(base, entry.unitId, orders, undefined, syntax);
       changed += 1;
     }
-    rows.push({ unitId: entry.unitId, who, detail, writes: studyWrites || laterCount > 0, cast: castRow });
+    rows.push({ unitId: entry.unitId, who, detail, writes, cast: castRow });
   }
 
   // Every planned cast kept as already there and nothing else to write (ah-9qdz.4, mockup
@@ -286,7 +331,7 @@ export function studyWritePlan(input: {
       ? castsKept > 0 && leftOutRows === 0
         ? "Everything planned here is already in your orders — nothing to write."
         : "None of these mages can be written into your orders."
-      : laterWritten > 0
+      : laterTouched > 0
         ? `${changed} mage${changed === 1 ? "" : "s"}. Each mage's month-long order is replaced, and so are any later turns his orders already hold.`
         : `${changed} unit${changed === 1 ? " changes" : "s change"}. Nothing else in the document is touched, and you can undo it afterwards.`;
 

@@ -17,7 +17,7 @@ import type { MagicTree } from "../magicTree";
 import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
-import { hasWritableEntry } from "../studyOrdersWrite";
+import { offeredWritePlan } from "../studyOrdersWrite";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
 import { planFor, plannedGoals, type PlanChange, type ScheduleChange } from "../studyPlans";
@@ -203,14 +203,17 @@ export function StudyPlannerDialog({
   );
   const writePlan = useMemo(
     () =>
-      hasWritableEntry(ownEntries)
-        ? orderProcessing.studyWritePlan({
-            document: ordersDocument,
-            entries: ownEntries,
-            banner: regionBanner,
-            label
-          })
-        : null,
+      ownEntries.length === 0
+        ? null
+        : offeredWritePlan(
+            orderProcessing.studyWritePlan({
+              document: ordersDocument,
+              entries: ownEntries,
+              banner: regionBanner,
+              label
+            }),
+            ownEntries
+          ),
     [ownEntries, ordersDocument, regionBanner, label, orderProcessing]
   );
 
