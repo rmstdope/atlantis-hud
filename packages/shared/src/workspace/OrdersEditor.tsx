@@ -534,16 +534,30 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   // The tidy, run when the player switches the setting on with a unit already open (ah-1znc) - and
   // only then. Opening a unit is looking, not editing: a tidy on open rewrote a template the player
   // had not touched (`@study obse` became `@STUDY OBSE`) and reported "unsaved changes" they never
-  // made, which the navigator ruled out (ah-bdx8b). So no tidy on a unit change, an external write
-  // or the vocabulary arriving; what the player types or pastes is still shouted as it lands.
+  // made, which the navigator ruled out (ah-bdx8b). What the player types or pastes is still shouted
+  // as it lands.
+  //
+  // `tidyOwed` is a switch-on not yet answered. It waits for the vocabulary, which arrives from the
+  // core asynchronously: a switch made before it lands is answered when it does, rather than spent
+  // on an empty set (ah-1znc). Another unit opening settles it, so a selection never tidies.
+  const tidyOwed = useRef(false);
   const ocdWasOn = useRef(orderOcd);
   useEffect(() => {
-    const switchedOn = orderOcd && !ocdWasOn.current;
+    tidyOwed.current = false;
+  }, [unitId]);
+  useEffect(() => {
+    if (orderOcd && !ocdWasOn.current) {
+      tidyOwed.current = true;
+    }
     ocdWasOn.current = orderOcd;
+    if (!orderOcd) {
+      tidyOwed.current = false;
+    }
     const editor = view.current;
-    if (!editor || !switchedOn || vocabulary.size === 0) {
+    if (!editor || !tidyOwed.current || vocabulary.size === 0) {
       return;
     }
+    tidyOwed.current = false;
     // The word the caret is inside is left as typed: while typing, this setting only shouts a word
     // as the space ends it, and a late tidy must not break that promise. Unfocused there is no
     // caret to protect - and selecting a unit row does not focus the editor, so that is the common
@@ -671,8 +685,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       if (!editor) {
         return;
       }
-      // Its columns moved into the line as this editor now shows it: a formed unit's editor tidies
-      // away the indent its creator's editor gave the FORM block's lines (`ah-2zxh`).
+      // Its columns moved into the line as this editor now shows it, should the two disagree on a
+      // line's indent or case - as a formed unit's editor did while it tidied on open (`ah-2zxh`).
       const line = asCounted.lineStart ?? 0;
       const problem =
         line >= 1 && line <= editor.state.doc.lines

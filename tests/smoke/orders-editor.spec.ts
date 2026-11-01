@@ -567,6 +567,28 @@ test("with Order OCD off, nothing is uppercased", async ({ page }) => {
 });
 
 /**
+ * Proves the Order OCD vocabulary has arrived, without touching OWN_UNIT: a keyword typed into the
+ * other unit is shouted only once it has. Saved straight after, so the "unsaved changes" a walk
+ * then looks for can only come from what it does next.
+ */
+async function vocabularyHasArrived(page: Page) {
+  await selectHex(page, "1:26,52");
+  await selectUnit(page, OTHER_OWN_UNIT);
+  await fillOrders(page, "");
+  await ordersInput(page).click();
+  await page.keyboard.type("study ");
+  await expectOrders(page, /^STUDY $/);
+  await saveNow(page);
+}
+
+/** Two frames: whatever effect a selection runs has landed, and React has rendered its result. */
+async function settled(page: Page) {
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  );
+}
+
+/**
  * Looking is not editing (ah-bdx8b): with Order OCD on, selecting a unit used to tidy its template
  * on open - `@study obse` became `@STUDY OBSE` and the panel said "unsaved changes" though nothing
  * had been typed. The setting shouts what the player types; a unit only looked at keeps its bytes.
@@ -578,13 +600,13 @@ test("with Order OCD on, selecting a unit leaves its untouched orders exactly as
   // On before any unit is open, so the switch itself has nothing on screen to tidy: whatever
   // changes below, the selection did it.
   await enableOrderOcd(page);
+  // A tidy on open with no vocabulary yet would be a no-op, and this walk would pass by accident.
+  await vocabularyHasArrived(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
   await expectOrders(page, /^@claim 50\n@study obse\n?$/);
-  // The tidy ran in an effect after the editor mounted; give it every chance to land before
-  // asserting it did not.
-  await page.waitForTimeout(1000);
+  await settled(page);
   await expect(ordersText(page)).resolves.toMatch(/^@claim 50\n@study obse\n?$/);
   await expect(page.getByTestId("orders-status-save")).not.toContainText("unsaved changes");
 });
@@ -610,13 +632,14 @@ test("orders written before the setting was on are left as written when opened a
   });
 
   await page.reload();
+  await vocabularyHasArrived(page);
   await selectHex(page, "1:7,53");
   await selectUnit(page, OWN_UNIT);
 
   // Opening a unit is not an edit (ah-bdx8b): the draft is shown as it was saved, even once the
   // vocabulary has arrived, and nothing is owed.
   await expectOrders(page, /^move n\nstudy combat/);
-  await page.waitForTimeout(1000);
+  await settled(page);
   await expect(ordersText(page)).resolves.toMatch(/^move n\nstudy combat/);
   await expect(page.getByTestId("orders-status-save")).not.toContainText("unsaved changes");
 });
@@ -886,10 +909,11 @@ test("a problem inside a FORM block tags the creator's FORM line and leads to th
 });
 
 /**
- * With Order OCD on, the creator's editor indents a FORM block's lines by one space while the formed
- * unit's own editor shows them with none - so a landing from the creator, whose stop was counted in
- * the indented text, has to be placed in the dedented line it arrives at, or it selects one
- * character to the right (`ah-2zxh`). Both ways onto the formed unit from its creator:
+ * With Order OCD on, the creator's editor indents a FORM block's lines by one space. The formed
+ * unit's own editor used to tidy that indent away as it opened, so a landing counted in the indented
+ * text selected one character to the right (`ah-2zxh`); since ah-bdx8b nothing tidies on open and
+ * both editors show the indented line, so this walk pins that the landing still selects exactly the
+ * problem's words. The column shift itself is pinned in `orderEditor.test.ts`. Both ways onto the formed unit from its creator:
  * the FORM line's tag, and F8.
  */
 test("landing in a formed unit from its creator selects the problem's words when Order OCD indents the FORM block", async ({
@@ -910,7 +934,7 @@ test("landing in a formed unit from its creator selects the problem's words when
     .toBe("WROK");
 
   // The walk still stands on new 1's stop, so Shift-F8 steps back to the creator's own FORM-line
-  // warning - whose tidy indents the block again - and F8 then lands in new 1 from there.
+  // warning - its block still indented - and F8 then lands in new 1 from there.
   await ordersInput(page).click();
   await page.keyboard.press("Shift+F8");
   await expect(page.getByTestId("panel-orders")).toContainText(`— unit ${OWN_UNIT}`);
