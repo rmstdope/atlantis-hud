@@ -67,8 +67,9 @@ HUD on a free port instead** (the navigator, 2026-11-01, after a pass was stoppe
 project's dev server holding the port).
 
 1. Read the declared port with `project-conf launch_web_port` and check it as verifier.md does:
-   `lsof -nP -iTCP:<port> -sTCP:LISTEN`. Exit 1 with no output means it is free; launch exactly as
-   declared and skip the rest of this section.
+   `lsof -nP -iTCP:<port> -sTCP:LISTEN`. Exit 1 with no output means it is free: run the declared
+   command on it with `--strictPort` appended (step 3 says why) and skip to step 4. If vite exits
+   with the port already in use, it was taken in the meantime: go on to step 2.
 2. Anything listening that this look did not start is somebody else's. **Never stop it and never
    reuse it**, and do not ask the navigator about it. Walk upward from the declared port, one at a
    time, to the first port the same `lsof` check shows free.
@@ -535,7 +536,8 @@ report a failure as a mystery:
 
 ## When the look is over
 
-Restore the storage snapshot from `/favicon.ico` (*Protect the navigator's data*), close the tabs you opened, tell the navigator the origin is theirs again, and stop every
+Restore the storage snapshot from `/favicon.ico` (*Protect the navigator's data*), close the tabs you opened, tell the navigator the origin is theirs again (or, when the look ran on
+a fallback port, that their own origin was never touched), and stop every
 server you started (the shell, the desktop shell, any `http.server` for a mockup), and only those.
 A made fixture and the throwaway probe stay uncommitted in the verification tree, and nothing is
 ever committed from it.
