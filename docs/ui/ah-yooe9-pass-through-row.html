@@ -1,0 +1,20 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pass-through items row</title><style>:root{--page:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--soft:#a3b0c0;--dim:#6f7b8b;--brass:#d9a441;--ok:#4fb783;--bad:#e06a5a}
+*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--page);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+header,main{max-width:1000px;margin:auto}h1{margin:0 0 8px;font:22px/1.25 Georgia,serif}h1 span{color:var(--brass)}
+header p{color:var(--soft);max-width:95ch}.cost{border-left:3px solid var(--brass);padding-left:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:14px}h3{margin:0 0 4px;font-size:14px}.ctx{color:var(--soft);font-size:12px;margin:0 0 8px}
+.tip{background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:9px 11px;font-size:12px;max-width:340px}
+.tip .head{color:var(--brass);font-weight:600;margin-bottom:4px}.ln{display:flex;justify-content:space-between;gap:16px;padding:1px 0}
+.lbl{white-space:nowrap;color:var(--soft)}.v{font-variant-numeric:tabular-nums;white-space:nowrap}.soft{color:var(--soft)}.arr{color:var(--dim);margin:0 4px}.up{color:var(--ok)}.dn{color:var(--bad)}
+.hl{outline:2px dashed var(--brass);outline-offset:2px;border-radius:3px}.sent{color:var(--soft);margin-top:6px;border-top:1px solid var(--edge);padding-top:6px}
+.today{font-size:12px;color:var(--dim);margin-top:8px}.today b{color:var(--bad);font-weight:600}
+@media(max-width:700px){body{padding:16px}}</style></head><body>
+<header><h1>Goods a unit only passed through — <span>Option B1 — the second <i>none</i> in plain ink (recommended)</span></h1>
+<p>Agreed: the row reads <b>none → none</b>, for every unit that had none before and has none after. Still open: what colour the second value is, and what a screen reader says for the row. The row that changes has a dashed outline.</p>
+<p class="cost">Nothing was gained or lost, so neither colour is used: green and red keep meaning “up” and “down”. Cost: a moved row with no colour. Its arrow is the only thing that shows the goods moved.</p></header>
+<main><div class="grid">
+<section class="card"><h3>1 · The quartermaster</h3><div class="tip"><div class="head">Items — Praetor Cuffdower (1769)</div><div class="ln hl"><span class="lbl">pikes PIKE</span><span class="v"><span class="soft">none</span><span class="arr">→</span>none</span></div><div class="ln"><span class="lbl">horses HORS</span><span class="v">2</span></div><div class="sent">pikes: drew 5 from Unit (686)'s shared stock, sent 5 to Consul Haughtthan (5).</div></div><p class="today">Read aloud by a screen reader: <i>“pikes PIKE none, still none.”</i></p><p class="today">Or: <i>“pikes PIKE none, from none.”</i></p></section>
+<section class="card"><h3>2 · The receiver (unchanged)</h3><div class="tip"><div class="head">Items — Consul Haughtthan (5)</div><div class="ln"><span class="lbl">pikes PIKE</span><span class="v"><span class="soft">none</span><span class="arr">→</span><span class="up">5</span></span></div><div class="sent">pikes: received 5 from Praetor Cuffdower (1769).</div></div><p class="today">Read aloud by a screen reader: <i>“pikes PIKE 5, up from none.”</i></p></section>
+<section class="card"><h3>3 · Made and handed on the same month</h3><div class="tip"><div class="head">Items — Smith (712)</div><div class="ln hl"><span class="lbl">swords SWOR</span><span class="v"><span class="soft">none</span><span class="arr">→</span>none</span></div><div class="sent">swords: produced 3, gave 3 to Guard (88).</div></div><p class="today">Read aloud by a screen reader: <i>“swords SWOR none, still none.”</i></p></section>
+</div></main></body></html>
