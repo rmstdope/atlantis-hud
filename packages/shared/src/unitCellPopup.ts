@@ -534,8 +534,9 @@ function changeOf(
     return undefined;
   }
   const now = amount ?? 0;
-  // Nothing at either end - goods the month passed through - is no pair: "gone, down from none"
-  // read as a loss from nothing (`ah-6c76`).
+  // Nothing at either end is no pair: "gone, down from none" read as a loss from nothing
+  // (`ah-6c76`). Only a race reaches this now; an item held at neither end is drawn as the flat
+  // pair `none -> none` by `itemLines` before it gets here (`ah-yooe9`).
   if ((before ?? 0) === now) {
     return undefined;
   }
