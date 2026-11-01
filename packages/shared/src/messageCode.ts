@@ -1,8 +1,10 @@
 /**
  * The one piece of markup a finding's message may carry: an order it suggests, between backticks,
  * shown in code style (`ah-41tqi`: "TRANSPORT 5 35 PIKE would draw on the 35 your sharing units
- * hold"). Every surface that shows a message reads it through here - Problems and the region panel
- * through `ProblemMessage`, the editor's marker through `orderLint` - so none shows a raw backtick.
+ * hold"). Every surface that shows a message reads it through here - Problems, the region panel,
+ * the orders panel and the import summary through `ProblemMessage`, the editor's marker through
+ * `orderLint`, and the form-block tag's plain-text hover through `plainMessage` - so none shows a
+ * raw backtick.
  *
  * Pure on purpose: `packages/shared` component tests run no effects (`ah-nass`), so the rule is
  * tested here and the renderers only map its segments.

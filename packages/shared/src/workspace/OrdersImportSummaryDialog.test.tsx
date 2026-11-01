@@ -93,6 +93,28 @@ describe("OrdersImportSummaryDialog", () => {
     expect(markup).toContain("✕");
   });
 
+  it("shows an order a finding suggests in code style, never a raw backtick (ah-41tqi)", () => {
+    const markup = renderToStaticMarkup(
+      <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}
+        summary={{
+          unitCount: 1,
+          document: "",
+          diagnostics: [
+            diagnostic({
+              unitId: "1769",
+              severity: "warning",
+              message: "Moves nothing. `TRANSPORT 5 35 PIKE` would draw on the 35 your sharing units hold."
+            })
+          ]
+        }}
+        onDismiss={() => {}}
+      />
+    );
+
+    expect(markup).toMatch(/<code[^>]*>TRANSPORT 5 35 PIKE<\/code>/);
+    expect(markup).not.toContain("`");
+  });
+
   it("shows no diagnostics list when there are none", () => {
     const markup = renderToStaticMarkup(
       <OrdersImportSummaryDialog orders={orderProcessingFor("neworigins")}

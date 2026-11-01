@@ -219,7 +219,7 @@ fn an_exact_amount_is_not_warned() {
 }
 
 /// The forecast is unchanged by this bead: ALL still ships the sender's own alone, so the target
-/// receives no pikes and the sharers keep theirs (`ah-iidht`).
+/// receives no pikes and each sharer keeps exactly its own (`ah-iidht`).
 #[test]
 fn the_forecast_still_moves_nothing() {
     for (world, rules) in worlds() {
@@ -231,21 +231,113 @@ fn the_forecast_still_moves_nothing() {
             "unit 5531\nTRANSPORT 6857 ALL PIKE\n",
         )
         .expect("the ruleset loads");
-        let pikes = |unit: &str| -> Option<i64> {
-            let row: Option<&UnitPreview> = response
+        let row = |unit: &str| -> Option<&UnitPreview> {
+            response
                 .regions
                 .iter()
                 .flat_map(|region| &region.units)
-                .find(|row| row.unit.unit_id == unit);
-            row.and_then(|row| row.unit.items.iter().find(|item| item.tag == "PIKE"))
-                .map(|item| item.amount)
+                .find(|row| row.unit.unit_id == unit)
         };
-        assert_eq!(pikes("6857"), None, "{world}: the target receives none");
-        for sharer in ["5532", "5534"] {
-            assert!(
-                matches!(pikes(sharer), None | Some(20) | Some(15)),
-                "{world}: sharer {sharer} keeps its pikes"
-            );
+        let pikes = |unit: &str| -> Option<i64> {
+            row(unit).and_then(|row| {
+                row.unit
+                    .items
+                    .iter()
+                    .find(|item| item.tag == "PIKE")
+                    .map(|item| item.amount)
+            })
+        };
+        // The preview lists a unit only when its month changes it, so no row is "unchanged"; a
+        // row there must carry exactly the pikes the report gave the unit. A drained sharer would
+        // have a row without them, a target that received some a row with them.
+        for (unit, reported) in [("6857", None), ("5532", Some(20)), ("5534", Some(15))] {
+            if row(unit).is_some() {
+                assert_eq!(pikes(unit), reported, "{world}: unit {unit}'s pikes");
+            }
         }
     }
+}
+
+/// A target the report does not show may yet take the goods, so no refusal is told - and the ALL
+/// still moves nothing, so the warning is.
+#[test]
+fn a_target_the_report_does_not_show_is_still_warned() {
+    for (world, rules) in worlds() {
+        let found = findings(
+            rules,
+            &sharing_report(),
+            "unit 5531\nTRANSPORT 99999 ALL PIKE\n",
+        );
+        assert_eq!(found.len(), 1, "{world}: {found:?}");
+        assert_eq!(
+            found[0].message,
+            "This unit holds no PIKE, so this TRANSPORT moves nothing. `TRANSPORT 99999 35 PIKE` would draw on the 35 your sharing units hold.",
+            "{world}"
+        );
+    }
+}
+
+/// The refused line stays without the new warning when the refusal's own warning is switched
+/// off: it is refused either way.
+#[test]
+fn a_refused_line_with_its_refusal_switched_off_is_still_not_warned() {
+    for (world, rules) in worlds() {
+        let ruleset = Ruleset::from_json(rules).expect("the committed ruleset loads");
+        let mut parsed = parse_report_full(&sharing_report());
+        classify_units(&mut parsed, &ruleset);
+        let mut options = CheckOptions::default();
+        options
+            .disabled
+            .insert("transport-target-refused".to_string());
+        let found = review_turn(
+            &parsed,
+            "unit 5533\nTRANSPORT 6858 ALL PIKE\n",
+            Some(&ruleset),
+            options,
+        )
+        .findings;
+        assert!(
+            found.iter().all(|finding| finding.code.as_str() != CODE),
+            "{world}: {found:?}"
+        );
+    }
+}
+
+/// An item the game will not ship is told by that refusal alone (`ah-3bprj`).
+#[test]
+fn an_item_the_game_will_not_ship_is_told_only_that() {
+    let text = report(
+        "",
+        "* Jeweller (5535), Foo (1), sharing, leader [LEAD], amulet of true seeing [AMTS]. \
+         Weight: 10. Capacity: 0/0/15/0.",
+    );
+    for (world, rules) in worlds() {
+        let found = all_findings(rules, &text, "unit 5531\nTRANSPORT 6857 ALL AMTS\n");
+        assert!(
+            found
+                .iter()
+                .any(|finding| finding.code.as_str() == "transport-item-refused"),
+            "{world}: {found:?}"
+        );
+        assert!(
+            found.iter().all(|finding| finding.code.as_str() != CODE),
+            "{world}: {found:?}"
+        );
+    }
+}
+
+/// A unit formed this month is written as the player wrote it, `NEW 1`. In New Age a
+/// Caravanserai owner's TRANSPORT reaches any unit (`ah-4kcg`), so the new unit is no refusal.
+#[test]
+fn a_new_unit_as_target_is_written_new() {
+    let found = findings(
+        atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON,
+        &sharing_report(),
+        "unit 5531\nTRANSPORT NEW 1 ALL PIKE\nunit 5533\nFORM 1\nEND\n",
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "This unit holds no PIKE, so this TRANSPORT moves nothing. `TRANSPORT NEW 1 35 PIKE` would draw on the 35 your sharing units hold."
+    );
 }

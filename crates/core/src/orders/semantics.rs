@@ -63636,6 +63636,53 @@ BUILD
         assert_eq!(hover, problems);
     }
 
+    /// `ah-41tqi`: an `ALL` from a unit holding none, beside a sharer holding stone, is warned
+    /// with the exact order when the target is within reach - and only refused, with no new
+    /// warning, when the map proves it too far (`settled_refusal`), even with the out-of-reach
+    /// warning switched off: the order is refused either way.
+    #[test]
+    fn an_all_left_to_the_sharers_is_told_only_when_nothing_else_refuses_it() {
+        let all_left = |target_y: i32, options: CheckOptions| -> (Vec<String>, Vec<Code>) {
+            let sharer = sharing(with_item(unit("902"), 5, "stone", "STON"));
+            let report = report(vec![
+                shipping_from(vec![unit("900"), sharer]),
+                caravanserai_owner("901", 1, 0, target_y),
+            ]);
+            let findings = check_turn(
+                &report,
+                "unit 900\nTRANSPORT 901 ALL STON\n",
+                Some(&ruleset()),
+                options,
+            );
+            let ours = findings
+                .iter()
+                .filter(|finding| finding.code == codes::TRANSPORT_ALL_LEFT_TO_SHARERS)
+                .map(|finding| finding.message.clone())
+                .collect();
+            (ours, findings.iter().map(|finding| finding.code).collect())
+        };
+
+        let (near, _) = all_left(2, with_map());
+        assert_eq!(
+            near,
+            vec!["This unit holds no STON, so this TRANSPORT moves nothing. `TRANSPORT 901 5 STON` would draw on the 5 your sharing units hold."]
+        );
+
+        let (far, codes_found) = all_left(6, with_map());
+        assert!(far.is_empty(), "{far:?}");
+        assert!(
+            codes_found.contains(&codes::TRANSPORT_OUT_OF_REACH),
+            "{codes_found:?}"
+        );
+
+        let mut quiet = with_map();
+        quiet
+            .disabled
+            .insert(codes::TRANSPORT_OUT_OF_REACH.as_str().to_string());
+        let (far_quiet, _) = all_left(6, quiet);
+        assert!(far_quiet.is_empty(), "{far_quiet:?}");
+    }
+
     /// `ALL` finds no silver when the shipments run: the report's 10 silver pays for a month of
     /// STUDY first (`data/COMB`: "costs 10 silver per month of study"; `rules/sequenceofevents`
     /// runs STUDY before TRANSPORT). Still the same words in both places, the hint included.

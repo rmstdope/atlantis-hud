@@ -1,5 +1,6 @@
 import type { DiagnosticTarget } from "./diagnosticNav";
 import { nestedFormBlocks } from "./orderEditor";
+import { plainMessage } from "./messageCode";
 import { blockFor } from "./ordersDocument";
 import type { OrderCommentSyntax } from "./rulesets";
 
@@ -89,10 +90,11 @@ export function formTagHover(tag: FormBlockTag): { heading: string; rows: string
     rows: tag.stops
       .slice(0, HOVER_ROWS)
       // A finding about the formed unit as a whole names no line, as its own editor's list says none.
+      // The hover is plain text, so a suggested order's code markers are dropped (`ah-41tqi`).
       .map((stop) =>
         stop.aboveBlock || stop.problem.lineStart === null
-          ? stop.problem.message
-          : `line ${stop.problem.lineStart} · ${stop.problem.message}`
+          ? plainMessage(stop.problem.message)
+          : `line ${stop.problem.lineStart} · ${plainMessage(stop.problem.message)}`
       ),
     footer: rest > 0 ? `and ${rest} more · ${hint}` : hint
   };
