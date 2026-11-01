@@ -3520,9 +3520,11 @@ describe("the items popup's pairs", () => {
       )
     );
 
-    // `ah-6c76`: the unit neither started nor ended the month with grain, so there is no pair to
-    // draw - "gone, down from none" read as a loss from nothing.
-    expect(popup.lines).toEqual([{ label: "grain GRAI", value: "gone" }]);
+    // `ah-yooe9`: the unit neither started nor ended the month with grain, so the row reads
+    // `none -> none`, flat - not `gone`, which reads as a loss (`ah-6c76` dropped the down pair).
+    expect(popup.lines).toEqual([
+      { label: "grain GRAI", value: "none", change: { direction: "flat", from: "none" } }
+    ]);
     expect(popup.notes).toContain("grain: produced 6, gave 6 to Scouts (1502).");
   });
 
@@ -3562,7 +3564,11 @@ describe("the items popup's pairs", () => {
       )
     );
 
-    expect(popup.lines).toContainEqual({ label: "wood WOOD", value: "gone" });
+    expect(popup.lines).toContainEqual({
+      label: "wood WOOD",
+      value: "none",
+      change: { direction: "flat", from: "none" }
+    });
     expect(popup.notes).toContain(
       "wood: given 10 by Lumbers (2874), spent 10 for Fieldhands (902) to build."
     );
@@ -3618,10 +3624,60 @@ describe("the items popup's pairs", () => {
       )
     );
 
-    expect(popup.lines).toContainEqual({ label: "iron IRON", value: "gone" });
+    expect(popup.lines).toContainEqual({
+      label: "iron IRON",
+      value: "none",
+      change: { direction: "flat", from: "none" }
+    });
     expect(popup.notes).toContain(
       "iron: drew 10 from Unit (4008)'s shared stock, used 10 as material."
     );
+  });
+
+  // `ah-yooe9`: a quartermaster holding no pikes ships five drawn from a sharer. It held none
+  // before and holds none after, so its row reads `none -> none` and is read aloud as `still none`.
+  it("reads none to none for goods a quartermaster shipped on from a sharer", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ name: "horses", tag: "HORS", amount: 2 }],
+          itemChanges: [
+            {
+              tag: "PIKE",
+              name: "pikes",
+              delta: 5,
+              cause: "drawn-from-sharer",
+              line: 4,
+              unitPrice: null,
+              other: { unitId: "686", name: "Unit", formedBy: null },
+              isMan: false
+            },
+            {
+              tag: "PIKE",
+              name: "pikes",
+              delta: -5,
+              cause: "transported-out",
+              line: 4,
+              unitPrice: null,
+              other: { unitId: "5", name: "Consul Haughtthan", formedBy: null },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+
+    expect(popup.lines[0]).toEqual({
+      label: "pikes PIKE",
+      value: "none",
+      change: { direction: "flat", from: "none" }
+    });
+    expect(popup.notes).toContain(
+      "pikes: drew 5 from Unit (686)'s shared stock, sent 5 to Consul Haughtthan (5)."
+    );
+    expect(popupAsText(popup)).toContain("pikes PIKE none, still none.");
   });
 
   it("draws no silver line in the items popup", () => {
@@ -4437,6 +4493,48 @@ describe("the unfinished mark in the popups", () => {
     );
     const ship = popup.lines.find((line) => line.label === "unfinished Galleon GALL");
     expect(ship).toMatchObject({ value: "gone", unfinished: "label" });
+  });
+
+  // `ah-yooe9`: an unfinished ship the unit was handed and passed on reads `none -> none`, and
+  // keeps its mark leading the label as a `gone` line does.
+  it("keeps an unfinished ship's mark on a none to none line", () => {
+    const popup = columnPopup(
+      popupForCell(
+        "items",
+        unit({
+          items: [{ amount: 85, name: "wood", tag: "WOOD" }],
+          itemChanges: [
+            {
+              tag: "GALL",
+              name: "unfinished Galleon",
+              delta: 1,
+              cause: "was-given",
+              line: null,
+              unitPrice: null,
+              other: { unitId: "2874", name: "Lumbers", formedBy: null },
+              isMan: false
+            },
+            {
+              tag: "GALL",
+              name: "unfinished Galleon",
+              delta: -1,
+              cause: "given-away",
+              line: 3,
+              unitPrice: null,
+              other: { unitId: "1502", name: "Scouts", formedBy: null },
+              isMan: false
+            }
+          ]
+        }),
+        facts()
+      )
+    );
+    const ship = popup.lines.find((line) => line.label === "unfinished Galleon GALL");
+    expect(ship).toMatchObject({
+      value: "none",
+      unfinished: "label",
+      change: { direction: "flat", from: "none" }
+    });
   });
 
   // `ah-uxmh`, the words agreed for `ah-2ql5` (mockup 6a): a ship this month's BUILD finishes

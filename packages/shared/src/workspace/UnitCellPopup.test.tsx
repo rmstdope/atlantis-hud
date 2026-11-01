@@ -18,6 +18,19 @@ describe("PopupLineValue", () => {
     expect(markup).toMatch(/text-danger[^>]*>2</);
   });
 
+  // `ah-yooe9`: goods the month only moved through a unit read `none -> none`; nothing was gained
+  // or lost, so the second figure is plain ink, neither up nor down.
+  it("a flat pair draws its second figure in plain ink, neither up nor down", () => {
+    const markup = draw({
+      label: "pikes PIKE",
+      value: "none",
+      change: { direction: "flat", from: "none" }
+    });
+    expect(markup).toMatch(/none[\s\S]*→[\s\S]*none/);
+    expect(markup).toMatch(/class="text-ink">none</);
+    expect(markup).not.toMatch(/text-ok|text-danger/);
+  });
+
   // `ah-44at`: what a refused cast would have made is struck through and dimmed, whole (Q3 B).
   it("a struck line is drawn through and dim, with no up or down colour", () => {
     const line: PopupLine = {

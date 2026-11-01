@@ -86,9 +86,10 @@ export type PopupColumn = UnitColumn | ExtraColumn;
  *
  * `from` is what the report said, grouped as the line's own `value` is; `value` is where it stands
  * now. The two together are the pair the popup draws, and `direction` is what colours the second
- * of them.
+ * of them. `flat` is a pair whose two ends are the same figure - goods the month moved through a
+ * unit that held none at either end (`ah-yooe9`): drawn in plain ink and read aloud as `still`.
  */
-export type PopupChange = { direction: "up" | "down"; from: string };
+export type PopupChange = { direction: "up" | "down" | "flat"; from: string };
 
 /**
  * One figure in a Skills line's chain (`ah-rgkk.2.3`).
@@ -384,8 +385,9 @@ export type ItemLine = { tag: string; line: PopupLine; moved: boolean; refused?:
  *
  * The tags are the union of what the unit holds now, what the report listed, this month's
  * production, and every item this month's movements name. An item given away in full still has a
- * line ending at `gone`, including one the unit produced, or was given, and passed on in the same
- * turn (`ah-dqvi`), while one that arrived this month starts at `none`.
+ * line ending at `gone`, while one that arrived this month starts at `none`. One the unit held
+ * none of at either end - produced, given or drawn from a sharer, and passed on in the same turn
+ * (`ah-dqvi`, `ah-jm7c`) - reads `none -> none`, flat (`ah-yooe9`).
  */
 export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefined): ItemLine[] {
   const changes = unit.itemChanges ?? [];
@@ -442,14 +444,25 @@ export function itemLines(unit: PreviewedUnit, reported: ReportedItems | undefin
       changes.some((change) => change.tag === tag) ||
       (before !== undefined && before !== (amount ?? 0)) ||
       (before === undefined && reported !== undefined);
+    // Held none when the report was written and none at month end: the tag is listed only because
+    // the month moved it through the unit. `gone` would read as a loss, so the row is the pair
+    // `none -> none`, flat (`ah-yooe9`). With no report change the list is as the report had it,
+    // so a tag the unit does not hold now was not reported either.
+    const passedThrough = amount === undefined && (before ?? 0) === 0;
     const line: PopupLine = {
       label: name === undefined ? tag : `${name} ${tag}`,
-      value: amount === undefined ? "gone" : rangedValue(amount, shortfall.get(tag) ?? 0),
+      value: passedThrough
+        ? "none"
+        : amount === undefined
+          ? "gone"
+          : rangedValue(amount, shortfall.get(tag) ?? 0),
       // An unfinished ship keeps its mark on every line naming it, a `gone` one included
       // (`ah-2ql5`): the report's own words lead the line, and the mark goes before them.
       ...(isUnfinishedShipName(name) ? { unfinished: "label" as const } : {})
     };
-    const change = changeOf(before, amount, reported);
+    const change: PopupChange | undefined = passedThrough
+      ? { direction: "flat", from: "none" }
+      : changeOf(before, amount, reported);
     return { tag, line: change ? { ...line, change } : line, moved, amount: amount ?? 0 };
   })
     .sort((a, b) => rank(a, monthOrder) - rank(b, monthOrder) || b.amount - a.amount)
@@ -2617,7 +2630,13 @@ export function popupAsText(popup: ColumnPopup): string {
         );
       }
     } else if (line.change) {
-      parts.push(`${line.change.direction} from ${line.change.from}`);
+      // A flat pair's two ends are the same figure, so it says `still`, as a flat chain step does.
+      if (line.change.direction === "flat") {
+        parts[0] = `${line.label} ${line.change.from}`;
+        parts.push(`still ${line.value}`);
+      } else {
+        parts.push(`${line.change.direction} from ${line.change.from}`);
+      }
     }
     if (line.stress === "deciding") {
       parts.push("which is the one that decides");
