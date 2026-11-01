@@ -186,14 +186,23 @@ fn a_refused_line_shows_only_its_refusal() {
 
 #[test]
 fn no_warning_when_the_sender_holds_any() {
-    silent(&report(", pike [PIKE], 1 silver [SILV]", SHARERS), "6857 ALL PIKE");
-    silent(&report(", pike [PIKE], 1 silver [SILV]", SHARERS), "6857 ALL SILV");
+    silent(
+        &report(", pike [PIKE], 1 silver [SILV]", SHARERS),
+        "6857 ALL PIKE",
+    );
+    silent(
+        &report(", pike [PIKE], 1 silver [SILV]", SHARERS),
+        "6857 ALL SILV",
+    );
 }
 
 #[test]
 fn no_warning_when_no_sharer_holds_any() {
     // The faction-mates hold pikes but do not share them.
-    silent(&report("", &SHARERS.replace("sharing, ", "")), "6857 ALL PIKE");
+    silent(
+        &report("", &SHARERS.replace("sharing, ", "")),
+        "6857 ALL PIKE",
+    );
     // They share, but hold none.
     silent(
         &report(
