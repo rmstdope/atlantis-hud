@@ -532,7 +532,9 @@ report a failure as a mystery:
   broken — rebuild for the shell you are about to run, not whatever the smoke suite left behind.
 - **`vite preview` without `--strictPort` silently serves somebody else's bundle.** A green-looking
   launch on the wrong build looks exactly like a passed verification of the wrong thing. Run the
-  launch command exactly as `project-conf` declares it — it already carries the right flags.
+  launch command as `project-conf` declares it, adding nothing but what *When the declared port is
+  taken* appends for the web shell: the declared web command is plain `vite`, so its
+  `--strictPort` comes from that section, never from the declaration.
 
 ## When the look is over
 
