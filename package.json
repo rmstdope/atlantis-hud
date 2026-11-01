@@ -39,6 +39,7 @@
     "@wdio/spec-reporter": "^9.20.0",
     "eslint": "^9.34.0",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "fake-indexeddb": "6.2.5",
     "sharp": "^0.35.3",
     "tsx": "^4.23.11",
     "typescript": "^5.9.2",
