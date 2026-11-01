@@ -6,7 +6,7 @@
  * integration's JavaScript tool on the app's origin, and it installs
  * `globalThis.atlantisVerifyStorage` with three calls:
  *
- *   await atlantisVerifyStorage.snapshot()   // before the look
+ *   await atlantisVerifyStorage.snapshot()   // before the look, on /favicon.ico of the origin
  *   await atlantisVerifyStorage.restore()    // after it, and after a blocker
  *   await atlantisVerifyStorage.status()     // is a snapshot waiting? null when not
  *
@@ -27,6 +27,18 @@
   const BLOCKED_MS = 10000;
 
   const idb = () => globalThis.indexedDB;
+
+  // The app keeps its workspace and settings in zustand `persist` stores, which write their in-memory
+  // state back to localStorage on every update: a tab running the app can overwrite a restore before
+  // anyone reloads it, and holds an orders draft a snapshot cannot see. So both calls run only on a page
+  // of the origin with no app in it, and /favicon.ico (served from config/public) is one.
+  function refuseAppTab(call) {
+    if (globalThis.document?.getElementById?.("root")) {
+      throw new Error(
+        `${call}() refuses a tab running the app: open /favicon.ico on the same origin and run it there`
+      );
+    }
+  }
 
   function request(req) {
     return new Promise((resolve, reject) => {
@@ -59,7 +71,8 @@
             reject(
               new Error(
                 `deleting ${name} is blocked: another tab still holds it open. ` +
-                  "Close or reload the app's other tabs and run restore() again; the snapshot is kept."
+                  "The delete stays queued and runs once that tab lets go, so close it and run restore() again " +
+                  "promptly; the snapshot is kept."
               )
             ),
           BLOCKED_MS
@@ -175,6 +188,7 @@
   }
 
   async function snapshot() {
+    refuseAppTab("snapshot");
     const waiting = await readSnapshot();
     if (waiting) {
       throw new Error(
@@ -206,6 +220,7 @@
   }
 
   async function restore() {
+    refuseAppTab("restore");
     const saved = await readSnapshot();
     if (!saved) throw new Error("no snapshot is waiting: there is nothing to restore");
     for (const name of await ourDatabases()) await remove(name);

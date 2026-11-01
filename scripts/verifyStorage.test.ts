@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { IDBFactory } from "fake-indexeddb";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "verify-storage.js"),
@@ -182,6 +182,8 @@ describe("verify-storage.js", () => {
     await api().snapshot();
     scope.localStorage.setItem("atlantis-hud:viewport:g1", "{\"zoom\":9}");
     scope.localStorage.setItem("added-by-the-look", "1");
+    scope.localStorage.removeItem("atlantis-hud:viewport:g1"); // a key the look removed comes back
+    scope.localStorage.setItem("atlantis-hud-settings", "{}");
 
     const restored = await api().restore();
 
@@ -209,5 +211,28 @@ describe("verify-storage.js", () => {
 
   it("refuses to restore when there is no snapshot", async () => {
     await expect(api().restore()).rejects.toThrow(/no snapshot/i);
+  });
+});
+
+describe("verify-storage.js refuses a tab that is running the app", () => {
+  const withApp = globalThis as unknown as { document?: unknown };
+  afterEach(() => {
+    delete withApp.document;
+  });
+
+  it("refuses snapshot() and restore() while the app is mounted in this tab, and names the safe page", async () => {
+    await navigatorsData();
+    await api().snapshot();
+    withApp.document = { getElementById: (id: string) => (id === "root" ? {} : null) };
+    await expect(api().restore()).rejects.toThrow("/favicon.ico");
+    await expect(api().snapshot()).rejects.toThrow("/favicon.ico");
+    expect(await api().status()).not.toBeNull();
+  });
+
+  it("runs on a page of the origin that has no app, such as /favicon.ico", async () => {
+    await navigatorsData();
+    withApp.document = { getElementById: () => null };
+    await api().snapshot();
+    await expect(api().restore()).resolves.toMatchObject({ localStorageKeys: 1 });
   });
 });

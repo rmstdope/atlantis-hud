@@ -308,7 +308,7 @@ batch:
 1. Prepare every bead (verify-bead's *Prepare*): one checklist per bead, criterion by criterion, with
    each expected figure from the probe above.
 2. Launch once (verify-bead's *Launch*), check the core (above), and take the storage snapshot
-   (below) before the first import.
+   (below) from `/favicon.ico` before the app is opened in any tab.
 3. Walk the beads in the order that reaches their states most cheaply, keeping a separate evidence
    log per bead. A screenshot can serve two beads, but name it in both logs.
 4. **Guard against state bleed between beads**: begin each bead's checks from the orders box as its
@@ -327,36 +327,49 @@ then record each bead by its own recipe.
 
 The browser is the navigator's own Chrome, and the web shell's origin (`http://localhost:<port>`)
 holds every game they have loaded there: the games list and one IndexedDB database per game, with
-their imported reports and order drafts, and their map views and settings in `localStorage`.
-Importing a fixture, typing orders and deleting a game during the look all write to it. So
-**snapshot before the first import, restore when the look is over, including after a blocker**.
+their imported reports and order drafts, and their workspace, settings and map views in
+`localStorage`. Importing a fixture, typing orders and deleting a game during the look all write to
+it. So **snapshot before the app is opened, restore when the look is over, including after a
+blocker**.
 
-`scripts/verify-storage.js` does both, and keeps the copy inside the browser so a game's values stay
-exact. Read the file from the verification tree and paste its whole text, followed by the call, into
-the Chrome integration's JavaScript tool, on a tab of the shell's origin:
+**The origin is yours from the snapshot to the restore.** A restore throws away everything written
+after the snapshot, so an edit the navigator makes in their own tab of the shell meanwhile is lost
+without a word. Before the snapshot, list the browser's tabs through the Chrome integration: a tab
+on the shell's origin that you did not open is a question to the navigator ("close your tab on
+<origin> until I say the look is over"), and the snapshot waits for the answer. Say in one line in
+chat that the origin is in use until you report it restored.
+
+`scripts/verify-storage.js` does both halves, and keeps the copy inside the browser so a game's
+values stay exact. **Run it only on `http://localhost:<port>/favicon.ico`**, a page of the same
+origin with no app in it: a tab running the app writes its in-memory workspace and settings back to
+`localStorage` on every update, so it can overwrite a restore before anyone reloads it, and it can
+hold an orders draft a snapshot cannot see. The script refuses a tab with the app mounted. Read the
+file from the verification tree and paste its whole text, followed by the call, into the Chrome
+integration's JavaScript tool on that page — first, before the app is opened in any tab:
 
 ```js
 /* the whole text of scripts/verify-storage.js */
 await atlantisVerifyStorage.snapshot()   // -> { databases, localStorageKeys, takenAt }
 ```
 
-and when the look is over:
+and when the look is over, after navigating every app tab you opened back to `/favicon.ico` or
+closing it:
 
 ```js
 /* the whole text of scripts/verify-storage.js */
 await atlantisVerifyStorage.restore()    // -> { databases, localStorageKeys }
 ```
 
-then reload every tab of the shell: a restore deletes and rebuilds the databases, and the app stops
-its storage when another connection deletes one, so a tab left open shows that until it is reloaded.
+Only then open the app again, if the navigator wants it.
 
 Two refusals are the script protecting the data, never something to work round:
 
 - **`snapshot()` refuses while an earlier snapshot waits** — run `await atlantisVerifyStorage.status()`
   to see when it was taken. It is a look that never restored, so it may be the navigator's real data.
   Ask them before anything else: restore it now, or keep what is there and discard it.
-- **`restore()` reports a database still blocked** by another tab. Ask the navigator to close or
-  reload their other tabs of the shell, then run it again; the snapshot is kept until a restore
+- **`restore()` reports a database still blocked** by another tab. The delete stays queued and runs
+  by itself once that tab lets go, so a game can vanish while the navigator is back in the app: ask
+  them to close that tab, then run `restore()` again at once. The snapshot is kept until a restore
   succeeds.
 
 A look that needs empty storage (a first visit, an empty games list) deletes the games through the
@@ -488,7 +501,7 @@ report a failure as a mystery:
 
 ## When the look is over
 
-Restore the storage snapshot and reload the shell's tabs, close the tabs you opened, and stop every
+Restore the storage snapshot from `/favicon.ico` (*Protect the navigator's data*), close the tabs you opened, tell the navigator the origin is theirs again, and stop every
 server you started (the shell, the desktop shell, any `http.server` for a mockup), and only those.
 A made fixture and the throwaway probe stay uncommitted in the verification tree, and nothing is
 ever committed from it.

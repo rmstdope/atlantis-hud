@@ -145,6 +145,7 @@ describe("the verification skill has Psylocke look herself (ah-jq6m8)", () => {
     expect(text).toContain("scripts/verify-storage.js");
     expect(text).toContain("atlantisVerifyStorage.snapshot()");
     expect(text).toContain("atlantisVerifyStorage.restore()");
+    expect(text, "both calls run on a page of the origin with no app in it").toContain("/favicon.ico");
   });
 
   it("bounds exploration to about 10-15 minutes per batch", () => {
