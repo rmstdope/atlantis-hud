@@ -31,8 +31,10 @@ import {
   seedOrdersDocument,
   regionBannerLine,
   stripLongOrderLines,
+  repeatsLongOrder,
   stripTurnBlocks,
   turnBlockCount,
+  unrepeatLongOrders,
   stripMovementOrderLines,
   stripUnitComments,
   withoutTrailingBlankLines,
@@ -1820,5 +1822,45 @@ describe("TURN blocks (ah-1f87z)", () => {
     expect(stripTurnBlocks(orders, "origins")).toBe(
       ["STUDY FORC", "FORM 2", "  TURN", "    MOVE S", "  ENDTURN", "END", "claim 200"].join("\n")
     );
+  });
+});
+
+describe("repeated month-long orders (ah-1f87z)", () => {
+  // `@` on a month-long order repeats it every turn, and while one repeats the game never starts a
+  // TURN block (aregion.cpp's template writer; parseorders.cpp keeps @ orders) - the bead's notes.
+  const orders = [
+    "  @work            ; repeats every month",
+    "  @claim 100",
+    "  FORM 1",
+    "    @STUDY COMB",
+    "  END",
+    "  TURN",
+    "    @ENTERTAIN",
+    "  ENDTURN"
+  ].join("\n");
+
+  it("repeatsLongOrder_reads_only_the_units_own_at_month_long_orders", () => {
+    expect(repeatsLongOrder(orders, "origins")).toBe(true);
+    expect(repeatsLongOrder("  WORK\n  @claim 100", "origins")).toBe(false);
+    expect(repeatsLongOrder("FORM 1\n  @WORK\nEND\nTURN\n  @WORK\nENDTURN", "origins")).toBe(false);
+    expect(repeatsLongOrder("@ STUDY FORC", "trident")).toBe(true);
+  });
+
+  it("unrepeatLongOrders_drops_the_at_and_old_comment_and_keeps_form_and_turn_lines", () => {
+    const result = unrepeatLongOrders(orders, "origins", (now) => `${now} ; was @${now}`);
+    expect(result.now).toEqual(["work"]);
+    expect(result.orders).toBe(
+      [
+        "  work ; was @work",
+        "  @claim 100",
+        "  FORM 1",
+        "    @STUDY COMB",
+        "  END",
+        "  TURN",
+        "    @ENTERTAIN",
+        "  ENDTURN"
+      ].join("\n")
+    );
+    expect(unrepeatLongOrders("  WORK", "origins", (now) => now)).toEqual({ orders: "  WORK", now: [] });
   });
 });

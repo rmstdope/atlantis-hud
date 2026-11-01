@@ -1204,6 +1204,53 @@ export function stripTurnBlocks(orders: string, syntax: OrderCommentSyntax): str
     .join("\n");
 }
 
+/** For each line, whether it is one of the unit's own month-long orders written with `@`. */
+function ownRepeatedLongOrders(orders: string, syntax: OrderCommentSyntax): boolean[] {
+  const own = atTopLevel(orders, syntax);
+  return orders
+    .split("\n")
+    .map(
+      (line, index) =>
+        own[index] === true && lexOrderLine(line, syntax).repeat && isCommand(line, LONG_ORDER_COMMANDS, syntax)
+    );
+}
+
+/**
+ * Whether the unit's own orders repeat a month-long order (`@WORK`, `@STUDY FORC`…). While one
+ * does, the game never starts a `TURN` block - it carries every one forward unopened (the engine's
+ * template writer, aregion.cpp, unwraps a block only for a unit with no repeated month order; the
+ * notes of ah-1f87z) - so the study planner's later turns would never run (ah-1f87z).
+ * Only depth zero counts: a `FORM`'s or a `TURN`'s lines are not this unit's month.
+ */
+export function repeatsLongOrder(orders: string, syntax: OrderCommentSyntax): boolean {
+  return ownRepeatedLongOrders(orders, syntax).some(Boolean);
+}
+
+/**
+ * The orders with every one of the unit's own repeated month-long orders run once instead: each
+ * becomes `rewrite(now)` at its own indentation, where `now` is its code as written without the `@`
+ * and without its old comment, which the rewrite replaces. `now` lists them in order (ah-1f87z).
+ */
+export function unrepeatLongOrders(
+  orders: string,
+  syntax: OrderCommentSyntax,
+  rewrite: (now: string) => string
+): { orders: string; now: string[] } {
+  const repeated = ownRepeatedLongOrders(orders, syntax);
+  const now: string[] = [];
+  const lines = orders.split("\n").map((line, index) => {
+    if (repeated[index] !== true) {
+      return line;
+    }
+    const indent = /^\s*/u.exec(line)?.[0] ?? "";
+    const commentAt = lexOrderLine(line, syntax).commentAt;
+    const code = (commentAt === null ? line : line.slice(0, commentAt)).trim().replace(/^@\s*/u, "");
+    now.push(code);
+    return `${indent}${rewrite(code)}`;
+  });
+  return { orders: lines.join("\n"), now };
+}
+
 /**
  * The orders with every line the unit itself issued that matches `command` removed, leaving the
  * lines of a nested `FORM` or `TURN` block exactly as they were.

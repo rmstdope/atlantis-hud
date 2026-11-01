@@ -15,6 +15,7 @@ import {
   findUnitBlocks,
   formBlockFor,
   longOrderOf,
+  repeatsLongOrder,
   readUnitOrders,
   regionUnitIdsAt,
   repairFormedUnitBlocks,
@@ -67,6 +68,7 @@ export interface OrderProcessing {
   readonly stripMovementOrderLines: WithoutSyntax<typeof stripMovementOrderLines>;
   readonly stripLongOrderLines: WithoutSyntax<typeof stripLongOrderLines>;
   readonly longOrderOf: WithoutSyntax<typeof longOrderOf>;
+  readonly repeatsLongOrder: WithoutSyntax<typeof repeatsLongOrder>;
   readonly reportedLongOrders: WithoutSyntax<typeof reportedLongOrders>;
   readonly bareWords: WithoutSyntax<typeof bareWords>;
   readonly uppercaseLine: WithoutSyntax<typeof uppercaseLine>;
@@ -117,6 +119,7 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
     stripMovementOrderLines: (orders) => stripMovementOrderLines(orders, syntax),
     stripLongOrderLines: (orders) => stripLongOrderLines(orders, syntax),
     longOrderOf: (orders) => longOrderOf(orders, syntax),
+    repeatsLongOrder: (orders) => repeatsLongOrder(orders, syntax),
     reportedLongOrders: (template) => reportedLongOrders(template, syntax),
     bareWords: (line) => bareWords(line, syntax),
     uppercaseLine: (line, vocabulary) => uppercaseLine(line, vocabulary, syntax),
