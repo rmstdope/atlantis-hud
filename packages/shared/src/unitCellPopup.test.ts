@@ -4007,6 +4007,41 @@ describe("the items popup's cause sentences", () => {
     ).toBe("picks: lent 5 for Quartermaster (6857) to send to Sender (5530).");
   });
 
+  // `ah-w5yu0`: a shipment refused for its fee leaves the sharer's goods on the sender (`ah-b7g4d`;
+  // ../Atlantis `runorders.cpp`, `RunTransportOrders`), so the loan line says they were not sent.
+  const refusedLoan = (other: { unitId: string; name: string | null } | null) =>
+    notesFor({
+      items: [],
+      itemChanges: [
+        moved({
+          tag: "STON",
+          name: "stone",
+          cause: "lent-for-refused-transport",
+          delta: -57,
+          other,
+          borrower: { unitId: "1769", name: "Praetor Cuffdower" }
+        })
+      ]
+    })[0];
+
+  it("says a sharer's goods for a shipment refused for its fee went to the sender and were not sent", () => {
+    expect(refusedLoan({ unitId: "5", name: "Consul Haughtthan" })).toBe(
+      "stone: lent 57 to Praetor Cuffdower (1769), not sent to Consul Haughtthan (5): the hex is short of silver for the fee."
+    );
+  });
+
+  it("words an unshown receiver of a refused shipment as the loan line does", () => {
+    expect(refusedLoan({ unitId: "5", name: null })).toBe(
+      "stone: lent 57 to Praetor Cuffdower (1769), not sent to unit 5, which your report does not show: the hex is short of silver for the fee."
+    );
+  });
+
+  it("words another faction's receiver of a refused shipment as the loan line does", () => {
+    expect(refusedLoan(null)).toBe(
+      "stone: lent 57 to Praetor Cuffdower (1769), not sent to another faction: the hex is short of silver for the fee."
+    );
+  });
+
   it("says a shipment drawn from a sharer passes through its sender", () => {
     expect(
       notesFor({
