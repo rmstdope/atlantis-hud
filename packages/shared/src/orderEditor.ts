@@ -64,9 +64,10 @@ export function offendingText(text: string, diagnostic: OrderDiagnostic): string
  * A problem's columns, moved into the line an editor actually shows.
  *
  * A stop's columns are counted in the text validation saw, and the editor it lands in can have
- * re-indented that line since: with Order OCD on, the creator's editor indents a `FORM` block's lines
- * by one space and the formed unit's own editor tidies them back to none as it opens, so a landing
- * from the creator would select one character to the right (`ah-2zxh`). Indentation, keyword case
+ * re-indented that line since. With Order OCD on, the formed unit's own editor used to tidy away the
+ * one-space indent its creator's editor gives a `FORM` block's lines as it opened, so a landing from
+ * the creator selected one character to the right (`ah-2zxh`). Since ah-bdx8b no editor tidies on
+ * open and the two agree; this stays as the guard should they ever differ again. Indentation, keyword case
  * and a trailing `\r` are all that may differ - a line whose words changed is not the one the
  * columns were counted in, and is left to the editor's own clamping.
  */

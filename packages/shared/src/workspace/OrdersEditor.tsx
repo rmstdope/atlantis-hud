@@ -531,18 +531,33 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
     }
   }, [externalRevision, unitId]);
 
-  // The tidy E3 promises, run whenever it *can* run rather than only at mount. The vocabulary
-  // arrives from the core asynchronously, so the first editor created after a page load is built
-  // against an empty set and would otherwise never be tidied (ah-1znc). Keyed on the vocabulary and
-  // the setting as well as the unit, so the same effect catches the setting being turned on with a
-  // unit already open, and a ruleset switch bringing a new catalogue. Keyed on `externalRevision`
-  // too, and declared after the effect that reads it, so a draft restored asynchronously after a
-  // reload is tidied once it is actually in the document rather than while the editor is empty.
+  // The tidy, run when the player switches the setting on with a unit already open (ah-1znc) - and
+  // only then. Opening a unit is looking, not editing: a tidy on open rewrote a template the player
+  // had not touched (`@study obse` became `@STUDY OBSE`) and reported "unsaved changes" they never
+  // made, which the navigator ruled out (ah-bdx8b). What the player types or pastes is still shouted
+  // as it lands.
+  //
+  // `tidyOwed` is a switch-on not yet answered. It waits for the vocabulary, which arrives from the
+  // core asynchronously: a switch made before it lands is answered when it does, rather than spent
+  // on an empty set (ah-1znc). Another unit opening settles it, so a selection never tidies.
+  const tidyOwed = useRef(false);
+  const ocdWasOn = useRef(orderOcd);
   useEffect(() => {
+    tidyOwed.current = false;
+  }, [unitId]);
+  useEffect(() => {
+    if (orderOcd && !ocdWasOn.current) {
+      tidyOwed.current = true;
+    }
+    ocdWasOn.current = orderOcd;
+    if (!orderOcd) {
+      tidyOwed.current = false;
+    }
     const editor = view.current;
-    if (!editor || !orderOcd || vocabulary.size === 0) {
+    if (!editor || !tidyOwed.current || vocabulary.size === 0) {
       return;
     }
+    tidyOwed.current = false;
     // The word the caret is inside is left as typed: while typing, this setting only shouts a word
     // as the space ends it, and a late tidy must not break that promise. Unfocused there is no
     // caret to protect - and selecting a unit row does not focus the editor, so that is the common
@@ -573,14 +588,15 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       // replaces was. And deliberately no `userEvent`, which is what history groups typing under.
       annotations: [Transaction.addToHistory.of(false)]
     });
-  }, [externalRevision, unitId, orderOcd, vocabulary, orders]);
+  }, [orderOcd, vocabulary, orders]);
 
   // The other half of the tidy: the block ends in exactly one newline, so clicking in the empty
   // space below the last order puts the caret on a fresh line ready to type. External, because the
   // document cannot hold a blank line at the end of a block (`writeUnitOrders` drops it) - so this
   // is what the editor shows rather than an edit to the draft, and sending it to `onChange` would
-  // mark every unit edited merely for being opened. Runs on the tidy's own clock, which is what
-  // leaves Enter free to open as many lines as the player presses it for.
+  // mark every unit edited merely for being opened. Runs as a unit opens or the setting changes,
+  // never per keystroke, which is what leaves Enter free to open as many lines as the player
+  // presses it for.
   useEffect(() => {
     const editor = view.current;
     if (!editor || !orderOcd) {
@@ -669,8 +685,8 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
       if (!editor) {
         return;
       }
-      // Its columns moved into the line as this editor now shows it: a formed unit's editor tidies
-      // away the indent its creator's editor gave the FORM block's lines (`ah-2zxh`).
+      // Its columns moved into the line as this editor now shows it, should the two disagree on a
+      // line's indent or case - as a formed unit's editor did while it tidied on open (`ah-2zxh`).
       const line = asCounted.lineStart ?? 0;
       const problem =
         line >= 1 && line <= editor.state.doc.lines
