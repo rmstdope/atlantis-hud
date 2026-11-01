@@ -27,6 +27,17 @@ function problem(overrides: Partial<OrderDiagnostic>): OrderDiagnostic {
 }
 
 describe("toEditorDiagnostics", () => {
+  it("reads a backticked order without its markers, and renders it in code style (ah-41tqi)", () => {
+    const [plain] = toEditorDiagnostics("MOVE N", [problem({})]);
+    expect(plain.renderMessage).toBeUndefined();
+
+    const [suggesting] = toEditorDiagnostics("MOVE N", [
+      problem({ message: "Moves nothing. `TRANSPORT 5 35 PIKE` would draw on them." })
+    ]);
+    expect(suggesting.message).toBe("Moves nothing. TRANSPORT 5 35 PIKE would draw on them.");
+    expect(suggesting.renderMessage).toBeTypeOf("function");
+  });
+
   it("places a diagnostic at its line and column offsets", () => {
     const text = "MOVE N\nWROK\nSTUDY combat";
     const result = toEditorDiagnostics(text, [

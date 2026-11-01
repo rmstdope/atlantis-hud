@@ -157,6 +157,12 @@ describe("formTagHover", () => {
     });
   });
 
+  it("reads an order a finding suggests without its code markers (ah-41tqi)", () => {
+    expect(formTagHover(tag(0, 1, ["Moves nothing. `TRANSPORT 5 35 PIKE` would draw on them."])).rows).toEqual([
+      "line 1 · Moves nothing. TRANSPORT 5 35 PIKE would draw on them."
+    ]);
+  });
+
   it("shows three rows and counts the rest beside the click hint", () => {
     const hover = formTagHover(tag(0, 5, ["a", "b", "c", "d", "e"]));
     expect(hover.rows).toEqual(["line 1 · a", "line 2 · b", "line 3 · c"]);

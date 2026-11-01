@@ -309,6 +309,14 @@ pub mod codes {
     /// the rules page, not a copy of the engine's flags. Always on: the bead asks for the warning and
     /// gives it no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const TRANSPORT_ITEM_REFUSED: Code = Code("transport-item-refused");
+    /// A `TRANSPORT`/`DISTRIBUTE ... ALL <item> [EXCEPT n]` whose sender holds none of the item
+    /// while its sharing faction-mates in the hex hold some (`ah-41tqi`). The engine's ALL reads the
+    /// sender's own stock alone (`../Atlantis runorders.cpp`, `RunTransportOrders`:
+    /// `amt = u->items.GetNum(t->item)`, less the EXCEPT), while an exact amount is cut to
+    /// `GetSharedNum`, which counts the sharers (`rules/share`), so the line moves nothing where the
+    /// exact amount would not. Always on: the bead gives it no switch, so it is in [`ALWAYS_ON`]
+    /// and not in [`ALL`].
+    pub const TRANSPORT_ALL_LEFT_TO_SHARERS: Code = Code("transport-all-left-to-sharers");
     /// An `EXCHANGE` between two of our units in one hex that the game will abort: the two lines
     /// are not complementary, or a side will not hold what it offers (`rules/exchange`: "If either
     /// unit involved does not have the items it is offering, or if the exchange orders given are
@@ -440,7 +448,7 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 15] = [
+    pub const ALWAYS_ON: [Code; 16] = [
         MOVE_INTO_A_WALL,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
@@ -452,6 +460,7 @@ pub mod codes {
         LEAVE_REFUSED_AT_SEA,
         TRANSPORT_TARGET_REFUSED,
         TRANSPORT_ITEM_REFUSED,
+        TRANSPORT_ALL_LEFT_TO_SHARERS,
         EXCHANGE_ABORTED,
         PROMOTE_NOT_OWNER,
         PROMOTE_NO_TARGET,
@@ -1119,6 +1128,14 @@ pub fn review_turn(
             &mut findings,
         );
         check_transport_items(hex, ruleset, &options, &mut findings);
+        check_transport_all_left_to_sharers(
+            hex,
+            ledger,
+            shipping.as_ref(),
+            ruleset,
+            &options,
+            &mut findings,
+        );
         check_take_from_another_faction(hex, &options, &mut findings);
         check_transfer_to_itself(hex, &options, &mut findings);
         check_arrivals(hex, &options, &mut findings);
@@ -7259,6 +7276,12 @@ struct Ledger<'a> {
     /// and the hover both read it from here, so the two cannot disagree. Read by
     /// [`check_transport_reach`] and [`item_effects`].
     nothing_to_ship: BTreeSet<(String, usize)>,
+    /// Every `ALL` shipment of a named item whose sender holds none of it as its sub-phase runs,
+    /// while its sharing faction-mates hold some, keyed by sender and 1-based document line, with
+    /// what those sharers hold then (`ah-41tqi`). ALL ships the sender's own stock alone
+    /// (`../Atlantis runorders.cpp`, `RunTransportOrders`), so the line moves nothing; an exact
+    /// amount would draw on these. Read by [`check_transport_all_left_to_sharers`].
+    all_left_to_sharers: BTreeMap<(String, usize), i64>,
     /// Which of the two unmeasurable causes each of this hex's units met, by unit number
     /// (`ah-7ale.5`). Not gated on the Transport warning: it is what makes the month read `?`, and
     /// no figure may claim to be certain when it is not.
@@ -7950,6 +7973,7 @@ fn ledger_for_reaching<'a>(
         cut_shipments: Vec::new(),
         unshipped_silver: BTreeMap::new(),
         nothing_to_ship: BTreeSet::new(),
+        all_left_to_sharers: BTreeMap::new(),
         shipping_unmeasured: BTreeMap::new(),
         sold: BTreeMap::new(),
         dead_sales: Vec::new(),
@@ -26749,6 +26773,105 @@ fn check_transport_reach(
     }
 }
 
+/// A shipment the game refuses whatever its sender holds, as [`check_transport_reach`] tells it:
+/// a target or sender refusal the report settles, or an eligible target the map proves too far.
+/// Read off the judgement itself, not off whether that refusal's own warning is switched on.
+fn settled_refusal(judged: &super::transport::Judged) -> bool {
+    use super::transport::Acceptance;
+    match judged.acceptance {
+        Acceptance::Eligible => matches!(
+            judged.measured,
+            Some(super::transport::Measured {
+                arrival: super::transport::Arrival::TooFar(_),
+                ..
+            })
+        ),
+        Acceptance::NotQuartermaster
+        | Acceptance::NotCaravanseraiOwner
+        | Acceptance::SenderOwnsNoCaravanserai
+        | Acceptance::SenderNotQuartermaster => !judged.unsettled,
+        _ => false,
+    }
+}
+
+/// Every `TRANSPORT`/`DISTRIBUTE ... ALL <item> [EXCEPT n]` in this hex whose sender holds none of
+/// the item while its sharers hold some ([`Ledger::all_left_to_sharers`]), reported against the
+/// unit that wrote it with the exact order that would draw on them (`ah-41tqi`).
+///
+/// A line already refused for another reason - its target, its sender, its distance
+/// ([`settled_refusal`]), or an item the game will not ship ([`check_transport_items`]) - tells
+/// only that refusal: the bead's agreed state, since nothing ships until that is fixed.
+fn check_transport_all_left_to_sharers(
+    hex: &Hex<'_>,
+    ledger: &Ledger<'_>,
+    shipping: Option<&super::transport::Shipping>,
+    ruleset: Option<&Ruleset>,
+    options: &CheckOptions,
+    findings: &mut Vec<Finding>,
+) {
+    if !options.emits(codes::TRANSPORT_ALL_LEFT_TO_SHARERS) {
+        return;
+    }
+    let (Some(shipping), Some(rules)) = (shipping, ruleset) else {
+        return;
+    };
+    for ordered in &hex.units {
+        let sender = ordered.unit.unit_id.as_str();
+        for placed in &ordered.intents {
+            let Intent::Transport {
+                order,
+                to,
+                what: what @ Selector::Item(text),
+                amount: Amount::All { except },
+            } = &placed.intent
+            else {
+                continue;
+            };
+            let Some(&held_by_sharers) = ledger
+                .all_left_to_sharers
+                .get(&(sender.to_string(), placed.line))
+            else {
+                continue;
+            };
+            let Some(id) = super::transport::shipment_target(sender, to, what) else {
+                continue;
+            };
+            let Some(tag) = resolve_item(text, hex, ordered, ruleset)
+                .filter(|tag| rules.can_be_transported(tag))
+                .map(|tag| tag.to_ascii_uppercase())
+            else {
+                continue;
+            };
+            let Some(judged) = judge_shipment(shipping, hex, *order, sender, &id) else {
+                continue;
+            };
+            if settled_refusal(&judged) {
+                continue;
+            }
+            // The target as the player wrote it: `shipment_target` passes a unit number or a unit
+            // formed this month, and nothing else.
+            let target = match to {
+                Party::New(alias) => format!("NEW {alias}"),
+                Party::Unit(written) => written.clone(),
+                _ => continue,
+            };
+            let message = super::transport_wording::all_left_to_sharers_sentence(
+                *order,
+                &target,
+                &tag,
+                *except,
+                held_by_sharers,
+            );
+            findings.push(ordered.finding(
+                hex,
+                codes::TRANSPORT_ALL_LEFT_TO_SHARERS,
+                message,
+                Some(placed),
+            ));
+        }
+    }
+}
+
 /// Every `TRANSPORT`/`DISTRIBUTE` in this hex naming an item the game will not ship
 /// (`rules/economy_transport`; [`Ruleset::can_be_transported`]), reported against the unit that
 /// wrote it (`ah-3bprj`).
@@ -27103,7 +27226,25 @@ fn goods_lenders(
     received_earlier: &BTreeMap<(String, String), i64>,
     shipped: &ShippedThisPhase,
 ) -> Vec<(String, i64)> {
-    if !matches!(amount, Amount::Exact(_)) || tag.eq_ignore_ascii_case(SILVER) {
+    if !matches!(amount, Amount::Exact(_)) {
+        return Vec::new();
+    }
+    goods_sharers(ledger, hex, before, tag, received_earlier, shipped)
+}
+
+/// What each sharing faction-mate of the sender of `before` holds of `tag` as that shipment runs,
+/// in report order, those holding none left out: the stock an exact amount may draw on
+/// ([`goods_lenders`]) and an `ALL` may not ([`record_all_left_to_sharers`], `ah-41tqi`). Silver
+/// has its own reading, [`shipment_lenders`].
+fn goods_sharers(
+    ledger: &Ledger<'_>,
+    hex: &Hex<'_>,
+    before: &ShipmentName,
+    tag: &str,
+    received_earlier: &BTreeMap<(String, String), i64>,
+    shipped: &ShippedThisPhase,
+) -> Vec<(String, i64)> {
+    if tag.eq_ignore_ascii_case(SILVER) {
         return Vec::new();
     }
     let sharing = Sharing::read(hex);
@@ -27235,6 +27376,19 @@ fn shipping_bills(
                 received_earlier,
             );
             record_nothing_to_ship(
+                ledger,
+                hex,
+                ordered,
+                ruleset,
+                &judged,
+                sub_phase,
+                &name,
+                text,
+                amount,
+                received_earlier,
+                &shipped,
+            );
+            record_all_left_to_sharers(
                 ledger,
                 hex,
                 ordered,
@@ -27668,6 +27822,52 @@ fn record_nothing_to_ship(
         ledger
             .nothing_to_ship
             .insert((name.sender.clone(), name.line));
+    }
+}
+
+/// [`Ledger::all_left_to_sharers`] for one `ALL` line in its own sub-phase (`ah-41tqi`): the
+/// sender's own stock of the named item as the line runs - the reading [`record_nothing_to_ship`]
+/// makes - is none, and its sharers hold some then. What they hold is the reading an exact amount
+/// would draw on: [`goods_sharers`] for goods, [`shipment_lenders`] for silver.
+#[allow(clippy::too_many_arguments)]
+fn record_all_left_to_sharers(
+    ledger: &mut Ledger<'_>,
+    hex: &Hex<'_>,
+    ordered: &Ordered<'_>,
+    ruleset: Option<&Ruleset>,
+    judged: &super::transport::Judged,
+    sub_phase: super::transport::ShipmentPhase,
+    name: &ShipmentName,
+    text: &str,
+    amount: &Amount,
+    received_earlier: &BTreeMap<(String, String), i64>,
+    shipped: &ShippedThisPhase,
+) {
+    if judged.phase != sub_phase || !matches!(amount, Amount::All { .. }) {
+        return;
+    }
+    let Some(tag) = resolve_item(text, hex, ordered, ruleset).map(|tag| tag.to_ascii_uppercase())
+    else {
+        return;
+    };
+    if ledger.stock_as_shipment_runs(hex, name, &tag, received_earlier, shipped) != 0 {
+        return;
+    }
+    let held_by_sharers: i64 = if tag.eq_ignore_ascii_case(SILVER) {
+        shipment_lenders(ledger, hex, name)
+            .iter()
+            .map(|(_, left)| (*left).max(0))
+            .sum()
+    } else {
+        goods_sharers(ledger, hex, name, &tag, received_earlier, shipped)
+            .iter()
+            .map(|(_, left)| left)
+            .sum()
+    };
+    if held_by_sharers > 0 {
+        ledger
+            .all_left_to_sharers
+            .insert((name.sender.clone(), name.line), held_by_sharers);
     }
 }
 
@@ -63434,6 +63634,53 @@ BUILD
             vec!["Unit 901 is 3 hexes away and takes goods from 2 hexes, so this TRANSPORT moves nothing."]
         );
         assert_eq!(hover, problems);
+    }
+
+    /// `ah-41tqi`: an `ALL` from a unit holding none, beside a sharer holding stone, is warned
+    /// with the exact order when the target is within reach - and only refused, with no new
+    /// warning, when the map proves it too far (`settled_refusal`), even with the out-of-reach
+    /// warning switched off: the order is refused either way.
+    #[test]
+    fn an_all_left_to_the_sharers_is_told_only_when_nothing_else_refuses_it() {
+        let all_left = |target_y: i32, options: CheckOptions| -> (Vec<String>, Vec<Code>) {
+            let sharer = sharing(with_item(unit("902"), 5, "stone", "STON"));
+            let report = report(vec![
+                shipping_from(vec![unit("900"), sharer]),
+                caravanserai_owner("901", 1, 0, target_y),
+            ]);
+            let findings = check_turn(
+                &report,
+                "unit 900\nTRANSPORT 901 ALL STON\n",
+                Some(&ruleset()),
+                options,
+            );
+            let ours = findings
+                .iter()
+                .filter(|finding| finding.code == codes::TRANSPORT_ALL_LEFT_TO_SHARERS)
+                .map(|finding| finding.message.clone())
+                .collect();
+            (ours, findings.iter().map(|finding| finding.code).collect())
+        };
+
+        let (near, _) = all_left(2, with_map());
+        assert_eq!(
+            near,
+            vec!["This unit holds no STON, so this TRANSPORT moves nothing. `TRANSPORT 901 5 STON` would draw on the 5 your sharing units hold."]
+        );
+
+        let (far, codes_found) = all_left(6, with_map());
+        assert!(far.is_empty(), "{far:?}");
+        assert!(
+            codes_found.contains(&codes::TRANSPORT_OUT_OF_REACH),
+            "{codes_found:?}"
+        );
+
+        let mut quiet = with_map();
+        quiet
+            .disabled
+            .insert(codes::TRANSPORT_OUT_OF_REACH.as_str().to_string());
+        let (far_quiet, _) = all_left(6, quiet);
+        assert!(far_quiet.is_empty(), "{far_quiet:?}");
     }
 
     /// `ALL` finds no silver when the shipments run: the report's 10 silver pays for a month of

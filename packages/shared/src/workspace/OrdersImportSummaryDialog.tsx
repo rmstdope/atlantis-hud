@@ -1,7 +1,7 @@
 import type { OrderDiagnostic } from "@atlantis/core-client";
 import type { OrderProcessing } from "../orderProcessing";
 import { useEscapeToDismiss } from "./dismissLayer";
-import { SeverityMark } from "./primitives";
+import { ProblemMessage, SeverityMark } from "./primitives";
 
 /**
  * What a dirty orders import found, once it has finished.
@@ -94,7 +94,9 @@ export function OrdersImportSummaryDialog({
               >
                 <SeverityMark severity={diagnostic.severity} />
                 <span className="text-ink">
-                  {unitId ? `unit ${unitId}: ${diagnostic.message}` : diagnostic.message}
+                  {/* An order a finding suggests shows in code style (`ah-41tqi`). */}
+                  {unitId ? `unit ${unitId}: ` : null}
+                  <ProblemMessage message={diagnostic.message} />
                 </span>
               </li>
             ))}

@@ -8,7 +8,7 @@ import {
   summarizeOrderValidation,
   type ValidatedOrders
 } from "../orderEditor";
-import { SeverityMark } from "./primitives";
+import { ProblemMessage, SeverityMark } from "./primitives";
 import type { DiagnosticTarget } from "../diagnosticNav";
 import type { CaretLookup } from "../orderCompletion";
 import type { OrderSnippet } from "../orderSnippets";
@@ -488,7 +488,10 @@ function ProblemList({
                   </code>{" "}
                 </>
               )}
-              <span className="text-ink">{problem.message}</span>
+              <span className="text-ink">
+                {/* An order the message suggests shows in code style (`ah-41tqi`). */}
+                <ProblemMessage message={problem.message} />
+              </span>
             </li>
           );
         })}
