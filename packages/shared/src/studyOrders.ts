@@ -1,5 +1,6 @@
 /**
- * Next turn's `STUDY` and `TEACH` lines, one block per faction (`ah-lyg6.4.1`).
+ * Next turn's `STUDY` and `TEACH` lines, one block per faction (`ah-lyg6.4.1`), and every later
+ * planned turn as a `TURN ... ENDTURN` block (`ah-1f87z`).
  *
  * Pure data in, pure text out, in the shape `studySchedule.ts` and `studyPlanner.ts` have and for
  * the same reason: `packages/shared` has no jsdom, so every string a test needs to pin lives in a
@@ -53,6 +54,33 @@ export type OrdersEntry = {
   skipReason: string | null;
   /** Next turn's planned cast, when "Also write the casts" is ticked (ah-9qdz.4); null otherwise. */
   cast: OrdersCast | null;
+  /**
+   * One per later turn of the Schedule the plan reaches, in turn order (ah-1f87z) - each a
+   * `TURN ... ENDTURN` block. Empty when nothing is planned past next turn.
+   */
+  later: LaterTurn[];
+};
+
+/**
+ * One line of a month's orders, without its indentation: an order with its comment, or a comment
+ * alone (`code` null). The tab and the write indent and column it each their own way.
+ */
+export type OrderLine = { code: string | null; comment: string | null };
+
+/**
+ * A later turn as a `TURN ... ENDTURN` block (ah-1f87z).
+ *
+ * `rules/turn`: "Multiple TURN orders in a row will execute on successive turns" - so a turn with
+ * nothing planned between two planned ones is kept as an empty block, or every block after it
+ * would land a month early. The engine agrees: a block of nothing but comments is still one
+ * `TurnOrder` (`ProcessTurnOrder`, parseorders.cpp).
+ */
+export type LaterTurn = {
+  turn: number;
+  /** The `TURN` line's comment: `turn 73`, or `turn 75 — nothing planned` for an empty block. */
+  opener: string;
+  /** What the tab would write for that turn if it were next turn, without the UNIT line. */
+  lines: OrderLine[];
 };
 
 /**
@@ -124,9 +152,30 @@ export type StudyOrders = {
 };
 
 /** `UNIT 1234           ; Ereb` - the code part padded to the column, or one space past it. */
-function annotated(code: string, comment: string): string {
-  const gap = code.length >= COMMENT_COLUMN ? " " : " ".repeat(COMMENT_COLUMN - code.length);
+function annotated(code: string, comment: string, column = COMMENT_COLUMN): string {
+  const gap = code.length >= column ? " " : " ".repeat(column - code.length);
   return `${code}${gap}; ${comment}`;
+}
+
+/** One {@link OrderLine} at an indentation, its comment in the column. */
+function rendered(line: OrderLine, indent: string, column: number): string {
+  if (line.code === null) {
+    return `${indent}; ${line.comment ?? ""}`;
+  }
+  return line.comment === null ? `${indent}${line.code}` : annotated(`${indent}${line.code}`, line.comment, column);
+}
+
+/**
+ * Later turns as `TURN ... ENDTURN` blocks: `TURN` at `indent`, the orders inside two deeper
+ * (ah-1f87z). Shared by the tab and by "Put into my orders", which use different indents and
+ * columns, so the two can never disagree about what a block holds.
+ */
+export function turnBlockLines(later: readonly LaterTurn[], indent: string, column: number): string[] {
+  return later.flatMap((one) => [
+    annotated(`${indent}TURN`, one.opener, column),
+    ...one.lines.map((line) => rendered(line, `${indent}  `, column)),
+    `${indent}ENDTURN`
+  ]);
 }
 
 /** `1 mage studying`, `3 mages studying`. */
@@ -139,9 +188,9 @@ function unitOf(key: string): string {
   return key.slice(key.indexOf("/") + 1);
 }
 
-/** Next turn's planned cast half, or null. */
-function plannedHalf(row: ScheduleRow) {
-  const half = row.castHalves[0] ?? null;
+/** The planned cast half of a turn of the Schedule (next turn by default), or null. */
+function plannedHalf(row: ScheduleRow, index = 0) {
+  const half = row.castHalves[index] ?? null;
   return half !== null && half.kind === "planned" ? half : null;
 }
 
@@ -152,8 +201,8 @@ function plannedHalf(row: ScheduleRow) {
  * before STUDY orders are processed (`rules/sequenceofevents`). The planner has no he/she rule, so
  * the not-known line says `he`, as ah-9qdz.2's cast half does.
  */
-function castOf(row: ScheduleRow, tree: MagicTree): OrdersCast | null {
-  const half = plannedHalf(row);
+function castOf(row: ScheduleRow, tree: MagicTree, index = 0): OrdersCast | null {
+  const half = plannedHalf(row, index);
   if (half === null) {
     return null;
   }
@@ -165,7 +214,7 @@ function castOf(row: ScheduleRow, tree: MagicTree): OrdersCast | null {
   if (!half.known) {
     return { kind: "unknown", spell, name, order, text: `${order} — he won't know ${name} yet, left out` };
   }
-  const standing = row.standings[0] ?? new Map();
+  const standing = row.standings[index] ?? new Map();
   const practice = practisedBy(spell, standing, tree);
   const level = standing.get(spell)?.level ?? 0;
   const annotation =
@@ -181,9 +230,88 @@ function castOf(row: ScheduleRow, tree: MagicTree): OrdersCast | null {
   return { kind: "write", verb, spell, name, order, annotation };
 }
 
-/** The line a cast adds to the section's text. */
-function castLine(cast: OrdersCast): string {
-  return cast.kind === "write" ? annotated(`  ${cast.order}`, cast.annotation) : `  ; ${cast.text}`;
+/** The line a cast adds to a month's orders. */
+function castLine(cast: OrdersCast): OrderLine {
+  return cast.kind === "write" ? { code: cast.order, comment: cast.annotation } : { code: null, comment: cast.text };
+}
+
+/** What one month of one mage's plan writes: the entry's fields for it, and its order lines. */
+type Month = {
+  order: string | null;
+  annotation: string | null;
+  skipReason: string | null;
+  /** True when the cell is idle - nothing to study or teach. */
+  idle: boolean;
+  lines: OrderLine[];
+};
+
+/**
+ * One month of one mage's plan, worded the same whichever turn it is (ah-1f87z): next turn's line
+ * and a later turn's block both come from here, so "what the tab would write for that turn if it
+ * were next turn" holds by construction.
+ */
+function monthOf(
+  row: ScheduleRow,
+  index: number,
+  rows: readonly ScheduleRow[],
+  notices: readonly PlannerNotice[],
+  cast: OrdersCast | null
+): Month {
+  const cell = row.cells[index];
+  const castLines = cast === null ? [] : [castLine(cast)];
+
+  if (cell === undefined || cell.kind === "idle") {
+    // A cast needs his UNIT line to belong to, so the idle comment moves under it (ah-9qdz.4).
+    return {
+      order: null,
+      annotation: null,
+      skipReason: "nothing planned",
+      idle: true,
+      lines: castLines.length === 0 ? [] : [{ code: null, comment: "nothing planned" }, ...castLines]
+    };
+  }
+
+  let month: Omit<Month, "lines" | "idle">;
+  let orderLine: OrderLine;
+
+  if (cell.kind === "study") {
+    if (cell.blocked !== null) {
+      month = { order: null, annotation: null, skipReason: cell.blocked };
+      orderLine = { code: null, comment: `STUDY ${cell.skill} — ${cell.blocked}` };
+    } else {
+      const from = row.standings[index]?.get(cell.skill)?.level ?? 0;
+      // An arrow pointing at itself reads like a defect, and most months in this game buy no
+      // level. ASCII `->`, not `→`: this text is mailed and pasted into strangers' order files.
+      const gain = from === cell.level ? `${cell.name} ${cell.level}` : `${cell.name} ${from} -> ${cell.level}`;
+      const teacher =
+        cell.taughtBy === null
+          ? ""
+          : `, taught by ${rows.find((one) => one.key === cell.taughtBy)?.name ?? unitOf(cell.taughtBy)}`;
+      month = { order: `STUDY ${cell.skill}`, annotation: `${gain}${teacher}`, skipReason: null };
+      orderLine = { code: month.order, comment: month.annotation };
+    }
+  } else if (cell.outcome.taught.length > 0) {
+    const taughtRows = cell.outcome.taught.map(
+      (key) => rows.find((one) => one.key === key)?.name ?? unitOf(key)
+    );
+    month = {
+      order: `TEACH ${cell.outcome.taught.map(unitOf).join(" ")}`,
+      annotation: `teaches ${joinNames(taughtRows)}`,
+      skipReason: null
+    };
+    orderLine = { code: month.order, comment: month.annotation };
+  } else {
+    month = { order: null, annotation: null, skipReason: "nobody can be taught this turn" };
+    // `cell.students` is empty for a live cell (ah-af7i), which nobody named - so the comment
+    // names the ids only when the player wrote them down.
+    const named = cell.live ? "" : cell.students.join(" ");
+    orderLine = { code: null, comment: `TEACH${named === "" ? "" : ` ${named}`} — ${month.skipReason ?? ""}` };
+  }
+
+  const warnings = notices
+    .filter((notice) => notice.rowKey === row.key && notice.turnIndex === index && notice.level === "warning")
+    .map((notice): OrderLine => ({ code: null, comment: notice.text }));
+  return { ...month, idle: false, lines: [orderLine, ...castLines, ...warnings] };
 }
 
 /**
@@ -196,91 +324,76 @@ function contributionOf(
   row: ScheduleRow,
   rows: readonly ScheduleRow[],
   notices: readonly PlannerNotice[],
-  cast: OrdersCast | null
+  castFor: (row: ScheduleRow, index: number) => OrdersCast | null,
+  turns: readonly number[]
 ): { entry: OrdersEntry; lines: string[] } {
-  const base = {
+  const cast = castFor(row, 0);
+  const next = monthOf(row, 0, rows, notices, cast);
+
+  // Every later month up to the last one with anything in it; an empty one before that is kept as
+  // an empty block so the months after it land on the right turn (ah-1f87z).
+  const months = turns.slice(1).map((turn, offset) => {
+    const index = offset + 1;
+    return { turn, month: monthOf(row, index, rows, notices, castFor(row, index)) };
+  });
+  let last = months.length - 1;
+  while (last >= 0 && months[last].month.lines.length === 0) {
+    last -= 1;
+  }
+  const later: LaterTurn[] = months.slice(0, last + 1).map(({ turn, month }) => ({
+    turn,
+    opener: month.lines.length === 0 ? `turn ${turn} — nothing planned` : `turn ${turn}`,
+    lines: month.lines
+  }));
+
+  const entry: OrdersEntry = {
     key: row.key,
     unitId: row.unitId,
     name: row.name,
     regionId: row.regionId,
-    cast
+    order: next.order,
+    annotation: next.annotation,
+    skipReason: next.skipReason,
+    cast,
+    later
   };
-  const cell = row.cells[0];
 
-  if (cell === undefined || cell.kind === "idle") {
-    const entry: OrdersEntry = { ...base, order: null, annotation: null, skipReason: "nothing planned" };
-    if (cast !== null) {
-      // A cast needs his UNIT line to belong to, so the idle comment moves under it (ah-9qdz.4).
-      return {
-        entry,
-        lines: [annotated(`UNIT ${row.unitId}`, row.name), "  ; nothing planned", castLine(cast)]
-      };
-    }
+  if (next.idle && cast === null && later.length === 0) {
     // Named rather than left out, so a mage you forgot is not indistinguishable from one you
     // meant to idle - the navigator's choice.
     return { entry, lines: [`; ${row.name} (${row.unitId}) — nothing planned for this turn`] };
   }
+  const own = next.idle && cast === null ? [{ code: null, comment: "nothing planned" }] : next.lines;
+  return {
+    entry,
+    lines: [
+      annotated(`UNIT ${row.unitId}`, row.name),
+      ...own.map((line) => rendered(line, "  ", COMMENT_COLUMN)),
+      ...turnBlockLines(later, "  ", COMMENT_COLUMN)
+    ]
+  };
+}
 
-  let entry: OrdersEntry;
-  let orderLine: string;
-
-  if (cell.kind === "study") {
-    if (cell.blocked !== null) {
-      entry = { ...base, order: null, annotation: null, skipReason: cell.blocked };
-      orderLine = `  ; STUDY ${cell.skill} — ${cell.blocked}`;
-    } else {
-      const from = row.standings[0]?.get(cell.skill)?.level ?? 0;
-      // An arrow pointing at itself reads like a defect, and most months in this game buy no
-      // level. ASCII `->`, not `→`: this text is mailed and pasted into strangers' order files.
-      const gain = from === cell.level ? `${cell.name} ${cell.level}` : `${cell.name} ${from} -> ${cell.level}`;
-      const teacher =
-        cell.taughtBy === null
-          ? ""
-          : `, taught by ${rows.find((one) => one.key === cell.taughtBy)?.name ?? unitOf(cell.taughtBy)}`;
-      entry = {
-        ...base,
-        order: `STUDY ${cell.skill}`,
-        annotation: `${gain}${teacher}`,
-        skipReason: null
-      };
-      orderLine = annotated(`  ${entry.order}`, entry.annotation ?? "");
-    }
-  } else if (cell.outcome.taught.length > 0) {
-    const taughtRows = cell.outcome.taught.map(
-      (key) => rows.find((one) => one.key === key)?.name ?? unitOf(key)
-    );
-    entry = {
-      ...base,
-      order: `TEACH ${cell.outcome.taught.map(unitOf).join(" ")}`,
-      annotation: `teaches ${joinNames(taughtRows)}`,
-      skipReason: null
-    };
-    orderLine = annotated(`  ${entry.order}`, entry.annotation ?? "");
-  } else {
-    entry = { ...base, order: null, annotation: null, skipReason: "nobody can be taught this turn" };
-    // `cell.students` is empty for a live cell (ah-af7i), which nobody named - so the comment
-    // names the ids only when the player wrote them down.
-    const named = cell.live ? "" : cell.students.join(" ");
-    orderLine = `  ; TEACH${named === "" ? "" : ` ${named}`} — ${entry.skipReason ?? ""}`;
+/** `; Turns 73–76 are written ahead as TURN blocks — …`, or null when no entry has a later turn. */
+function writtenAheadLine(entries: readonly OrdersEntry[], turn: number): string | null {
+  const lasts = entries.map((entry) => entry.later.at(-1)?.turn ?? null).filter((one): one is number => one !== null);
+  if (lasts.length === 0) {
+    return null;
   }
-
-  const lines = [annotated(`UNIT ${row.unitId}`, row.name), orderLine];
-  if (cast !== null) {
-    lines.push(castLine(cast));
-  }
-  for (const notice of notices) {
-    if (notice.rowKey === row.key && notice.turnIndex === 0 && notice.level === "warning") {
-      lines.push(`  ; ${notice.text}`);
-    }
-  }
-  return { entry, lines };
+  const first = turn + 1;
+  const last = Math.max(...lasts);
+  return first === last
+    ? `; Turn ${first} is written ahead as a TURN block — the plan as it stands on turn ${turn}.`
+    : `; Turns ${first}–${last} are written ahead as TURN blocks — the plan as it stands on turn ${turn}.`;
 }
 
 /**
  * Next turn's `STUDY` and `TEACH` lines for every mage the planner can see.
  *
- * Only turn `turns[0]`, and deliberately: the navigator chose the fixed next turn over a picker
- * because a later column is a projection and the file would not say so.
+ * Next turn (`turns[0]`) as plain orders, and every later turn the plan reaches as a `TURN` block
+ * after them (ah-1f87z), so a missed turn's orders do not idle the mage. The file says the later
+ * blocks are a projection in a heading line, which is what the navigator required of anything
+ * past next turn.
  *
  * `rows` and `notices` are what the Schedule already computed; nothing is re-projected here.
  */
@@ -300,13 +413,18 @@ export function studyOrders(input: {
   casts?: { tree: MagicTree; write: boolean };
 }): StudyOrders {
   const { groups, rows, turns, notices } = input;
-  const castFor = (row: ScheduleRow): OrdersCast | null =>
-    input.casts?.write === true ? castOf(row, input.casts.tree) : null;
+  const castFor = (row: ScheduleRow, index: number): OrdersCast | null =>
+    input.casts?.write === true ? castOf(row, input.casts.tree, index) : null;
+  const noCasts = (): OrdersCast | null => null;
   const turn = turns[0];
-  const studies = (row: ScheduleRow) => (row.cells[0]?.kind ?? "idle") !== "idle";
-  const casts = (row: ScheduleRow) => input.casts !== undefined && plannedHalf(row) !== null;
+  // Every turn of the Schedule counts, not only next turn: a later month is written too (ah-1f87z).
+  const indices = turns.map((_turn, index) => index);
+  const studies = (row: ScheduleRow) => indices.some((index) => (row.cells[index]?.kind ?? "idle") !== "idle");
+  const casts = (row: ScheduleRow) =>
+    input.casts !== undefined && indices.some((index) => plannedHalf(row, index) !== null);
   // A cast he won't know yet is never written, so it makes no plan and is no promise (review finding 4).
-  const writable = (row: ScheduleRow) => casts(row) && plannedHalf(row)?.known === true;
+  const writable = (row: ScheduleRow) =>
+    input.casts !== undefined && indices.some((index) => plannedHalf(row, index)?.known === true);
   const anyStudy = rows.some(studies);
   // A planned cast counts as a plan whatever the box says: without a section there is no heading
   // to carry the box, and a player who unticked it could never tick it back (ah-9qdz.4).
@@ -334,7 +452,7 @@ export function studyOrders(input: {
         factionId: group.factionId,
         heading: group.heading,
         source: group.source,
-        entries: mine.map((row) => contributionOf(row, rows, notices, null).entry),
+        entries: mine.map((row) => contributionOf(row, rows, notices, noCasts, turns).entry),
         hasCast,
         withheld: { casts: count },
         text: `No mage studies or teaches on turn ${turn}. Tick Also write the casts to write the ${count} planned cast${
@@ -359,11 +477,19 @@ export function studyOrders(input: {
       );
     }
     const entries: OrdersEntry[] = [];
+    const body: string[] = [];
     for (const row of mine) {
-      const contribution = contributionOf(row, rows, notices, castFor(row));
+      const contribution = contributionOf(row, rows, notices, castFor, turns);
       entries.push(contribution.entry);
-      lines.push(...contribution.lines);
+      body.push(...contribution.lines);
     }
+    // Under the heading and the stale-sheet line, so a file mailed on says the later turns are
+    // a projection (ah-1f87z).
+    const ahead = writtenAheadLine(entries, turn);
+    if (ahead !== null) {
+      lines.push(ahead);
+    }
+    lines.push(...body);
     sections.push({
       factionId: group.factionId,
       heading: group.heading,
@@ -395,12 +521,17 @@ export function studyOrders(input: {
   ].filter((part): part is string => part !== null);
 
   const written = sections.filter((section) => section.withheld === null);
+  const lastLater = written
+    .flatMap((section) => section.entries)
+    .map((entry) => entry.later.at(-1)?.turn ?? null)
+    .filter((one): one is number => one !== null);
+  const through = lastLater.length === 0 ? "" : ` · planned through turn ${Math.max(...lastLater)}`;
   return {
     sections,
     summary:
       written.length === 0
         ? `Orders for turn ${turn} — nothing to write without the casts`
-        : `Orders for turn ${turn} — ${parts.join(", ")}`,
+        : `Orders for turn ${turn} — ${parts.join(", ")}${through}`,
     allText: written.map((section) => section.text).join("\n\n"),
     allFileName: `study-orders-turn-${turn}.txt`
   };

@@ -283,7 +283,7 @@ describe("studyOrders", () => {
     expect(section.text).not.toContain("could also teach");
   });
 
-  it("a_warning_about_a_later_turn_is_left_out", () => {
+  it("a_warning_about_a_turn_past_the_schedule's_written_turns_is_left_out", () => {
     const rows = [aRow({ cells: [aStudyCell()], goals: [{ kind: "study", turn: 24, skill: "FORC" }] })];
     const notices = [aNotice({ turnIndex: 2, text: "Later trouble." })];
     const [section] = studyOrders({ groups: [ownGroup], rows, turns: [72], notices }).sections;
@@ -702,6 +702,35 @@ describe("studyOrders — casts", () => {
     });
   });
 
+  it("a_later_cast_is_written_inside_its_block_when_ticked", () => {
+    const row = casting("FARS", { FARS: 2, PATT: 3 }, {
+      cells: [aStudyCell({ level: 4 }), aStudyCell({ level: 4 })],
+      standings: [standing({ FORC: 4, FARS: 2, PATT: 3 }), standing({ FORC: 4, FARS: 2, PATT: 3 })],
+      castHalves: [null, planned("FARS")]
+    });
+    const later = (write: boolean) =>
+      studyOrders({ groups: [ownGroup], rows: [row], turns: [72, 73], notices: [], casts: { tree, write } })
+        .sections[0].text.split("\n").slice(-4);
+    expect(later(true)).toEqual([
+      "  TURN              ; turn 73",
+      "    STUDY FORC      ; force 4",
+      "    CAST FARS       ; practises farsight",
+      "  ENDTURN"
+    ]);
+    expect(later(false)).toEqual(["  STUDY FORC        ; force 4", "  TURN              ; turn 73", "    STUDY FORC      ; force 4", "  ENDTURN"]);
+  });
+
+  it("a_later_cast_he_won't_know_is_a_comment_in_its_block", () => {
+    const row = casting("FARS", { PATT: 1 }, {
+      cells: [aStudyCell({ level: 4 }), aStudyCell({ level: 4 })],
+      standings: [standing({ FORC: 4, PATT: 1 }), standing({ FORC: 4, PATT: 1 })],
+      castHalves: [null, planned("FARS", false)]
+    });
+    const text = studyOrders({ groups: [ownGroup], rows: [row], turns: [72, 73], notices: [], casts: { tree, write: true } })
+      .sections[0].text.split("\n");
+    expect(text.slice(-2)).toEqual(["    ; CAST FARS — he won't know farsight yet, left out", "  ENDTURN"]);
+  });
+
   it("the_entry_carries_the_cast_the_write_needs", () => {
     const orders = studyOrders({
       groups: [ownGroup],
@@ -718,5 +747,165 @@ describe("studyOrders — casts", () => {
       order: "CAST FARS",
       annotation: "practises farsight"
     });
+  });
+});
+
+describe("studyOrders — later turns as TURN blocks (ah-1f87z)", () => {
+  const TURNS = [72, 73, 74, 75, 76, 77];
+  const idle: ScheduleCell = { kind: "idle" };
+  const study = (skill: string, name: string, level: number, over: Partial<Extract<ScheduleCell, { kind: "study" }>> = {}) =>
+    aStudyCell({ skill, name, level, ...over });
+  /** Ereb: force 3 -> 4 taught by Sable, force 4, pattern 0 -> 1, nothing, fire 1. */
+  const ereb = () =>
+    aRow({
+      cells: [
+        study("FORC", "force", 4, { taughtBy: "95/881" }),
+        study("FORC", "force", 4),
+        study("PATT", "pattern", 1),
+        idle,
+        study("FIRE", "fire", 1),
+        idle
+      ],
+      standings: [
+        standing({ FORC: 3 }),
+        standing({ FORC: 4 }),
+        standing({ FORC: 4 }),
+        standing({ FORC: 4, PATT: 1 }),
+        standing({ FORC: 4, PATT: 1 }),
+        standing({ FORC: 4, PATT: 1, FIRE: 1 }),
+        standing({ FORC: 4, PATT: 1, FIRE: 1 })
+      ]
+    });
+  const sable = () =>
+    aRow({ unitId: "881", key: "95/881", name: "Sable", cells: [aTeachCell({ taught: ["95/1234"] }), idle, idle, idle, idle, idle] });
+  const run = (rows: ScheduleRow[], notices: PlannerNotice[] = [], groups = [ownGroup]) =>
+    studyOrders({ groups, rows, turns: TURNS, notices });
+
+  it("later_planned_turns_follow_as_annotated_turn_blocks_and_a_gap_keeps_its_place", () => {
+    expect(run([ereb(), sable()]).sections[0].text.split("\n")).toEqual([
+      "; Borg TNG (95) — study orders for turn 72, from Atlantis HUD",
+      "; Turns 73–76 are written ahead as TURN blocks — the plan as it stands on turn 72.",
+      "UNIT 1234           ; Ereb",
+      "  STUDY FORC        ; force 3 -> 4, taught by Sable",
+      "  TURN              ; turn 73",
+      "    STUDY FORC      ; force 4",
+      "  ENDTURN",
+      "  TURN              ; turn 74",
+      "    STUDY PATT      ; pattern 0 -> 1",
+      "  ENDTURN",
+      "  TURN              ; turn 75 — nothing planned",
+      "  ENDTURN",
+      "  TURN              ; turn 76",
+      "    STUDY FIRE      ; fire 0 -> 1",
+      "  ENDTURN",
+      "UNIT 881            ; Sable",
+      "  TEACH 1234        ; teaches Ereb"
+    ]);
+  });
+
+  it("the_entry_carries_its_later_turns_for_the_write", () => {
+    const [entry] = run([ereb()]).sections[0].entries;
+    expect(entry.later.map((one) => one.opener)).toEqual(["turn 73", "turn 74", "turn 75 — nothing planned", "turn 76"]);
+    expect(entry.later[0]).toEqual({ turn: 73, opener: "turn 73", lines: [{ code: "STUDY FORC", comment: "force 4" }] });
+    expect(entry.later[2].lines).toEqual([]);
+  });
+
+  it("a_refused_later_study_is_an_empty_block_holding_the_refusal", () => {
+    const row = aRow({
+      cells: [study("FORC", "force", 2), study("GATE", "gate lore", 1, { blocked: "needs pattern 1 first" })],
+      standings: [standing({ FORC: 1 }), standing({ FORC: 2 })]
+    });
+    expect(run([row]).sections[0].text.split("\n").slice(-3)).toEqual([
+      "  TURN              ; turn 73",
+      "    ; STUDY GATE — needs pattern 1 first",
+      "  ENDTURN"
+    ]);
+  });
+
+  it("a_later_teach_nobody_can_receive_keeps_today's_comment", () => {
+    const row = aRow({
+      cells: [study("FORC", "force", 2), { kind: "teach", students: ["1263"], live: false, label: "TEACH", outcome: { taught: [], refused: [], worth: 0 } }],
+      standings: [standing({ FORC: 1 }), standing({ FORC: 2 })]
+    });
+    expect(run([row]).sections[0].text.split("\n").slice(-3)).toEqual([
+      "  TURN              ; turn 73",
+      "    ; TEACH 1263 — nobody can be taught this turn",
+      "  ENDTURN"
+    ]);
+  });
+
+  it("a_later_warning_goes_inside_its_block", () => {
+    const row = aRow({ cells: [study("FORC", "force", 4), study("FORC", "force", 4)], standings: [standing({ FORC: 3 }), standing({ FORC: 4 })] });
+    const text = run([row], [aNotice({ turnIndex: 1, text: "Later trouble." })]).sections[0].text.split("\n");
+    expect(text.slice(-4)).toEqual([
+      "  TURN              ; turn 73",
+      "    STUDY FORC      ; force 4",
+      "    ; Later trouble.",
+      "  ENDTURN"
+    ]);
+  });
+
+  it("one_later_turn_uses_the_singular_heading", () => {
+    const row = aRow({ cells: [study("FORC", "force", 4), study("FORC", "force", 4)], standings: [standing({ FORC: 3 }), standing({ FORC: 4 })] });
+    expect(run([row]).sections[0].text.split("\n")[1]).toBe(
+      "; Turn 73 is written ahead as a TURN block — the plan as it stands on turn 72."
+    );
+  });
+
+  it("a_mage_idle_next_turn_with_later_turns_gets_his_unit_line", () => {
+    const orm = aRow({ unitId: "1290", key: "95/1290", name: "Orm", cells: [idle, study("FIRE", "fire", 1)], standings: [standing({}), standing({})] });
+    const orders = run([ereb(), orm]);
+    expect(orders.sections[0].text.split("\n").slice(-5)).toEqual([
+      "UNIT 1290           ; Orm",
+      "  ; nothing planned",
+      "  TURN              ; turn 73",
+      "    STUDY FIRE      ; fire 0 -> 1",
+      "  ENDTURN"
+    ]);
+  });
+
+  it("a_plan_only_past_next_turn_still_gives_a_section", () => {
+    const orm = aRow({ unitId: "1290", key: "95/1290", name: "Orm", cells: [idle, study("FIRE", "fire", 1)], standings: [standing({}), standing({})] });
+    const orders = run([orm]);
+    expect(orders.sections).toHaveLength(1);
+    expect(orders.summary).toBe("Orders for turn 72 — 1 with no order this turn · planned through turn 73");
+  });
+
+  it("an_ally_on_an_old_sheet_gets_the_written_ahead_line_after_the_stale_line", () => {
+    const quill = aRow({
+      factionId: "17",
+      unitId: "2201",
+      key: "17/2201",
+      name: "Quill",
+      cells: [study("EART", "earth", 3), study("EART", "earth", 3)],
+      standings: [standing({ EART: 2 }), standing({ EART: 3 })],
+      monthsUnreported: 2,
+      sheetTurn: 70
+    });
+    expect(run([quill], [], [allyGroup]).sections[0].text.split("\n").slice(0, 3)).toEqual([
+      "; Creeping Death (17) — study orders for turn 72, from Atlantis HUD",
+      "; From their mage sheet of turn 70 — 2 months of study since are estimated.",
+      "; Turn 73 is written ahead as a TURN block — the plan as it stands on turn 72."
+    ]);
+  });
+
+  it("the_summary_says_how_far_the_plan_reaches", () => {
+    expect(run([ereb(), sable()]).summary).toBe("Orders for turn 72 — 1 mage studying, 1 teaching · planned through turn 76");
+  });
+
+  it("a_section_without_later_turns_is_exactly_today's_beside_one_with_them", () => {
+    const ghost = aRow({ factionId: "17", unitId: "300", key: "17/300", name: "Ghost", cells: [study("SPIR", "spirit", 4), idle], standings: [standing({ SPIR: 3 })] });
+    const orders = run([ereb(), ghost], [], [ownGroup, allyGroup]);
+    expect(orders.sections[1].text.split("\n")).toEqual([
+      "; Creeping Death (17) — study orders for turn 72, from Atlantis HUD",
+      "UNIT 300            ; Ghost",
+      "  STUDY SPIR        ; spirit 3 -> 4"
+    ]);
+    expect(orders.sections[1].entries[0].later).toEqual([]);
+  });
+
+  it("nothing_planned_past_next_turn_leaves_the_summary_as_today", () => {
+    const row = aRow({ cells: [study("FORC", "force", 4), idle, idle], standings: [standing({ FORC: 3 })] });
+    expect(run([row]).summary).toBe("Orders for turn 72 — 1 mage studying");
   });
 });
