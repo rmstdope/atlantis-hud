@@ -175,9 +175,18 @@ describe("studyWritePlan", () => {
   });
 
   it("a_very_long_previous_order_is_cut_with_an_ellipsis_in_the_row", () => {
-    const previous = `build Tower ; ${"a".repeat(80)}`;
+    const previous = `build "${"a".repeat(80)}"`;
     const result = plan(aDocument(previous), [anEntry()]);
     expect(result.rows[0].detail).toBe(`STUDY FORC 4 replaces ${previous.slice(0, 47)}…`);
+  });
+
+  // ah-jc5km: a second Put named the first one's line with its annotation, `STUDY FORC replaces
+  // STUDY FORC ; force 4`. The row names the replaced order as the player would write it.
+  it("a_replaced_order_is_named_without_its_comment", () => {
+    const first = plan(aDocument("@work"), [anEntry({ order: "STUDY FORC", annotation: "force 4" })]);
+    const second = plan(first.next, [anEntry({ order: "STUDY FORC", annotation: "force 4" })]);
+    expect(second.rows[0].detail).toBe("STUDY FORC replaces STUDY FORC");
+    expect(plan(aDocument("@work ; mine"), [anEntry()]).rows[0].detail).toBe("STUDY FORC 4 replaces @work");
   });
 });
 
@@ -287,6 +296,13 @@ describe("studyWritePlan — casts", () => {
       `${"COMBAT FIRE".padEnd(WRITE_COMMENT_COLUMN)}; readies fire for battle`
     ]);
     expect(result.rows[0].cast?.detail).toBe('COMBAT FIRE replaces COMBAT "Clear Skies"');
+  });
+
+  it("a_replaced_cast_is_named_without_its_comment", () => {
+    const result = plan(aDocument('CAST "Clear Skies"      ; clears the weather'), [
+      anEntry({ annotation: null, cast: farsight })
+    ]);
+    expect(result.rows[0].cast?.detail).toBe('CAST FARS replaces CAST "Clear Skies"');
   });
 
   it("keeps_a_cast_of_the_same_spell_untouched", () => {

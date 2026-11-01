@@ -113,7 +113,7 @@ function withCast(
   const line = annotatedLine(cast.order, cast.annotation);
   return {
     orders: kept.trim() === "" ? line : `${kept}\n${line}`,
-    detail: lines[0] === undefined ? cast.order : `${cast.order} replaces ${shortened(lines[0])}`,
+    detail: lines[0] === undefined ? cast.order : `${cast.order} replaces ${shortened(lines[0], syntax)}`,
     writes: true
   };
 }
@@ -152,9 +152,13 @@ function unrepeatedComment(now: string): string {
   return `was @${now} — repeating it would keep the turns below from starting`;
 }
 
-/** A previous order as a row names it: trimmed, and cut with an ellipsis when it would wrap. */
-function shortened(order: string): string {
-  const trimmed = order.trim();
+/**
+ * A previous order as a row names it: without its comment - often the annotation an earlier write
+ * left (ah-jc5km) - trimmed, and cut with an ellipsis when it would wrap.
+ */
+function shortened(order: string, syntax: OrderCommentSyntax): string {
+  const { commentAt } = lexOrderLine(order, syntax);
+  const trimmed = (commentAt === null ? order : order.slice(0, commentAt)).trim();
   return trimmed.length > PREVIOUS_ORDER_LIMIT
     ? `${trimmed.slice(0, PREVIOUS_ORDER_LIMIT - 1)}…`
     : trimmed;
@@ -281,7 +285,7 @@ export function studyWritePlan(input: {
       detail = !hadBlock
         ? `${entry.order} — a new block, in ${input.label(entry.regionId)}`
         : previous !== null
-          ? `${entry.order} replaces ${shortened(previous)}`
+          ? `${entry.order} replaces ${shortened(previous, syntax)}`
           : entry.order;
     }
 
