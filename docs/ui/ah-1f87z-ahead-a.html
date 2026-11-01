@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Option A — always written ahead, no new control</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--select:#4a9fd8;--ok:#4fb783;--danger:#e89494}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,main{max-width:1100px;margin:0 auto}
+h1{font-size:23px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:92ch;margin-top:10px;font-size:14px}
+h3.sec{margin:30px 0 6px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:12px;max-width:92ch}
+.pane{max-width:860px;background:var(--raised);border:1px solid var(--edge);border-radius:6px;overflow:hidden;font:13px/1.5 'Helvetica Neue',Arial,sans-serif}
+.top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--edge)}
+.top .name{color:var(--ink-soft)}.tab{border-radius:4px;padding:2px 7px;color:var(--ink-soft)}
+.tab.on{background:#1b2735;color:var(--ink);box-shadow:inset 0 -2px 0 var(--select)}
+.sp{margin-left:auto}
+.sub{padding:6px 12px;border-bottom:1px solid var(--edge-soft);color:var(--ink-dim);font-size:11.5px}
+.btn{background:var(--ground);border:1px solid var(--edge);color:var(--ink-soft);border-radius:4px;padding:3px 9px;font-size:12px;display:inline-block}
+.btn.prim{color:var(--ink);border-color:#3b5064}
+.body{padding:12px;display:grid;gap:14px}
+.grp{border:1px solid var(--edge);border-radius:5px;overflow:hidden}
+.grp .hd{display:flex;align-items:center;gap:8px;padding:5px 10px;background:#141a23;color:var(--brass);font-size:11.5px}
+pre{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.55;color:var(--ink);padding:10px;margin:0;white-space:pre;overflow:auto}
+pre .c{color:var(--ink-dim)}pre .k{color:var(--brass-bright)}pre .n{color:var(--ok)}pre .w{color:var(--danger)}
+.notes{list-style:none;font-size:13px;color:var(--ink-soft);display:grid;gap:4px;margin-top:12px;max-width:92ch}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.prompt{border:1px solid #3b5064;background:#141d28;border-radius:5px;overflow:hidden;margin-bottom:10px}
+.prompt .ph{padding:8px 11px;color:var(--ink);font-size:13.5px;border-bottom:1px solid var(--edge-soft)}
+.prompt .pp{padding:7px 11px;color:var(--ink-soft);font-size:12.5px}
+.prompt .row{display:flex;gap:10px;align-items:baseline;font-size:12.5px;padding:2px 11px}
+.prompt .row .who{color:var(--ink);min-width:110px}
+.prompt .row .what{font-family:'SF Mono',Menlo,monospace;font-size:11.5px;color:var(--ink-soft)}
+.prompt .row .what b{color:var(--ok);font-weight:normal}.prompt .row .what s{color:var(--danger)}
+.prompt .pf{padding:8px 11px;border-top:1px solid var(--edge-soft);display:flex;gap:8px;margin-top:6px}
+@media (max-width:600px){pre{font-size:11px}}
+</style></head><body><header><h1>Option A <span>always written ahead, no new control</span></h1><p>Writing later turns ahead: always, or a box like Also write the casts? The text below is the same in both drawings.</p></header><main><h3 class="sec">Option A — always</h3><p>Every section writes the whole plan. Nothing to tick.</p><div class="pane"><div class="top"><span class="name">Study planner</span><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span><span class="sp"></span><span class="btn">Save all…</span></div><div class="sub">Orders for turn 72 — 2 mages studying, 1 teaching</div><div class="body"><div class="grp"><div class="hd">Your faction — Borg (95)<span class="sp"></span><span class="btn">Copy</span><span class="btn">Save…</span><span class="btn prim">Put into my orders</span></div><pre><span class="c">; Borg (95) — study orders for turn 72, from Atlantis HUD</span>
+<span class="c">; Turns 73–76 are written ahead as TURN blocks — the plan as it stands on turn 72.</span>
+<span class="k">UNIT 1234</span>           <span class="c">; Ereb</span>
+  STUDY FORC        <span class="c">; force 3 -> 4, taught by Sable</span>
+  TURN              <span class="c">; turn 73</span>
+    STUDY FORC      <span class="c">; force 4</span>
+  ENDTURN
+  <span class="c">... turns 74–76</span>
+<span class="k">UNIT 1290</span>           <span class="c">; Orm</span>
+  <span class="c">; nothing planned</span>
+  TURN              <span class="c">; turn 73</span>
+    STUDY FIRE      <span class="c">; fire 0 -> 1</span>
+  ENDTURN</pre></div><div class="grp"><div class="hd">Ivory Tower (41) — from their mage sheet of turn 70<span class="sp"></span><span class="btn">Copy</span><span class="btn">Save…</span></div><pre><span class="c">; Ivory Tower (41) — study orders for turn 72, from Atlantis HUD</span>
+<span class="c">; From their mage sheet of turn 70 — 2 months of study since are estimated.</span>
+<span class="c">; Turn 73 is written ahead as a TURN block — the plan as it stands on turn 72.</span>
+<span class="k">UNIT 2201</span>           <span class="c">; Quill</span>
+  STUDY EART        <span class="c">; earth 2 -> 3</span>
+  TURN              <span class="c">; turn 73</span>
+    STUDY EART      <span class="c">; earth 3</span>
+    <span class="c">; CAST EASH — he won't know earthshake yet, left out</span>
+  ENDTURN</pre></div><div class="grp"><div class="hd">Salt League (17)<span class="sp"></span><span class="btn">Copy</span><span class="btn">Save…</span></div><pre><span class="c">; Salt League (17) — study orders for turn 72, from Atlantis HUD</span>
+<span class="k">UNIT 3010</span>           <span class="c">; Brine</span>
+  STUDY WEAT        <span class="c">; weather 1 -> 2</span></pre></div></div></div><ul class="notes"><li>Nothing to remember; the protection is always there.</li><li>Copy, Save…, Save all… and Put into my orders all carry it.</li><li class="con">A player who wants to mail an ally only next turn trims the text by hand.</li></ul></main></body></html>
