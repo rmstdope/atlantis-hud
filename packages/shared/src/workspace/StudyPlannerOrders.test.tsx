@@ -301,3 +301,33 @@ describe("StudyPlannerOrders — a withheld section", () => {
     expect(html.split('data-testid="study-planner-orders-17"')[1]).not.toContain("study-planner-write\"");
   });
 });
+
+describe("StudyPlannerOrders — later turns (ah-1f87z)", () => {
+  it("a_section's_turn_blocks_are_drawn_verbatim_in_its_text", () => {
+    const text = [
+      "; Borg TNG (95) — study orders for turn 72, from Atlantis HUD",
+      "; Turn 73 is written ahead as a TURN block — the plan as it stands on turn 72.",
+      "UNIT 1234           ; Ereb",
+      "  STUDY FORC        ; force 3 -> 4",
+      "  TURN              ; turn 73",
+      "    STUDY FORC      ; force 4",
+      "  ENDTURN"
+    ].join("\n");
+    const html = renderToStaticMarkup(
+      <StudyPlannerOrders
+        orders={{ ...orders, sections: [{ ...orders.sections[0], text }] }}
+        emptyCopy={EMPTY}
+        error={null}
+        onSaveText={() => {}}
+        writePlan={null}
+        asking={false}
+        notice={null}
+        onAskWrite={() => {}}
+        onConfirmWrite={() => {}}
+        onCancelWrite={() => {}}
+        onUndoWrite={() => {}}
+      />
+    );
+    expect(html).toContain("  TURN              ; turn 73\n    STUDY FORC      ; force 4\n  ENDTURN");
+  });
+});

@@ -21,10 +21,13 @@ import {
   readUnitOrders,
   stripLongOrderLines,
   stripOwnOrders,
+  stripTurnBlocks,
+  turnBlockCount,
+  withoutTrailingBlankLines,
   writeUnitOrders
 } from "./ordersDocument";
 import type { OrderCommentSyntax } from "./rulesets";
-import type { OrdersCast, OrdersEntry } from "./studyOrders";
+import { turnBlockLines, type OrdersCast, type OrdersEntry } from "./studyOrders";
 
 /** One line of the confirmation: a change about to be made, or a mage this write leaves alone. */
 export type WriteRow = {
@@ -113,6 +116,20 @@ function withCast(
   };
 }
 
+/**
+ * Whether "Put into my orders" has anything to write from these entries: a STUDY or TEACH, a cast
+ * line, or later turns (ah-1f87z). What decides whether the tab offers the write at all.
+ */
+export function hasWritableEntry(entries: readonly OrdersEntry[]): boolean {
+  return entries.some((entry) => entry.order !== null || entry.cast?.kind === "write" || entry.later.length > 0);
+}
+
+/** `3 later turns`, `1 later turn replaces the 1 already there` - the row's later-turns part. */
+function laterWords(written: number, held: number): string {
+  const turns = `${written} later turn${written === 1 ? "" : "s"}`;
+  return held === 0 ? turns : `${turns} ${written === 1 ? "replaces" : "replace"} the ${held} already there`;
+}
+
 /** A previous order as a row names it: trimmed, and cut with an ellipsis when it would wrap. */
 function shortened(order: string): string {
   const trimmed = order.trim();
@@ -162,6 +179,7 @@ export function studyWritePlan(input: {
   // blocked study, a cast he won't know yet. Any of them means not everything planned is there.
   let leftOutRows = 0;
   let castsKept = 0;
+  let laterWritten = 0;
 
   for (const entry of input.entries) {
     const who = `${entry.name} (${entry.unitId})`;
@@ -174,7 +192,8 @@ export function studyWritePlan(input: {
     if (cast?.kind === "unknown" || (entry.order === null && (entry.skipReason ?? "nothing planned") !== "nothing planned")) {
       leftOutRows += 1;
     }
-    if (entry.order === null && castWrites === null) {
+    const laterCount = entry.later.length;
+    if (entry.order === null && castWrites === null && laterCount === 0) {
       rows.push({ unitId: entry.unitId, who, detail: skipDetail, writes: false, cast: leftOut });
       continue;
     }
@@ -197,13 +216,17 @@ export function studyWritePlan(input: {
 
     const base = hadBlock ? next : ensureUnitBlock(next, entry.unitId, banner ?? "", syntax);
     const existing = readUnitOrders(base, entry.unitId, undefined, syntax) ?? "";
-    let orders = existing;
+    // The plan's later turns replace every TURN block he holds - the game's carried-forward ones
+    // and hand-written ones alike (ah-1f87z, the navigator's choice); with none to write, his
+    // blocks are left exactly as they were.
+    const heldTurns = laterCount === 0 ? 0 : turnBlockCount(existing, syntax);
+    let orders = laterCount === 0 ? existing : stripTurnBlocks(existing, syntax);
     let detail = skipDetail;
     let studyWrites = false;
 
     if (entry.order !== null) {
       const previous = longOrderOf(existing, syntax);
-      const kept = stripLongOrderLines(existing, syntax);
+      const kept = stripLongOrderLines(orders, syntax);
       const line = annotatedLine(entry.order, entry.annotation);
       // `kept.trim()`, not `kept === ""`: a block that held nothing but a blank line and a long
       // order leaves a blank line behind, and `writeUnitOrders` drops only *trailing* blanks - so
@@ -237,13 +260,23 @@ export function studyWritePlan(input: {
       }
     }
 
+    // After his own orders, as `rules/turn`'s example places them: TURN at his own indent, the
+    // orders inside two deeper.
+    if (laterCount > 0) {
+      const kept = withoutTrailingBlankLines(orders);
+      const blocks = turnBlockLines(entry.later, "", WRITE_COMMENT_COLUMN).join("\n");
+      orders = kept.trim() === "" ? blocks : `${kept}\n${blocks}`;
+      detail = `${detail} · ${laterWords(laterCount, heldTurns)}`;
+      laterWritten += 1;
+    }
+
     // A cast kept as already there, with no study to write, changes nothing: the block stays as it
     // was, and so does the document, even when it had no block yet.
-    if (studyWrites || castRow?.writes === true) {
+    if (studyWrites || castRow?.writes === true || laterCount > 0) {
       next = writeUnitOrders(base, entry.unitId, orders, undefined, syntax);
       changed += 1;
     }
-    rows.push({ unitId: entry.unitId, who, detail, writes: studyWrites, cast: castRow });
+    rows.push({ unitId: entry.unitId, who, detail, writes: studyWrites || laterCount > 0, cast: castRow });
   }
 
   // Every planned cast kept as already there and nothing else to write (ah-9qdz.4, mockup
@@ -253,7 +286,9 @@ export function studyWritePlan(input: {
       ? castsKept > 0 && leftOutRows === 0
         ? "Everything planned here is already in your orders — nothing to write."
         : "None of these mages can be written into your orders."
-      : `${changed} unit${changed === 1 ? " changes" : "s change"}. Nothing else in the document is touched, and you can undo it afterwards.`;
+      : laterWritten > 0
+        ? `${changed} mage${changed === 1 ? "" : "s"}. Each mage's month-long order is replaced, and so are any later turns his orders already hold.`
+        : `${changed} unit${changed === 1 ? " changes" : "s change"}. Nothing else in the document is touched, and you can undo it afterwards.`;
 
   const forMages = ` for ${changed} mage${changed === 1 ? "" : "s"}`;
   const castWords = casts === 0 ? "" : ` and ${casts} cast${casts === 1 ? "" : "s"}`;

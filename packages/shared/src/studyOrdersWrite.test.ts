@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OrdersCast, OrdersEntry } from "./studyOrders";
-import { WRITE_COMMENT_COLUMN, studyWritePlan } from "./studyOrdersWrite";
+import { WRITE_COMMENT_COLUMN, hasWritableEntry, studyWritePlan } from "./studyOrdersWrite";
 
 const BANNER = ";*** plain (7,53) in Foo ***";
 
@@ -13,6 +13,7 @@ const anEntry = (over: Partial<OrdersEntry> = {}): OrdersEntry => ({
   annotation: "force 3 -> 4",
   skipReason: null,
   cast: null,
+  later: [],
   ...over
 });
 
@@ -428,5 +429,85 @@ describe("studyWritePlan — casts", () => {
     expect(result.casts).toBe(0);
     expect(result.warning).toBeNull();
     expect(result.rows[0].cast).toBeNull();
+  });
+});
+
+describe("studyWritePlan — later turns (ah-1f87z)", () => {
+  const later = (): OrdersEntry["later"] => [
+    { turn: 73, opener: "turn 73", lines: [{ code: "STUDY FORC", comment: "force 4" }] },
+    { turn: 74, opener: "turn 74 — nothing planned", lines: [] },
+    { turn: 75, opener: "turn 75", lines: [{ code: null, comment: "STUDY GATE — needs pattern 1 first" }] }
+  ];
+
+  it("later_turns_replace_every_turn_block_the_mage_holds", () => {
+    const document = aDocument("STUDY FORC", "TURN", "  STUDY FORC", "ENDTURN", "claim 200", "TURN", "  MOVE N", "ENDTURN");
+    const result = plan(document, [anEntry({ order: "STUDY FORC", later: later() })]);
+    expect(result.next.split("\n").slice(4, -2)).toEqual([
+      "unit 1234",
+      "claim 200",
+      "STUDY FORC        ; force 3 -> 4",
+      "TURN              ; turn 73",
+      "  STUDY FORC      ; force 4",
+      "ENDTURN",
+      "TURN              ; turn 74 — nothing planned",
+      "ENDTURN",
+      "TURN              ; turn 75",
+      "  ; STUDY GATE — needs pattern 1 first",
+      "ENDTURN"
+    ]);
+  });
+
+  it("a_row_counts_later_turns_and_those_replaced", () => {
+    const held = plan(aDocument("STUDY FORC", "TURN", "  MOVE N", "ENDTURN", "@TURN", "  WORK", "ENDTURN"), [
+      anEntry({ order: "STUDY FORC", later: later() })
+    ]);
+    expect(held.rows[0].detail).toBe("STUDY FORC replaces STUDY FORC · 3 later turns replace the 2 already there");
+    const fresh = plan(aDocument("@work"), [anEntry({ later: later().slice(0, 1) })]);
+    expect(fresh.rows[0].detail).toBe("STUDY FORC 4 replaces @work · 1 later turn");
+  });
+
+  it("the_lead_names_later_turns_when_any_are_written", () => {
+    const two = plan(aDocument("@work"), [
+      anEntry({ later: later() }),
+      anEntry({ key: "95/881", unitId: "881", name: "Sable", order: "TEACH 1234", annotation: null })
+    ]);
+    expect(two.lead).toBe(
+      "2 mages. Each mage's month-long order is replaced, and so are any later turns his orders already hold."
+    );
+    expect(plan(aDocument("@work"), [anEntry({ later: later() })]).lead).toBe(
+      "1 mage. Each mage's month-long order is replaced, and so are any later turns his orders already hold."
+    );
+    expect(plan(aDocument("@work"), [anEntry()]).lead).toBe(
+      "1 unit changes. Nothing else in the document is touched, and you can undo it afterwards."
+    );
+  });
+
+  it("a_mage_idle_next_turn_with_later_turns_is_written_and_keeps_his_long_order", () => {
+    const result = plan(aDocument("@work", "TURN", "  MOVE N", "ENDTURN"), [
+      anEntry({ order: null, annotation: null, skipReason: "nothing planned", later: later().slice(0, 1) })
+    ]);
+    expect(result.changed).toBe(1);
+    expect(result.rows[0].writes).toBe(true);
+    expect(result.rows[0].detail).toBe("nothing planned — left alone · 1 later turn replaces the 1 already there");
+    expect(result.next.split("\n").slice(4, -2)).toEqual([
+      "unit 1234",
+      "@work",
+      "TURN              ; turn 73",
+      "  STUDY FORC      ; force 4",
+      "ENDTURN"
+    ]);
+  });
+
+  it("a_mage_without_later_turns_keeps_his_turn_blocks", () => {
+    const result = plan(aDocument("@work", "TURN", "  MOVE N", "ENDTURN"), [anEntry({ annotation: null })]);
+    expect(result.next.split("\n").slice(4, -2)).toEqual(["unit 1234", "TURN", "  MOVE N", "ENDTURN", "STUDY FORC 4"]);
+    expect(result.rows[0].detail).toBe("STUDY FORC 4 replaces @work");
+  });
+
+  it("hasWritableEntry_counts_later_turns", () => {
+    const idle = anEntry({ order: null, annotation: null, skipReason: "nothing planned" });
+    expect(hasWritableEntry([idle])).toBe(false);
+    expect(hasWritableEntry([{ ...idle, later: later() }])).toBe(true);
+    expect(hasWritableEntry([anEntry()])).toBe(true);
   });
 });
