@@ -1,6 +1,7 @@
 import type { Diagnostic } from "@codemirror/lint";
 import type { OrderDiagnostic, OrderFix } from "@atlantis/core-client";
 import type { EditorView } from "@codemirror/view";
+import { MESSAGE_CODE_CLASS, hasCode, messageSegments, plainMessage } from "./messageCode";
 
 /**
  * A unit's diagnostics as CodeMirror wants them: absolute offsets into the text on screen.
@@ -62,7 +63,10 @@ export function toEditorDiagnostics(
       from: start + from,
       to: start + to,
       severity: problem.severity,
-      message: problem.message,
+      // An order the message suggests is marked with backticks and shown in code style; the
+      // plain message, without them, is what a screen reader hears (`ah-41tqi`).
+      message: plainMessage(problem.message),
+      renderMessage: hasCode(problem.message) ? () => renderMessage(problem.message) : undefined,
       // A pooled shortfall is reported against the hex, so this line's own mark can only point at
       // where the numbers are. CodeMirror renders an action as a button in the tooltip, which is
       // reachable from the keyboard where an anchor in the message would not be (`ah-eurs`).
@@ -135,4 +139,20 @@ function shortfallActions(
       : [{ name: `Show problems in ${target.label}`, apply: () => elsewhere(target.regionId) }];
   }
   return here === undefined ? undefined : [{ name: "Show problems", apply: () => here() }];
+}
+
+/** A message's words as tooltip DOM, its code spans as `<code>` (`ah-41tqi`, `messageCode`). */
+function renderMessage(message: string): Node {
+  const fragment = document.createDocumentFragment();
+  for (const segment of messageSegments(message)) {
+    if (segment.code) {
+      const code = document.createElement("code");
+      code.className = MESSAGE_CODE_CLASS;
+      code.textContent = segment.text;
+      fragment.append(code);
+    } else {
+      fragment.append(segment.text);
+    }
+  }
+  return fragment;
 }

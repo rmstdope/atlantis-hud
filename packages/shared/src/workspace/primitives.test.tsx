@@ -120,6 +120,27 @@ describe("ProblemMessage", () => {
     expect(markup).toContain("is not in this hex to be taught");
   });
 
+  it("shows a backticked order in code style, linking units around it (ah-41tqi)", () => {
+    const markup = renderToStaticMarkup(
+      <ProblemMessage
+        message="unit 4021 holds no PIKE. `TRANSPORT 5 35 PIKE` would draw on them."
+        known={known}
+        onSelectUnit={() => {}}
+      />
+    );
+
+    expect(markup).toMatch(/<code[^>]*>TRANSPORT 5 35 PIKE<\/code>/);
+    expect(markup).not.toContain("`");
+    expect(markup).toContain('data-testid="problem-unit-4021"');
+  });
+
+  it("shows code style without unit links too", () => {
+    const markup = renderToStaticMarkup(<ProblemMessage message="write `TRANSPORT 5 35 PIKE`" />);
+
+    expect(markup).toMatch(/<code[^>]*>TRANSPORT 5 35 PIKE<\/code>/);
+    expect(markup).not.toContain("`");
+  });
+
   it("leaves a message naming no unit alone", () => {
     const markup = renderToStaticMarkup(
       <ProblemMessage message="nobody is guarding this hex" known={known} onSelectUnit={() => {}} />

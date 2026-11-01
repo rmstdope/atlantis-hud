@@ -1,6 +1,7 @@
 import type { FormedSubject, OrderDiagnosticSeverity } from "@atlantis/core-client";
 import { Fragment, type ReactNode } from "react";
 import { itemEntryId, type GameDataIndex } from "../gameData";
+import { MESSAGE_CODE_CLASS, messageSegments } from "../messageCode";
 
 /**
  * The ceiling for a header popover's scrollable body.
@@ -143,6 +144,41 @@ export function ProblemMessage({
   onSelectUnit
 }: {
   message: string;
+  known?: ReadonlySet<string>;
+  onSelectUnit?: (unitId: string) => void;
+}) {
+  const segments = messageSegments(message);
+  if (segments.every((segment) => !segment.code)) {
+    return <UnitLinkedText text={message} known={known} onSelectUnit={onSelectUnit} />;
+  }
+  // An order the message suggests, between backticks, shows in code style (`ah-41tqi`).
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.code ? (
+          <code key={`code-${index}`} className={MESSAGE_CODE_CLASS}>
+            {segment.text}
+          </code>
+        ) : (
+          <UnitLinkedText
+            key={`text-${index}`}
+            text={segment.text}
+            known={known}
+            onSelectUnit={onSelectUnit}
+          />
+        )
+      )}
+    </>
+  );
+}
+
+/** Plain words of a message, every unit it names that `known` holds made a link to that unit. */
+function UnitLinkedText({
+  text: message,
+  known,
+  onSelectUnit
+}: {
+  text: string;
   known?: ReadonlySet<string>;
   onSelectUnit?: (unitId: string) => void;
 }) {
