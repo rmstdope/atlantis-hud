@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Option A — later turns the plan no longer has are removed</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--edge-soft:#1e2733;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--brass-bright:#eebe63;--select:#4a9fd8;--ok:#4fb783;--danger:#e89494}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,main{max-width:1100px;margin:0 auto}
+h1{font-size:23px}h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:92ch;margin-top:10px;font-size:14px}
+h3.sec{margin:30px 0 6px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+h3.sec+p{color:var(--ink-soft);font-size:13px;margin-bottom:12px;max-width:92ch}
+.pane{max-width:860px;background:var(--raised);border:1px solid var(--edge);border-radius:6px;overflow:hidden;font:13px/1.5 'Helvetica Neue',Arial,sans-serif}
+.top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--edge)}
+.top .name{color:var(--ink-soft)}.tab{border-radius:4px;padding:2px 7px;color:var(--ink-soft)}
+.tab.on{background:#1b2735;color:var(--ink);box-shadow:inset 0 -2px 0 var(--select)}
+.sp{margin-left:auto}
+.sub{padding:6px 12px;border-bottom:1px solid var(--edge-soft);color:var(--ink-dim);font-size:11.5px}
+.btn{background:var(--ground);border:1px solid var(--edge);color:var(--ink-soft);border-radius:4px;padding:3px 9px;font-size:12px;display:inline-block}
+.btn.prim{color:var(--ink);border-color:#3b5064}
+.body{padding:12px;display:grid;gap:14px}
+.grp{border:1px solid var(--edge);border-radius:5px;overflow:hidden}
+.grp .hd{display:flex;align-items:center;gap:8px;padding:5px 10px;background:#141a23;color:var(--brass);font-size:11.5px}
+pre{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;line-height:1.55;color:var(--ink);padding:10px;margin:0;white-space:pre;overflow:auto}
+pre .c{color:var(--ink-dim)}pre .k{color:var(--brass-bright)}pre .n{color:var(--ok)}pre .w{color:var(--danger)}
+.notes{list-style:none;font-size:13px;color:var(--ink-soft);display:grid;gap:4px;margin-top:12px;max-width:92ch}
+.notes li::before{content:"+ ";color:var(--ok);font-weight:bold}
+.notes li.con::before{content:"\2212 ";color:var(--danger)}
+.prompt{border:1px solid #3b5064;background:#141d28;border-radius:5px;overflow:hidden;margin-bottom:10px}
+.prompt .ph{padding:8px 11px;color:var(--ink);font-size:13.5px;border-bottom:1px solid var(--edge-soft)}
+.prompt .pp{padding:7px 11px;color:var(--ink-soft);font-size:12.5px}
+.prompt .row{display:flex;gap:10px;align-items:baseline;font-size:12.5px;padding:2px 11px}
+.prompt .row .who{color:var(--ink);min-width:110px}
+.prompt .row .what{font-family:'SF Mono',Menlo,monospace;font-size:11.5px;color:var(--ink-soft)}
+.prompt .row .what b{color:var(--ok);font-weight:normal}.prompt .row .what s{color:var(--danger)}
+.prompt .pf{padding:8px 11px;border-top:1px solid var(--edge-soft);display:flex;gap:8px;margin-top:6px}
+@media (max-width:600px){pre{font-size:11px}}
+</style></head><body><header><h1>Option A <span>the plan replaces every later turn the mage already has</span></h1><p>Put into my orders, on a turn where Ereb's orders already hold TURN blocks: last turn's planned turns (the game carries the unused ones forward into the new template, per the TURN rules) plus a MOVE N he wrote by hand. What happens to them?</p></header><main><h3 class="sec">Before — Ereb's block in your orders</h3><p></p><div class="pane"><pre><span class="k">UNIT 1234</span>           <span class="c">; Ereb</span>
+<body><header><h1>Option A <span>later turns the plan no longer has are removed</span></h1><p>You re-planned: Ereb now only teaches Vess next turn (72) and nothing after; Orm now has nothing planned at all. Both still hold later turns from last turn's plan, which the game will run on 73 and 74 if you miss a turn. What should Put into my orders do with them?</p></header><main>
+<h3 class="sec">Before — the mage's block in your orders</h3><p></p><div class="pane"><pre><span class="k">UNIT 1234</span>           <span class="c">; Ereb</span>
+  STUDY FORC
+  TURN              <span class="c">; turn 73  (written ahead last turn, carried forward by the game)</span>
+    STUDY FORC
+  ENDTURN
+  TURN              <span class="c">; turn 74</span>
+    STUDY PATT
+  ENDTURN
+<span class="k">UNIT 1290</span>           <span class="c">; Orm</span>
+  WORK
+  TURN              <span class="c">; turn 73  (written ahead last turn)</span>
+    STUDY FORC
+  ENDTURN</pre></div>
+<h3 class="sec">Put into my orders — the question</h3><p></p><div class="pane"><div class="top"><span class="name">Study planner</span><span class="tab">All mages</span><span class="tab">Schedule</span><span class="tab on">Orders</span><span class="sp"></span><span class="btn">Save all…</span></div><div class="sub">Orders for turn 72 — 2 mages studying, 1 teaching · planned through turn 74</div><div class="body"><div class="prompt"><div class="ph">Put these orders into your own orders?</div><div class="pp">3 mages. Each mage's month-long order is replaced, and so are any later turns his orders already hold.</div>
+<div class="row"><span class="who">Ereb (1234)</span><span class="what"><b>TEACH 1263</b> replaces <s>STUDY FORC</s> · removes the <s>2 later turns already there</s></span></div>
+<div class="row"><span class="who">Orm (1290)</span><span class="what">nothing planned — left alone · removes the <s>1 later turn already there</s></span></div>
+<div class="row"><span class="who">Vess (1263)</span><span class="what"><b>STUDY FORC</b></span></div>
+<div class="pf"><span class="btn prim">Put them in</span><span class="btn">Cancel</span></div></div></div></div>
+<h3 class="sec">After</h3><p></p><div class="pane"><pre><span class="k">UNIT 1234</span>           <span class="c">; Ereb</span>
+  TEACH 1263        <span class="c">; teaches Vess</span>
+<span class="k">UNIT 1290</span>           <span class="c">; Orm</span>
+  WORK</pre></div>
+
+<ul class="notes"><li>Same rule for every mage in the plan: after Put, his later turns are exactly the plan's — none left from an old plan.</li><li>The box says it per mage before anything happens, and Undo works as today.</li><li class="con">A later turn you wrote by hand for a mage in the plan is removed too (as already agreed when the plan has later turns).</li><li>Only mages in the plan are touched; any other unit's later turns are never looked at.</li></ul></main></body></html>
