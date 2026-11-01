@@ -101,6 +101,81 @@ Three steps, in order.
    a named fixture constant instead would force every made fixture to be committed, and the
    navigator ruled against that. Quote what the probe printed in the briefing.
 
+**An expected figure comes from the orders the app holds, not from the bead's orders alone.**
+   Importing a report seeds its orders box from the report's own orders template, verbatim
+   (`seedOrdersDocument`, `packages/shared/src/ordersDocument.ts`), so in the shell every unit the
+   script never touches keeps its template orders — its `TAX`, its `WORK`, its `@claim`. A probe
+   that passes `review_turn` or `preview_orders_for_remembered_report` only the bead's orders runs
+   all of those units idle, and the hex's tax and work pools, and what its sharers lend, come out
+   different. Verifying ah-iidht at b0ee135 on `newage-arcanum-f3-t84.rep`, a step straight after
+   import asked for Praetor Cuffdower (1769)'s month-end silver: a probe given only `unit 1769`
+   said 6, and the app showed 0. Measured with the helper below, the untouched template gives 0;
+   clearing 1769's own `@study OBSE` alone gives 15, so his template order and his neighbours'
+   both move the figure. The navigator was asked to check a number the app could never show.
+
+   So build the probe's orders the way the shell holds them — the template, with only the units a
+   step edits replaced by what their orders box holds after it — and pass that:
+
+   ```rust
+   // In the same throwaway verify_fixture.rs.
+   use atlantis_hud_core::report::orders::extract_orders_template;
+
+   /// The orders document as the shell holds it after the script's steps so far: the report's own
+   /// template, with each edited unit's orders replaced by what its box holds. Comment lines stay,
+   /// since an orders box's comments order nothing; a unit the template has no block for gets one
+   /// before `#end`, as the shell's editor would make room for it.
+   fn orders_as_the_app_holds_them(report_text: &str, edits: &[(&str, &[&str])]) -> String {
+       let template = extract_orders_template(report_text)
+           .map(|template| template.text)
+           // No template (OPTION TEMPLATE OFF): seedOrdersDocument's empty document instead.
+           .unwrap_or_else(|| {
+               let faction = parse_report_full(report_text).header.faction_id.unwrap_or_default();
+               format!("#atlantis {faction}\n\n#end")
+           });
+       let mut out: Vec<String> = Vec::new();
+       let mut editing = false;
+       let mut placed: Vec<&str> = Vec::new();
+       for line in template.lines() {
+           if line.trim() == "#end" {
+               for (unit, orders) in edits.iter().filter(|(unit, _)| !placed.contains(unit)) {
+                   out.push(format!("unit {unit}"));
+                   out.extend(orders.iter().map(|order| (*order).to_string()));
+               }
+               out.push(line.to_string());
+               editing = false;
+               continue;
+           }
+           if let Some(id) = line.strip_prefix("unit ") {
+               out.push(line.to_string());
+               editing = false;
+               if let Some((unit, orders)) = edits.iter().find(|(unit, _)| *unit == id.trim()) {
+                   out.extend(orders.iter().map(|order| (*order).to_string()));
+                   placed.push(unit);
+                   editing = true;
+               }
+               continue;
+           }
+           if editing && !line.trim_start().starts_with(';') && !line.trim().is_empty() {
+               continue; // a template order the step's box no longer holds
+           }
+           out.push(line.to_string());
+       }
+       out.join("\n") + "\n"
+   }
+
+   // Straight after import, before any step: orders_as_the_app_holds_them(&text, &[]).
+   // let orders = orders_as_the_app_holds_them(&text, &[("1769", &["TRANSPORT 5 5 PIKE"])]);
+   // `parsed` is the probe's own, already through classify_units: unclassified, every
+   // at_month_end comes back None.
+   // let review = review_turn(&parsed, &orders, Some(&ruleset), options);
+   ```
+
+   An edit is what the box holds **after** the step, so it follows the script's wording: a step
+   that has the navigator clear the box first (as a batch's state-bleed line does) replaces the
+   template's orders, and one that says *add* keeps them — list them in the edit too. Within one
+   sitting a unit an earlier step edited and the script never cleared stays edited in every later
+   step's probe. Quote the figure this probe printed, not the one the bead's orders give alone.
+
 **For a batch, scan rather than pick.** The same probe harness answers "which committed hex serves
    all of these beads at once" — walk every fixture, classify each region with the shipped ruleset,
    and score hexes by how many of the batch's preconditions they hold (a market that sells
