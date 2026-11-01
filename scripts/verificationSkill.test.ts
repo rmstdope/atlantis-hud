@@ -76,7 +76,7 @@ describe("the project's declared verification skill", () => {
 });
 
 describe("the verification skill's wasm core check", () => {
-  it("the skill has the verifier confirm the wasm core is current before the navigator is called", () => {
+  it("the skill has the verifier confirm the wasm core is current before the look begins", () => {
     const skillMd = readFileSync(
       join(REPO, ".claude", "skills", "atlantis-verification", "SKILL.md"),
       "utf8"
@@ -84,7 +84,7 @@ describe("the verification skill's wasm core check", () => {
     const heading = skillMd.indexOf("## The core the shell serves is checked, not assumed");
     expect(heading).toBeGreaterThanOrEqual(0);
     expect(skillMd).toContain("node scripts/ensure-wasm.mjs");
-    expect(heading).toBeLessThan(skillMd.indexOf("## The handoff"));
+    expect(heading).toBeLessThan(skillMd.indexOf("## Batch beads into one look"));
   });
 });
 
@@ -109,5 +109,50 @@ describe("the verification skill's probe", () => {
     expect(ruleText.replace(/\s+/g, " ")).toContain(
       "with only the units a step edits replaced by what their orders box holds after it"
     );
+  });
+});
+
+describe("the verification skill has Psylocke look herself (ah-jq6m8)", () => {
+  const skillMd = () =>
+    readFileSync(join(REPO, ".claude", "skills", "atlantis-verification", "SKILL.md"), "utf8");
+  const flat = () => skillMd().replace(/\s+/g, " ");
+
+  it("extends verify-bead rather than replacing it", () => {
+    expect(flat()).toContain("This skill **extends `verify-bead`; it does not replace it.**");
+  });
+
+  it("carries the sections the navigator chose", () => {
+    for (const heading of [
+      "## Batch beads into one look",
+      "## Protect the navigator's data",
+      "## Which shell, and what is handed to the navigator",
+      "## Human checks: one hand-off per batch",
+      "## Explore near the change",
+      "## Present the results",
+      "## When the look is over"
+    ]) {
+      expect(skillMd(), `missing ${heading}`).toContain(heading);
+    }
+  });
+
+  it("batches at most four beads at one main sha", () => {
+    expect(flat()).toContain("**At most four beads per batch.**");
+    expect(flat()).toContain("same `origin/main` sha");
+  });
+
+  it("snapshots and restores storage with the committed script", () => {
+    const text = flat();
+    expect(text).toContain("scripts/verify-storage.js");
+    expect(text).toContain("atlantisVerifyStorage.snapshot()");
+    expect(text).toContain("atlantisVerifyStorage.restore()");
+  });
+
+  it("bounds exploration to about 10-15 minutes per batch", () => {
+    expect(flat()).toContain("about 10–15 minutes per batch");
+  });
+
+  it("no longer writes a script for the navigator to run by hand", () => {
+    expect(skillMd()).not.toContain("## The script the navigator reads");
+    expect(skillMd()).not.toContain("## The handoff");
   });
 });

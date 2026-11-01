@@ -1,13 +1,26 @@
 ---
 name: atlantis-verification
-description: Prepare a manual verification of Atlantis HUD before a person's time is asked for — pick the shell, pick or build a fixture and prove it reaches the case, and write the numbered script the navigator follows. Use when a change is to be verified by hand.
+description: Atlantis HUD's verification skill, named by `verification_skill` in .cerebro/project.conf. Psylocke verifies merged beads herself by driving the web shell in Chrome - batching related beads into one look, reaching the case with a proved fixture, protecting the navigator's stored games, exploring near the change - and asks the navigator only for what a person must judge (a look or sound only a person can call good enough, desktop-only criteria, anything she could not reach), in one hand-off per batch, before presenting the evidence and a recommended verdict per bead.
 ---
 
-# Preparing a verification before the navigator's time is asked for
+# Verifying Atlantis HUD beads
 
-Manual verification is the one point in this fleet where a person actually looks at the running
-application. Their minutes start when they say yes, not before — everything below happens first, so
-the first thing they see is a running shell and a script that already works.
+This skill **extends `verify-bead`; it does not replace it.** Load `verify-bead` first and follow it,
+together with `agents/verifier.md`. That covers the candidates, the fresh `origin/main` worktree, the
+commit check, `verification=pending`, the port refusal, the sha in every verdict, the evidence log
+with a screenshot per criterion, the report written onto the bead before asking, the recipes in
+*Taking the verdict*, and the end of a pass. Where this file is more specific, this file wins. It
+adds what only this project knows: which shell to look in and what is handed to the navigator, how
+a fixture is chosen and proved so the look reaches the case, batching, protecting the navigator's
+stored games, the human-check hand-off, exploring near the change, and the shape of the results.
+
+The navigator's minutes are spent only on what a person must judge. Everything an agent can check
+in the running web shell, you check yourself; a question that asks them to read a cell you could
+have screenshotted is time taken from them for nothing.
+
+Every question below is the verifier's three-action sandwich: `asking --bead <id> --phase verify`,
+the question, then `working --bead <id> --phase verify` before anything else. In a batch, `--bead`
+is the first bead of the batch.
 
 ## What the project already declares, and what this skill must never repeat
 
@@ -23,24 +36,26 @@ skill never restates them:
 `project-conf`'s own header gives the reason: **a duplicate is a second source of truth that will
 drift.** Read the keys, don't copy their values into this file or into a bead.
 
-The tree you verify in, the sha you verify at, the free-port check before a server starts, and the
-passed/passed-with-a-follow-up/failed verdict machinery are all `agents/verifier.md`'s. This skill
-carries only what that shared file cannot know: which shell is worth the navigator's minutes for a
-change in *this* project, how a fixture is chosen and proved before anyone is called, and the shape
-a script takes when a person reads it.
+## Which shell, and what is handed to the navigator
 
-## Which shell, and why it is usually the web one
+**You look in the web shell, always.** Both shells run the same React application, so everything
+a bead changes that also shows in the web shell is yours to check there, in Chrome, even when the
+bead also touches the desktop shell.
 
-**Default to the web shell.** Launch the desktop shell instead only when one of these is true, so
-the choice is a lookup rather than a judgement call:
+**Only what is desktop-only goes to the navigator**, as a human check (*Human checks*, below). A
+criterion is desktop-only when it cannot show in a browser at all:
 
-- the diff touches `apps/desktop/`, `crates/core-tauri/`, or `crates/core-persistence/`;
-- the change concerns file-system access, a native dialog, or the Tauri IPC adapter;
-- the bead's own plan names the desktop shell.
+- it lives in `apps/desktop/`, `crates/core-tauri/` or `crates/core-persistence/` and has no web
+  counterpart;
+- it concerns native file-system access, a native dialog, a window, a menu, or the Tauri IPC
+  adapter;
+- the bead's own plan names the desktop shell for it.
 
-Otherwise, web. Both shells run the same React application, and the desktop build is a cargo/Tauri
-build spent out of the navigator's patience for no difference they would see. (No duration is quoted
-here on purpose — nothing in this repository states one, only that it is slower.)
+For those, start the desktop shell with its declared launch command after your own web look, so it
+is up when the hand-off is asked, and write the navigator's steps into the hand-off question. The
+desktop shell keeps its games in files, not in the browser, so the storage snapshot below does not
+cover it: say in the question that the steps run against their own desktop data. A bead whose every
+criterion is desktop-only still gets its report and its hand-off; there is simply no web look.
 
 ## The fixture: pick one, prove it, or build a minimal one
 
@@ -51,7 +66,7 @@ Three steps, in order.
    Age game picks from the Arcanum corpus instead, Trident included — see *A New Age: Trident change
    is verified on the Arcanum reports* below.
 
-2. **Prove it, before the navigator is asked for anything.** Write a throwaway Rust integration
+2. **Prove it, before the look.** Write a throwaway Rust integration
    test into your own verification worktree and run it — never commit it:
 
    **Classify, do not merely parse.** A report that parses cleanly can still have lost every one of
@@ -75,8 +90,8 @@ Three steps, in order.
        let text = std::fs::read_to_string("/absolute/path/to/the.rep").unwrap();
        let mut parsed = parse_report_full(&text);
        let classification = classify_units(&mut parsed, &ruleset);
-       // Assert the precondition the first decisive script step depends on — and, for a made
-       // fixture, that every unit the script names still has the men and items the committed
+       // Assert the precondition the first decisive check depends on — and, for a made
+       // fixture, that every unit the look names still has the men and items the committed
        // report gives it. `unreadable_lines` being empty is not enough on its own.
        assert!(parsed.unreadable_lines.is_empty());
        assert!(classification.unknown_tags.is_empty());
@@ -99,12 +114,12 @@ Three steps, in order.
    `crates/fixtures/src/lib.rs` and `packages/fixtures/src/index.ts` — both carry a lockstep test
    that fails when `tests/fixtures/reports/` and the names in that module disagree, so reaching for
    a named fixture constant instead would force every made fixture to be committed, and the
-   navigator ruled against that. Quote what the probe printed in the briefing.
+   navigator ruled against that. Quote what the probe printed in the report.
 
 **An expected figure comes from the orders the app holds, not from the bead's orders alone.**
    Importing a report seeds its orders box from the report's own orders template, verbatim
    (`seedOrdersDocument`, `packages/shared/src/ordersDocument.ts`), so in the shell every unit the
-   script never touches keeps its template orders — its `TAX`, its `WORK`, its `@claim`. A probe
+   look never touches keeps its template orders — its `TAX`, its `WORK`, its `@claim`. A probe
    that passes `review_turn` or `preview_orders_for_remembered_report` only the bead's orders runs
    all of those units idle, and the hex's tax and work pools, and what its sharers lend, come out
    different. Verifying ah-iidht at b0ee135 on `newage-arcanum-f3-t84.rep`, a step straight after
@@ -120,7 +135,7 @@ Three steps, in order.
    // In the same throwaway verify_fixture.rs.
    use atlantis_hud_core::report::orders::extract_orders_template;
 
-   /// The orders document as the shell holds it after the script's steps so far: the report's own
+   /// The orders document as the shell holds it after the look's steps so far: the report's own
    /// template, with each edited unit's orders replaced by what its box holds. Comment lines stay,
    /// since an orders box's comments order nothing; a unit the template has no block for gets one
    /// before `#end`, as the shell's editor would make room for it.
@@ -170,10 +185,10 @@ Three steps, in order.
    // let review = review_turn(&parsed, &orders, Some(&ruleset), options);
    ```
 
-   An edit is what the box holds **after** the step, so it follows the script's wording: a step
-   that has the navigator clear the box first (as a batch's state-bleed line does) replaces the
+   An edit is what the box holds **after** the step, so it follows what you did: a step
+   that clears the box first (as a batch's state-bleed rule does) replaces the
    template's orders, and one that says *add* keeps them — list them in the edit too. Within one
-   sitting a unit an earlier step edited and the script never cleared stays edited in every later
+   sitting a unit an earlier step edited and the look never cleared stays edited in every later
    step's probe. Quote the figure this probe printed, not the one the bead's orders give alone.
 
 **For a batch, scan rather than pick.** The same probe harness answers "which committed hex serves
@@ -203,7 +218,7 @@ Three steps, in order.
    | `sharing, ` deleted, wrapping untouched | `[]` — **every item lost** |
 
    An emptied item list means `men == 0`, and nothing complains: no unreadable line, no unknown tag.
-   The navigator opens a shell in which every unit has no people, and the sitting is wasted. This
+   The look opens a shell in which every unit has no people, and the pass is wasted. This
    happened on 2026-09-09, and the session's first diagnosis — a ruleset that had failed to load —
    was wrong.
 
@@ -223,8 +238,8 @@ Three steps, in order.
    `.cerebro/scratch/`, which `.gitignore` already ignores and which `prepare-worktree` resets away
    on the tree's next use.
 
-When a fixture was made rather than picked, the page must say so — see Q7 under *The script the
-navigator reads*.
+When a fixture was made rather than picked, the report must say so — see *A hand-made fixture
+announces itself* under *Present the results*.
 
 ## A New Age: Trident change is verified on the Arcanum reports
 
@@ -242,7 +257,7 @@ Near identical is not identical, so four things keep it honest:
   classify the probe against `config/public/ruleset-newage-trident.json` rather than
   `ruleset.json`. The report brings the map and the units; the ruleset is what the change is
   about. Anything in the report that only Arcanum's catalogue knows shows up in the probe's
-  `unknown_tags` — no unit the script names may hold one.
+  `unknown_tags` — no unit the look names may hold one.
 - **Look the rule up in both worlds before writing an expected figure.** Run
   `pnpm run atlantis newage arcanum rules <anchor>` and `pnpm run atlantis newage trident rules
   <anchor>` for the rule a step turns on (and `data <term>` for an item or skill). They do differ:
@@ -252,114 +267,17 @@ Near identical is not identical, so four things keep it honest:
   spending, say — is then not evidence for or against the change, so leave such steps out.
 - **Use turns 83 and 84 for New Age mechanics.** The turn-2 reports are branded NewOrigins 8.1.0 and
   are import and history cases only, as the corpus README says.
-- **Say so on the page.** One line in the facts block names the report as an Arcanum report played
-  under the Trident ruleset. That is a line in the facts, not the Q7 made-data block — the report is
+- **Say so in the report.** One line names the report as an Arcanum report played
+  under the Trident ruleset. That is a plain line, not the made-data block — the report is
   real and unedited — but it stops a number that looks Arcanum-shaped being read as the app's fault.
 
-## One sitting, several beads
-
-A pass may prepare **one bead or a batch of four to six**, and a batch is often the better use of the
-navigator's time. Most beads in this project are the same gesture — type one order, read two cells —
-so once a shell is up and a report imported, the marginal cost of another bead is a step or two
-rather than a whole launch. Two batches run this way on 2026-08-28 settled six beads between them,
-one of which failed.
-
-**What makes a set of beads a batch**, all three, not two of them:
-
-- **One fixture and one hex serve every bead in it**, proved together before the navigator is asked
-  — see the probe below, which scans for such a hex rather than assuming one.
-- **They share a mental model.** The market columns (`BUY`/`SELL` against Silver and Items) are one;
-  the Problems panel and its findings are another. Mixing them makes the navigator change gear
-  mid-sitting, which is where attention goes.
-- **Four to six.** This is the real limit and it is not about logistics. The whole point of the role
-  is that a person actually looks; somewhere past the sixth "type this, read that cell" a sitting
-  becomes a rubber stamp, and twelve verdicts of which four were examined is worse than four honest
-  ones. **Never batch a whole family because it happens to share a fixture.**
-
-**A verdict is still per bead** — passed · passed with a follow-up · failed, one each — because a
-reopen is per bead. Take them at the end, bead by bead, and **ask rather than infer**: "mostly
-passed" is not a verdict for any particular bead, and a failure reopens at P0, so the one thing a
-batch must never do is let a vague answer stand in for five specific ones.
-
-**The page carries one section per bead**, each headed with the bead's id, priority and title and a
-sentence on what it changed, and the steps numbered continuously through the whole sitting so the
-navigator never loses their place. Everything else about the page — the title, the subtitle, the
-facts block, the made-data block, the bounded exploration at the end — is written once for the
-sitting rather than once per bead. The file is `.cerebro/scratch/verify-<slug>.html`, named for the
-batch (`verify-market-columns.html`) rather than for any one bead in it.
-
-**State bleed is the batch's own failure mode**, and it has one countermeasure: a line above step 1,
-in its own block, telling the navigator to delete the previous order before typing the next, and
-every section written so it begins from an empty orders box. An order left behind from an earlier
-bead changes what the next one shows, and the resulting verdict is confidently wrong.
-
-**A failure mid-batch does not stop the sitting.** The later verdicts are still verdicts against the
-sha you launched, and the reopened bead comes back round on a later pass anyway. Record them all,
-then run the reopen procedure once the sitting is over.
-
-## The script the navigator reads
-
-The script is a self-contained HTML page written to `.cerebro/scratch/verify-<id>.html` — or
-`verify-<slug>.html` when it covers a batch, see *One sitting, several beads* above —
-**overwritten** each time that bead is verified (a bookmarked tab then reloads to the current
-script, and nothing piles up as `verify-<id>-2.html`, `-3.html`, …). The terminal handoff (below)
-carries a `file://` link to it — never the whole script printed in the terminal, where it scrolls
-away behind the session's own chatter.
-
-The picture of what a prepared verification looks like, chosen over three rounds of iteration with
-the navigator, is committed at `docs/ui/ah-38qc-verification-script.html` (merged in #733) — read it
-before writing your first page.
-
-**Required structure**, each of these a requirement and not a suggestion:
-
-1. A title that is a sentence about what is being verified, not the bead's title.
-2. A subtitle line: `<id> · origin/main <short sha> · prepared <time>`.
-3. The made-data block (Q7 below), **only** when the fixture was made rather than picked.
-4. A facts block: which shell and its URL, the report to import, what was checked in advance, and
-   what changed.
-5. Numbered steps, each a checkbox, an action, and the thing to look for. A step that can fail
-   decisively also carries what a failure looks like and what it would mean.
-6. The exploration section (*Where this is most likely to be wrong*, below).
-
-**Step wording is yours, and names controls as they are actually labelled** — read the label out of
-the component rather than recall it. The mockup's own example uses **Import**, the button's real
-label (`packages/shared/src/workspace/AppHeader.tsx`, `{busy ? importingLabel(progress) : "Import"}`).
-
-**Q7 — a hand-made fixture announces itself** with a block above step 1, not a line among the facts
-and not a per-step tag. The wording pattern, with the parenthesised parts filled in per
-verification:
-
-> **The data here was made for this check.** No committed report has *(the shape that was
-> missing)*, so I trimmed *(the report it came from)* down to *(what is left)*. It parses clean
-> *(counts)* and *(the precondition)* — but it is not real game data, so a number that looks strange
-> may be my fixture rather than the app.
-
-The verdict options (passed · passed with a follow-up · failed) stay in the terminal only, never
-repeated on the page: the page is a static file with no agent behind it, and ending it with what
-looks like a prompt invites a click that does nothing.
-
-## Where this is most likely to be wrong: bounded exploration
-
-Exploratory verification is allowed, and often where a defect is actually found —
-`docs/retrospectives/ah-0w7w-reopened.md` records the navigator going off-script and finding a real
-gap that became `ah-brgo`. But it is guided, not open-ended: name two or three specific things to
-try, each with what would count as wrong, so it does not become the whole session.
-
-Heading and bounding sentence, **verbatim**:
-
-> **Where this is most likely to be wrong**
->
-> *(two or three specific things to try, each with what would count as wrong)*
->
-> These three are where a change like this usually breaks. Past them the returns drop off fast —
-> anything else odd is a new bead, not this verdict.
 
 ## The core the shell serves is checked, not assumed
 
 The WebAssembly core is gitignored and built locally, so a shell can serve one older than the
 sources it sits beside — which reopened two correct features at P0. The dev servers rebuild a stale
 core before they serve a page, and this step proves it rather than trusting it: once the shell is up
-and before anyone is called, run from the tree the shell serves
+and before the look begins, run from the tree the shell serves
 
     node scripts/ensure-wasm.mjs
 
@@ -367,49 +285,196 @@ and expect `wasm module is current, skipping the build`. Anything else means the
 under you or failed to build: reload the page once the command finishes, and if it failed, this is
 *When the build fails* below, not a verdict.
 
-## The handoff
+## Batch beads into one look
 
-Four lines, verbatim shape, and **never `open` the page for the navigator** — the link is clickable,
-and opening it for them steals focus every pass whether or not they said yes to looking now:
+Starting the shell, proving a fixture and importing it is the expensive part, so share it. After
+the verifier's candidate lists are built, group the ordinary candidates:
 
+- **Batch together** beads that are all in the verification tree at the same `origin/main` sha and
+  share a mental model: the market columns (`BUY`/`SELL` against Silver and Items) are one; the
+  Problems panel and its findings are another; the month-end silver of one unit is a third. **One
+  fixture and one hex must serve every bead in it**, proved together by the batch scan above —
+  when no hex serves them all, drop a bead from the batch rather than trim a fixture to fit.
+- **Keep apart** a bead whose look needs a fresh game, a different ruleset, or emptied storage that
+  would spoil the others' state, and a reopened `verification:failed` bead: its rebuild deserves its
+  own clean look.
+- **At most four beads per batch.** The question tool takes four questions per call, and the verdict
+  call asks one per bead. Never batch a whole family because it happens to share a fixture.
+
+Say each batch and its reason in one line before launching, for example "batch A: ah-x1, ah-x2,
+ah-x3, all market columns on hex (12,8) of `g5-f21-t39.rep`, one look at `<short sha>`". Then, per
+batch:
+
+1. Prepare every bead (verify-bead's *Prepare*): one checklist per bead, criterion by criterion, with
+   each expected figure from the probe above.
+2. Launch once (verify-bead's *Launch*), check the core (above), and take the storage snapshot
+   (below) before the first import.
+3. Walk the beads in the order that reaches their states most cheaply, keeping a separate evidence
+   log per bead. A screenshot can serve two beads, but name it in both logs.
+4. **Guard against state bleed between beads**: begin each bead's checks from the orders box as its
+   probe assumed — clear the order an earlier bead typed before typing the next. An order left
+   behind changes what the next bead shows, and the verdict is then confidently wrong.
+5. Collect every human check in the batch into **one** hand-off (below).
+6. Explore once for the whole batch (below).
+7. Write **one report per bead** onto that bead, then ask for the batch's verdicts in **one** call of
+   the question tool, one question per bead.
+
+A batch never merges verdicts: each bead passes or fails on its own evidence, and "mostly passed" is
+not a verdict for any bead. A failure found mid-batch does not stop the look; finish the batch,
+then record each bead by its own recipe.
+
+## Protect the navigator's data
+
+The browser is the navigator's own Chrome, and the web shell's origin (`http://localhost:<port>`)
+holds every game they have loaded there: the games list and one IndexedDB database per game, with
+their imported reports and order drafts, and their map views and settings in `localStorage`.
+Importing a fixture, typing orders and deleting a game during the look all write to it. So
+**snapshot before the first import, restore when the look is over, including after a blocker**.
+
+`scripts/verify-storage.js` does both, and keeps the copy inside the browser so a game's values stay
+exact. Read the file from the verification tree and paste its whole text, followed by the call, into
+the Chrome integration's JavaScript tool, on a tab of the shell's origin:
+
+```js
+/* the whole text of scripts/verify-storage.js */
+await atlantisVerifyStorage.snapshot()   // -> { databases, localStorageKeys, takenAt }
 ```
-verifying <id> at origin/main <short sha>, fetched <time>.
-The <name> shell is up at <url> with the fixture already prepared.
 
-The script — open this first:
-  file:///<absolute path>/.cerebro/scratch/verify-<id>.html
+and when the look is over:
 
-<n> steps, about <n> minutes. Tell me when you have a verdict:
-  passed · passed with a follow-up · failed
+```js
+/* the whole text of scripts/verify-storage.js */
+await atlantisVerifyStorage.restore()    // -> { databases, localStorageKeys }
 ```
 
-**A batch's handoff says so, and names every bead in it**, so the navigator knows what they are
-committing to before they start rather than discovering it on the page:
+then reload every tab of the shell: a restore deletes and rebuilds the databases, and the app stops
+its storage when another connection deletes one, so a tab left open shows that until it is reloaded.
 
-```
-verifying <n> beads at origin/main <short sha>, fetched <time>.
-The <name> shell is up at <url> with the fixture already prepared.
+Two refusals are the script protecting the data, never something to work round:
 
-The script — open this first:
-  file:///<absolute path>/.cerebro/scratch/verify-<slug>.html
+- **`snapshot()` refuses while an earlier snapshot waits** — run `await atlantisVerifyStorage.status()`
+  to see when it was taken. It is a look that never restored, so it may be the navigator's real data.
+  Ask them before anything else: restore it now, or keep what is there and discard it.
+- **`restore()` reports a database still blocked** by another tab. Ask the navigator to close or
+  reload their other tabs of the shell, then run it again; the snapshot is kept until a restore
+  succeeds.
 
-<n> steps, about <n> minutes — longer than a single bead. Tell me the verdicts bead by bead:
-  <id> · <id> · <id> — each passed · passed with a follow-up · failed
-```
+A look that needs empty storage (a first visit, an empty games list) deletes the games through the
+app **after** the snapshot. Say in each report that storage was snapshotted and restored, with the
+counts both calls returned.
 
-Quote the minutes honestly. A batch of five is a quarter of an hour, and saying "about five minutes"
-of one buys a yes that the sitting then spends.
+## The look, for Atlantis HUD
 
-The sha is visible here without a click on purpose — two retrospectives (`ah-m9q.2.md`,
-`ah-wxk.1-verifier.md`) turn on exactly that fact, so it is not left to a click into the page.
+On top of verify-bead's *Look*:
+
+- **Import the fixture as a player would**: create the game with the ruleset the bead is about, then
+  the **Import** button (`packages/shared/src/workspace/AppHeader.tsx`), setting its file input with
+  the Chrome integration's file-upload tool to the fixture's absolute path. Read every control's
+  label out of the component rather than recall it.
+- **Read the figures the probe predicted**, and screenshot the cell or panel that shows each. A
+  figure that differs from the probe is a finding only once the probe is known to match the orders
+  the app holds (*An expected figure comes from the orders the app holds*, above).
+- **The mockup.** A bead agreed with a mockup names it under `docs/ui/`. Open it in a second tab
+  (serve its directory over http when Chrome will not open the `file://` URL:
+  `python3 -m http.server <free port> --bind 127.0.0.1 --directory <dir>`, and stop it afterwards),
+  compare it with the app, and screenshot both.
+- **The console.** Read the console messages after the journey, filtered by a pattern rather than
+  dumped whole. A new error or warning during the journey is a finding.
+
+## Human checks: one hand-off per batch
+
+Some criteria have no screenshot that settles them. They go to the navigator, prepared so their part
+takes a minute or two:
+
+- **"Good enough"**: whether a look, a layout, an animation or a sound is good enough — legibility on
+  the map, whether a colour reads, whether a hover feels right. The acceptance cannot pin these down,
+  and a screenshot shows only that something is there.
+- **Desktop-only criteria** (*Which shell*, above), with the desktop shell already started.
+- **Anything you could not reach**: a state the fixture and the app cannot build, a device or
+  environment this machine does not have.
+
+The hand-off, **once per batch**, after your own checks and before the report:
+
+1. Leave the shell running and the app **in the exact state** to judge, in a tab you name: the game
+   imported, the hex selected, the panel open, the order typed. Restore the storage snapshot only
+   after they answer.
+2. Write `asking`, then ask in **one** call of the question tool, one question per human check (at
+   most four; split a longer list into consecutive calls). Each question says which bead it is for,
+   the URL and tab (or the desktop window), what is on screen right now, what to judge and what good
+   looks like, quoting the acceptance or `## Outcome`, and, where needed, a few numbered steps to
+   try. Options: **Good**, **Concern** (works, but worth a follow-up), **Fail** (does not meet what
+   was agreed), each with room for a note.
+3. Write `working` the instant they answer. Copy each answer and note into that bead's log verbatim,
+   attributed to the navigator. A human check left unanswered is a gap, not a pass.
+
+A batch with no human check skips the hand-off and goes straight to the report. If the navigator is
+away, the beads stay pending with the report attached, as verify-bead says, and the next pass
+re-asks from the report without looking again.
+
+## Explore near the change
+
+After the agreed criteria and before the report, spend **about 10–15 minutes per batch** using the
+app near what changed, as a curious player would. No script; aim at the change's edges:
+
+- the neighbouring orders and their spelling variants (wrong case, an abbreviation, `ALL` where a
+  number was, a quantity larger than the unit holds), looked up with `pnpm run atlantis` before you
+  decide what the game would do;
+- the units, hexes and panels one step away from the change, and the same check on another faction
+  or turn the fixture carries;
+- doing things in the wrong order, repeating them, or undoing them: delete the order and type it
+  again, switch hex and come back, re-import the report;
+- reloading the page with the change on screen, so what is stored comes back;
+- the keyboard-only path through the controls the bead touched.
+
+Log each finding with its steps, what appeared and a screenshot. Then sort it:
+
+- **A regression this batch caused** — it worked before the bead's commit, and the bead's diff
+  explains the break — counts against that bead's verdict. Say which criterion or outcome it breaks.
+- **Everything else** (an older defect, a rough edge, an idea) is a proposed follow-up and never
+  fails the bead.
+
+When unsure which it is, say so in the report and recommend the follow-up. Past the quarter-hour the
+returns drop off fast; stop, even with ideas left.
+
+## Present the results
+
+The report on each bead follows verify-bead's *Recommend* — its first line is
+`Verification report at <full sha>` — with these sections:
+
+- the bead's title and its batch;
+- the shell, the fixture, the hex, and the storage snapshot's counts;
+- the evidence log, one entry per criterion, with the human checks marked as the navigator's
+  answers;
+- **Exploration**: what you tried, and each finding with its sorting;
+- the **gaps**: what nobody could reach;
+- the **recommendation**: Passed, Passed with a follow-up, or Failed (build or plan), with the one
+  or two facts it turns on;
+- the **proposed follow-ups**: for each, a title in *Writing a good bead* form, the outcome for the
+  player (or the developer), one acceptance line, and why it is not a defect in this bead. A defect
+  in shipped behaviour is proposed as a bug (`--type bug --labels bugfix`), anything else as a task.
+  Both are filed at P4, unranked, and only when the navigator approves them.
+
+**A hand-made fixture announces itself** at the top of the report, before the evidence, with this
+wording pattern, the parenthesised parts filled in:
+
+> **The data here was made for this check.** No committed report has *(the shape that was
+> missing)*, so I trimmed *(the report it came from)* down to *(what is left)*. It parses clean
+> *(counts)* and *(the precondition)* — but it is not real game data, so a number that looks strange
+> may be my fixture rather than the app.
+
+Then in chat, before the verdict question, give the navigator a short summary per batch, with the
+sha visible: one line per bead with the recommendation and the facts it turns on, then the
+follow-ups. The full evidence is on the beads. Ask for the verdicts and the follow-ups in one call
+where they fit in four questions, and in consecutive calls where they do not: accept or change each
+recommended verdict, and file or drop each follow-up. Record only what they answered, by the recipes
+in `agents/verifier.md`.
 
 ## When the build fails
 
-**Never hand over a broken application, and never render a verdict against one.** Say what failed,
+**Never look at a broken application, and never recommend a verdict against one.** Say what failed,
 in which tree, at which sha, with the error text; file nothing, change nothing, and leave the bead
-`verification:pending`. This is one of the two states that never becomes a page — it reaches the
-navigator in the terminal before any link is written, because a broken build is not a script anyone
-could follow.
+`verification:pending`. It reaches the navigator in the terminal as a blocker (verify-bead's
+*Launch*), never as a report.
 
 Two build traps this project has already paid for (`.cerebro/traps.md`), worth knowing before you
 report a failure as a mystery:
@@ -420,3 +485,10 @@ report a failure as a mystery:
 - **`vite preview` without `--strictPort` silently serves somebody else's bundle.** A green-looking
   launch on the wrong build looks exactly like a passed verification of the wrong thing. Run the
   launch command exactly as `project-conf` declares it — it already carries the right flags.
+
+## When the look is over
+
+Restore the storage snapshot and reload the shell's tabs, close the tabs you opened, and stop every
+server you started (the shell, the desktop shell, any `http.server` for a mockup), and only those.
+A made fixture and the throwaway probe stay uncommitted in the verification tree, and nothing is
+ever committed from it.
