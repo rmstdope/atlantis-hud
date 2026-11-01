@@ -111,3 +111,25 @@ describe("StudyOrdersWritePrompt — casts", () => {
     expect(draw(aPlan())).not.toContain("study-orders-write-cast-");
   });
 });
+
+describe("StudyOrdersWritePrompt — later turns (ah-1f87z)", () => {
+  it("draws_the_later_turns_lead_and_row", () => {
+    const lead = "1 mage. Each mage's month-long order is replaced, and so are any later turns his orders already hold.";
+    const markup = draw(
+      aPlan({
+        lead,
+        rows: [
+          {
+            unitId: "1234",
+            who: "Ereb (1234)",
+            detail: "STUDY FORC replaces STUDY FORC · 4 later turns replace the 2 already there",
+            writes: true,
+            cast: null
+          }
+        ]
+      })
+    );
+    expect(markup).toContain("1 mage. Each mage&#x27;s month-long order is replaced");
+    expect(markup).toContain("STUDY FORC replaces STUDY FORC · 4 later turns replace the 2 already there");
+  });
+});

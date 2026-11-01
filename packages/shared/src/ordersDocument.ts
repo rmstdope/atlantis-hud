@@ -1157,6 +1157,101 @@ function atTopLevel(orders: string, syntax: OrderCommentSyntax): boolean[] {
 }
 
 /**
+ * For each line, whether it belongs to one of the unit's own `TURN ... ENDTURN` blocks - the
+ * `TURN` (or `@TURN`) line at depth zero, everything nested in it, and its closing `ENDTURN`.
+ * A `TURN` inside a `FORM` is the formed unit's and is not among them (`rules/form`, `rules/turn`).
+ */
+function inOwnTurnBlock(orders: string, syntax: OrderCommentSyntax): boolean[] {
+  let depth = 0;
+  let inTurn = false;
+  return orders.split("\n").map((line) => {
+    const command = commandOf(line, syntax);
+    if (command === "ENDTURN" || command === "END") {
+      depth = Math.max(0, depth - 1);
+      const was = inTurn;
+      if (depth === 0) {
+        inTurn = false;
+      }
+      return was;
+    }
+    if (command === "FORM" || command === "TURN") {
+      if (depth === 0) {
+        inTurn = command === "TURN";
+      }
+      depth += 1;
+    }
+    return inTurn;
+  });
+}
+
+/** How many `TURN ... ENDTURN` blocks of the unit's own its orders hold (ah-1f87z). */
+export function turnBlockCount(orders: string, syntax: OrderCommentSyntax): number {
+  const own = atTopLevel(orders, syntax);
+  return orders.split("\n").filter((line, index) => own[index] === true && commandOf(line, syntax) === "TURN")
+    .length;
+}
+
+/**
+ * The orders without any of the unit's own `TURN ... ENDTURN` blocks, `@TURN` ones included, so
+ * the study planner's later turns replace them rather than run after them (ah-1f87z). Everything
+ * else, a `FORM` block and any `TURN` inside it included, is left exactly as it was.
+ */
+export function stripTurnBlocks(orders: string, syntax: OrderCommentSyntax): string {
+  const inTurn = inOwnTurnBlock(orders, syntax);
+  return orders
+    .split("\n")
+    .filter((_line, index) => inTurn[index] !== true)
+    .join("\n");
+}
+
+/** For each line, whether it is one of the unit's own month-long orders written with `@`. */
+function ownRepeatedLongOrders(orders: string, syntax: OrderCommentSyntax): boolean[] {
+  const own = atTopLevel(orders, syntax);
+  return orders
+    .split("\n")
+    .map(
+      (line, index) =>
+        own[index] === true && lexOrderLine(line, syntax).repeat && isCommand(line, LONG_ORDER_COMMANDS, syntax)
+    );
+}
+
+/**
+ * Whether the unit's own orders repeat a month-long order (`@WORK`, `@STUDY FORC`…). While one
+ * does, the game never starts a `TURN` block - it carries every one forward unopened (the engine's
+ * template writer, aregion.cpp, unwraps a block only for a unit with no repeated month order; the
+ * notes of ah-1f87z) - so the study planner's later turns would never run (ah-1f87z).
+ * Only depth zero counts: a `FORM`'s or a `TURN`'s lines are not this unit's month.
+ */
+export function repeatsLongOrder(orders: string, syntax: OrderCommentSyntax): boolean {
+  return ownRepeatedLongOrders(orders, syntax).some(Boolean);
+}
+
+/**
+ * The orders with every one of the unit's own repeated month-long orders run once instead: each
+ * becomes `rewrite(now)` at its own indentation, where `now` is its code as written without the `@`
+ * and without its old comment, which the rewrite replaces. `now` lists them in order (ah-1f87z).
+ */
+export function unrepeatLongOrders(
+  orders: string,
+  syntax: OrderCommentSyntax,
+  rewrite: (now: string) => string
+): { orders: string; now: string[] } {
+  const repeated = ownRepeatedLongOrders(orders, syntax);
+  const now: string[] = [];
+  const lines = orders.split("\n").map((line, index) => {
+    if (repeated[index] !== true) {
+      return line;
+    }
+    const indent = /^\s*/u.exec(line)?.[0] ?? "";
+    const commentAt = lexOrderLine(line, syntax).commentAt;
+    const code = (commentAt === null ? line : line.slice(0, commentAt)).trim().replace(/^@\s*/u, "");
+    now.push(code);
+    return `${indent}${rewrite(code)}`;
+  });
+  return { orders: lines.join("\n"), now };
+}
+
+/**
  * The orders with every line the unit itself issued that matches `command` removed, leaving the
  * lines of a nested `FORM` or `TURN` block exactly as they were.
  *
