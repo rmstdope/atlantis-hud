@@ -217,6 +217,32 @@ fn refusal_sentence(issue: &TransportTargetIssue) -> String {
     }
 }
 
+/// The warning on a `TRANSPORT`/`DISTRIBUTE ... ALL <item> [EXCEPT n]` whose sender holds none of
+/// the item while its sharing faction-mates hold `held_by_sharers` (`ah-41tqi`). ALL ships only the
+/// sender's own stock (`../Atlantis runorders.cpp`, `RunTransportOrders`:
+/// `amt = u->items.GetNum(t->item)`, less the EXCEPT), while an exact amount is cut to
+/// `GetSharedNum`, the sharers' stock too (`rules/share`). So the order moves nothing, and the
+/// exact order that would move something is named - in backticks, the code span the message
+/// renderers show in code style - when what the sharers hold exceeds the EXCEPT. `target` is the
+/// target as the player wrote it; `tag` the item's code.
+pub(crate) fn all_left_to_sharers_sentence(
+    order: super::transport::ShipmentOrder,
+    target: &str,
+    tag: &str,
+    except: i64,
+    held_by_sharers: i64,
+) -> String {
+    let word = order.word();
+    let refusal = format!("This unit holds no {tag}, so this {word} moves nothing.");
+    let amount = held_by_sharers - except.max(0);
+    if amount <= 0 {
+        return refusal;
+    }
+    format!(
+        "{refusal} `{word} {target} {amount} {tag}` would draw on the {held_by_sharers} your sharing units hold."
+    )
+}
+
 #[cfg(test)]
 mod tests {
     //! Every sentence below was pinned, word for word, by `packages/shared/src/unitPreview.test.ts`
@@ -422,5 +448,37 @@ mod tests {
         unsettled.unsettled = true;
         says(&unsettled, "Could not count 19693 SILV for unit 901 because it is not a quartermaster now, but this month's orders may make it one before TRANSPORT runs.");
         says(&all("99999", 19693, "SILV", R::EligibilityUnknown), "Could not count 19693 SILV for unit 99999 because your report does not show whether it is an eligible transport target.");
+    }
+
+    /// `ah-41tqi`: ALL ships only the sender's own stock (`../Atlantis runorders.cpp`,
+    /// `RunTransportOrders`: `amt = u->items.GetNum(t->item)`), an exact amount its sharers' too
+    /// (`GetSharedNum`), so the warning names the exact order - in a code span - when one would
+    /// move anything. The words are the bead's acceptance, verbatim.
+    #[test]
+    fn an_all_from_a_unit_holding_none_suggests_the_exact_order() {
+        use crate::orders::transport::ShipmentOrder::{Distribute, Transport};
+        assert_eq!(
+            all_left_to_sharers_sentence(Transport, "5", "PIKE", 0, 35),
+            "This unit holds no PIKE, so this TRANSPORT moves nothing. `TRANSPORT 5 35 PIKE` would draw on the 35 your sharing units hold."
+        );
+        assert_eq!(
+            all_left_to_sharers_sentence(Transport, "5", "PIKE", 10, 35),
+            "This unit holds no PIKE, so this TRANSPORT moves nothing. `TRANSPORT 5 25 PIKE` would draw on the 35 your sharing units hold."
+        );
+        assert_eq!(
+            all_left_to_sharers_sentence(Distribute, "5", "PIKE", 0, 35),
+            "This unit holds no PIKE, so this DISTRIBUTE moves nothing. `DISTRIBUTE 5 35 PIKE` would draw on the 35 your sharing units hold."
+        );
+        for except in [35, 40] {
+            assert_eq!(
+                all_left_to_sharers_sentence(Transport, "5", "PIKE", except, 35),
+                "This unit holds no PIKE, so this TRANSPORT moves nothing.",
+                "EXCEPT {except}"
+            );
+        }
+        assert_eq!(
+            all_left_to_sharers_sentence(Transport, "NEW 2", "SILV", 0, 120),
+            "This unit holds no SILV, so this TRANSPORT moves nothing. `TRANSPORT NEW 2 120 SILV` would draw on the 120 your sharing units hold."
+        );
     }
 }
