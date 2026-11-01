@@ -53,6 +53,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^5.2.0
         version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      fake-indexeddb:
+        specifier: 6.2.5
+        version: 6.2.5
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@22.20.1)
