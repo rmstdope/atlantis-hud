@@ -708,6 +708,13 @@ pub enum ItemChangeCause {
     /// [`ItemChange::borrower`] is the unit whose shipment it was, and `other` the shipment's
     /// receiver as [`ItemChangeCause::TransportedOut`] names it (`ah-iidht`).
     LentForTransport,
+    /// Drawn from this sharing unit for another unit's exact `TRANSPORT`/`DISTRIBUTE` that the
+    /// hex could not pay the shipping fee for: the engine spends the goods before it judges the
+    /// fee and an unpaid one puts them all on the sender (../Atlantis `runorders.cpp`,
+    /// `RunTransportOrders`; `rules/share`, `ah-b7g4d`), so they reach the sender and are never
+    /// sent. [`ItemChange::borrower`] and `other` as on [`ItemChangeCause::LentForTransport`];
+    /// its own cause so the sharer's hover can say the shipment did not go (`ah-w5yu0`).
+    LentForRefusedTransport,
     /// Collected by this unit's `TAKE FROM`.
     Took,
     /// Collected from this unit by another unit's `TAKE FROM`.
@@ -810,8 +817,8 @@ pub struct ItemChange {
     /// The unit whose order this unit's goods paid for: `Some` only on
     /// [`ItemChangeCause::LentForGive`], where `other` is that order's receiver (`ah-49is`), on
     /// [`ItemChangeCause::LentForDiscard`], where there is no receiver (`ah-84b1`), and on
-    /// [`ItemChangeCause::LentForTransport`], where `other` is the shipment's receiver
-    /// (`ah-iidht`).
+    /// [`ItemChangeCause::LentForTransport`] and [`ItemChangeCause::LentForRefusedTransport`],
+    /// where `other` is the shipment's receiver (`ah-iidht`, `ah-w5yu0`).
     //
     // `skip_serializing_if` is load-bearing, as on `FieldChange::cause`: the TypeScript says
     // `borrower?:`, a key that may be absent and is never `null`.
@@ -4730,7 +4737,14 @@ impl Working {
                     );
                     // What the sharers made up: a loan on each sharer's row for this shipment,
                     // and a draw on the sender's, so the goods pass through it (`ah-iidht`).
-                    self.record_sharer_draws(pending.sender, &draws, &name, &tag, &receiver_party);
+                    self.record_sharer_draws(
+                        pending.sender,
+                        &draws,
+                        &name,
+                        &tag,
+                        &receiver_party,
+                        ItemChangeCause::LentForTransport,
+                    );
                     // `line` is `None`: what a transport carries is the order's `order_index`,
                     // which `TransportSent` already holds, not a document line (`ah-rgkk.3.1`).
                     self.units[pending.sender].item_log.record(
@@ -4823,7 +4837,9 @@ impl Working {
     }
 
     /// A loan on each sharer's row for `sender`'s shipment to `receiver`, and the matching draw on
-    /// the sender's, so the goods pass through it (`ah-iidht`).
+    /// the sender's, so the goods pass through it (`ah-iidht`). `cause` is the loan's:
+    /// [`ItemChangeCause::LentForTransport`] for a shipment that goes out,
+    /// [`ItemChangeCause::LentForRefusedTransport`] for one refused for its fee (`ah-w5yu0`).
     fn record_sharer_draws(
         &mut self,
         sender: usize,
@@ -4831,6 +4847,7 @@ impl Working {
         name: &str,
         tag: &str,
         receiver: &ItemChangeParty,
+        cause: ItemChangeCause,
     ) {
         let is_man = self.ruleset.is_man(tag);
         let sender_party = self.units[sender].as_party();
@@ -4841,7 +4858,7 @@ impl Working {
                     tag: tag.to_string(),
                     name: name.to_string(),
                     delta: -take,
-                    cause: ItemChangeCause::LentForTransport,
+                    cause,
                     line: None,
                     unit_price: None,
                     other: Some(receiver.clone()),
@@ -4910,7 +4927,14 @@ impl Working {
                 &tag,
                 drawn,
             );
-            self.record_sharer_draws(pending.sender, &draws, &name, &tag, &receiver_party);
+            self.record_sharer_draws(
+                pending.sender,
+                &draws,
+                &name,
+                &tag,
+                &receiver_party,
+                ItemChangeCause::LentForRefusedTransport,
+            );
         }
     }
 
@@ -16423,13 +16447,29 @@ mod tests {
             0,
             "the sharer's four were drawn for the shipment"
         );
-        let lent: Vec<(ItemChangeCause, i64)> = sharer
+        // `ah-w5yu0`: the loan is the refused shipment's, so the hover can say it was not sent.
+        let lent: Vec<(ItemChangeCause, i64, Option<&str>, Option<&str>)> = sharer
             .item_changes
             .iter()
             .filter(|change| change.tag == "STON")
-            .map(|change| (change.cause, change.delta))
+            .map(|change| {
+                (
+                    change.cause,
+                    change.delta,
+                    change.borrower.as_ref().map(|party| party.unit_id.as_str()),
+                    change.other.as_ref().map(|party| party.unit_id.as_str()),
+                )
+            })
             .collect();
-        assert_eq!(lent, vec![(ItemChangeCause::LentForTransport, -4)]);
+        assert_eq!(
+            lent,
+            vec![(
+                ItemChangeCause::LentForRefusedTransport,
+                -4,
+                Some("900"),
+                Some("901")
+            )]
+        );
         assert_eq!(
             reach_held(&response, "900", "STON"),
             9,
