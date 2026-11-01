@@ -731,6 +731,14 @@ describe("studyOrders — casts", () => {
     expect(text.slice(-2)).toEqual(["    ; CAST FARS — he won't know farsight yet, left out", "  ENDTURN"]);
   });
 
+  it("unticked_a_section_whose_only_plan_is_a_later_cast_is_withheld_and_counts_it", () => {
+    const row = aRow({ cells: [{ kind: "idle" }, { kind: "idle" }, { kind: "idle" }], castHalves: [null, null, planned("FARS")] });
+    const [section] = studyOrders({ groups: [ownGroup], rows: [row], turns: [72, 73, 74], notices: [], casts: { tree, write: false } })
+      .sections;
+    expect(section.withheld).toEqual({ casts: 1 });
+    expect(section.hasCast).toBe(true);
+  });
+
   it("the_entry_carries_the_cast_the_write_needs", () => {
     const orders = studyOrders({
       groups: [ownGroup],
