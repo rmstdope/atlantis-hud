@@ -3520,6 +3520,10 @@ fn forecast_hex(
     // sharers that paid it. What is credited here is that record's borrow, up to the bill, into
     // the sender's `shared_silver_for_orders`, which the `Lent` pass then debits its lenders for
     // (`ah-nq3k`, `ah-k719`). The `Shipped` lines themselves are listed last.
+    // What each unit was short of before a refused shipment's fee was added to its ask, so the
+    // hover can be told, once refused studies and casts are handed back below, whether the fee is
+    // what is left short (`ah-01c9d`). `None` for a unit with no refused shipment.
+    let mut short_before_fee: Vec<Option<i64>> = vec![None; into.len() - start];
     let shipped_moves: Vec<Vec<SilverMove>> = into[start..]
         .iter_mut()
         .enumerate()
@@ -3576,14 +3580,8 @@ fn forecast_hex(
                 forecast.wanted_for_orders = forecast
                     .wanted_for_orders
                     .map(|wanted| wanted.saturating_add(refused));
-                let earlier = forecast.short_for_orders;
+                short_before_fee[index] = Some(forecast.short_for_orders.unwrap_or(0));
                 forecast.short_for_orders = super::silver::short_for_orders_of(forecast);
-                // The fee deepened the shortfall past what an earlier order left short, so the
-                // fee is what the unit is short on, not that earlier order (`ah-01c9d`).
-                if forecast.short_for_orders.unwrap_or(0) > earlier.unwrap_or(0) {
-                    forecast.short_on = Some(super::silver::SilverSpender::Ship);
-                    forecast.short_buy = None;
-                }
             }
             shipped_moves
         })
@@ -3826,7 +3824,12 @@ fn forecast_hex(
     } else {
         vec![StudyOutcome::NoStudy; hex.units.len()]
     };
-    for ((ordered, forecast), study) in hex.units.iter().zip(into[start..].iter_mut()).zip(&studies)
+    for (((ordered, forecast), study), before_fee) in hex
+        .units
+        .iter()
+        .zip(into[start..].iter_mut())
+        .zip(&studies)
+        .zip(&short_before_fee)
     {
         let unit_id = &ordered.unit.unit_id;
         let mut refused: Vec<(Option<i64>, SilverChangeCause, i64, i64)> = Vec::new();
@@ -3859,8 +3862,21 @@ fn forecast_hex(
             ));
         }
         refused.sort_by_key(|(line, ..)| *line);
+        let handed_back: i64 = refused.iter().map(|(_, _, cost, _)| *cost).sum();
         for (line, cause, cost, available) in refused {
             hand_back_refused(forecast, line, cause, cost, available);
+        }
+        // A refused shipment's fee is what the unit is short on when nothing an earlier order
+        // asked for is still short once the game's refusals are handed back: TRANSPORT is the
+        // month's last spend (`rules/sequenceofevents`), and a STUDY or CAST refused before it
+        // takes nothing and is carried on its own line (`ah-01c9d`). An earlier order the game
+        // only cuts - a `BUY` - is still short, and keeps the name.
+        if let Some(before_fee) = *before_fee {
+            if before_fee <= handed_back && forecast.short_for_orders.is_some_and(|short| short > 0)
+            {
+                forecast.short_on = Some(super::silver::SilverSpender::Ship);
+                forecast.short_buy = None;
+            }
         }
     }
 
@@ -65213,6 +65229,32 @@ BUILD
             Some(crate::orders::silver::SilverSpender::Ship),
             "the $45 shortfall is the shipping fee, not the $10 study: {silver:#?}"
         );
+    }
+
+    /// The other way round (review of PR #1903, finding 1): a `BUY` the game really does cut stays
+    /// in the shortfall - nothing hands it back - so it is still what the unit is short on, and the
+    /// hover still says how many it buys (`rules/buy`: "will attempt to buy as many as it can").
+    #[test]
+    fn a_short_purchase_beside_a_refused_shipment_is_still_what_the_unit_is_short_on() {
+        let mut regions = unpaid_shipping(0);
+        regions[0].for_sale.push(MarketItem {
+            amount: 40,
+            name: "horses".to_string(),
+            tag: "HORS".to_string(),
+            price: 12,
+        });
+        let orders = "unit 900\nBUY 5 horses\nTRANSPORT 901 9 FUR\n";
+        let silver = sender_silver(regions, orders, with_map());
+        assert!(
+            silver.short_for_orders.is_some_and(|short| short > 0),
+            "{silver:#?}"
+        );
+        assert_eq!(
+            silver.short_on,
+            Some(crate::orders::silver::SilverSpender::Buy),
+            "{silver:#?}"
+        );
+        assert!(silver.short_buy.is_some(), "{silver:#?}");
     }
 
     /// The agreed record: "The goods stay and the silver stays; no shipping line appears in the
