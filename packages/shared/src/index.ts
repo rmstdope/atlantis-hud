@@ -96,3 +96,6 @@ export * from "./workspace/unitSource";
 export * from "./workspace/foreignUnits";
 export * from "./workspace/armyRows";
 export * from "./workspace/UnitTableDock";
+export * from "./oldAddress";
+export * from "./workspace/OldAddressNotice";
+export { deliverGameBackupExport } from "./workspace/exportActions";
