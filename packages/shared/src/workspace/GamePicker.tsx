@@ -124,6 +124,89 @@ export function RemoveGameConfirm({
 }
 
 /**
+ * Where the picker's one shared `error` is reported (ah-md91c). The new-game form shows a failed
+ * create in its own box, as it always has; anything else - an import above all, which can now be
+ * pressed while the form is open - goes to the menu's error line under the Games content. On the
+ * This game tab the form is not drawn, so everything goes to the error line there.
+ */
+export function pickerErrorPlacement({
+  error,
+  creating,
+  lastAction,
+  tab
+}: {
+  error: string | null;
+  creating: boolean;
+  /** What the player last started from the Games tab, or null when neither has been pressed. */
+  lastAction: "create" | "import" | null;
+  /** The tab showing: the form is only drawn on Games. */
+  tab: "games" | "settings";
+}): "form" | "picker" | null {
+  if (error === null) {
+    return null;
+  }
+  return tab === "games" && creating && lastAction !== "import" ? "form" : "picker";
+}
+
+/**
+ * The question a backup of a game that is already here asks (ah-c0m): Replace, Keep both or
+ * Cancel. Opens directly under "+ Import game backup…" on the Games tab (ah-md91c), with Cancel
+ * focused; a component of its own so its markup can be pinned without a browser.
+ */
+export function ImportBackupConfirm({
+  gameName,
+  busy,
+  onReplace,
+  onKeepBoth,
+  onCancel
+}: {
+  gameName: string;
+  busy: boolean;
+  onReplace: () => void;
+  onKeepBoth: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div data-testid="game-import-confirm" className="mt-1.5 rounded border border-danger/40 p-1.5">
+      <p className="text-ink-soft">
+        “{gameName}” is already here. Replace it with the backup, or import the backup as a second
+        game?
+      </p>
+      <p className="mt-1 text-ink-soft">Replacing erases its current turns, orders and remembered map.</p>
+      <div className="mt-1.5 flex justify-end gap-1.5">
+        <button
+          type="button"
+          data-testid="game-import-replace"
+          disabled={busy}
+          onClick={onReplace}
+          className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
+        >
+          Replace
+        </button>
+        <button
+          type="button"
+          data-testid="game-import-keep-both"
+          disabled={busy}
+          onClick={onKeepBoth}
+          className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
+        >
+          Keep both
+        </button>
+        <button
+          type="button"
+          data-testid="game-import-cancel"
+          autoFocus
+          onClick={onCancel}
+          className="rounded border border-edge px-2 py-0.5 text-ink"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The games the player has, and what can be done with them.
  *
  * A panel anchored under the header indicator rather than a centred modal: switching games is a
@@ -136,7 +219,8 @@ export function RemoveGameConfirm({
  * (ah-58n). There is no undo anywhere in this application, and a game holds a season of turns.
  *
  * Importing a backup of a game that is already here asks the same way (ah-c0m) - Replace, Keep
- * both, or Cancel - and says what replacing erases.
+ * both, or Cancel - and says what replacing erases. Import lives on the Games tab, below
+ * "+ New game…" (ah-md91c): it makes a game, it does not import into the open one.
  *
  * The name can be changed in place from the This game tab (ah-lkw); the same rule that decides
  * what a name may be at creation decides it here too.
@@ -179,6 +263,12 @@ export function GamePicker({
   } | null>(null);
   const [tab, setTab] = useState<"games" | "settings">("games");
   const [pendingImport, setPendingImport] = useState<{ file: File; gameName: string } | null>(null);
+  const [lastAction, setLastAction] = useState<"create" | "import" | null>(null);
+  const errorPlacement = pickerErrorPlacement({ error, creating, lastAction, tab });
+  const startImport = (file: File, mode: BackupImportMode) => {
+    setLastAction("import");
+    onImport(file, mode);
+  };
   // `null` = at rest; a string = the draft currently in the field.
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -296,7 +386,7 @@ export function GamePicker({
       try {
         text = await file.text();
       } catch {
-        onImport(file, "new");
+        startImport(file, "new");
         return;
       }
       const identity = backupGameIdentity(text);
@@ -304,7 +394,7 @@ export function GamePicker({
       if (existing) {
         setPendingImport({ file, gameName: existing.metadata.gameName });
       } else {
-        onImport(file, "new");
+        startImport(file, "new");
       }
     })();
   };
@@ -451,75 +541,6 @@ export function GamePicker({
               >
                 Export game backup…
               </button>
-              <button
-                ref={importButtonRef}
-                type="button"
-                data-testid="import-game"
-                disabled={busy || isRenaming}
-                onClick={() => importRef.current?.click()}
-                className="mt-1.5 w-full rounded border border-edge bg-panel px-2 py-1 text-left text-brass hover:border-brass disabled:opacity-50"
-              >
-                Import game backup…
-              </button>
-              <input
-                ref={importRef}
-                data-testid="import-game-input"
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={onPickImport}
-              />
-              {pendingImport ? (
-                <div data-testid="game-import-confirm" className="mt-1.5 rounded border border-danger/40 p-1.5">
-                  <p className="text-ink-soft">
-                    “{pendingImport.gameName}” is already here. Replace it with the backup, or import the
-                    backup as a second game?
-                  </p>
-                  <p className="mt-1 text-ink-soft">Replacing erases its current turns, orders and remembered map.</p>
-                  <div className="mt-1.5 flex justify-end gap-1.5">
-                    <button
-                      type="button"
-                      data-testid="game-import-replace"
-                      disabled={busy}
-                      onClick={() => {
-                        onImport(pendingImport.file, "replace");
-                        setPendingImport(null);
-                      }}
-                      className="rounded border border-danger px-2 py-0.5 text-danger disabled:opacity-50"
-                    >
-                      Replace
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="game-import-keep-both"
-                      disabled={busy}
-                      onClick={() => {
-                        onImport(pendingImport.file, "copy");
-                        setPendingImport(null);
-                      }}
-                      className="rounded border border-brass px-2 py-0.5 text-brass disabled:opacity-50"
-                    >
-                      Keep both
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="game-import-cancel"
-                      autoFocus
-                      onClick={() => {
-                        setPendingImport(null);
-                        importButtonRef.current?.focus();
-                      }}
-                      className="rounded border border-edge px-2 py-0.5 text-ink"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-1.5 text-ink-soft">
-                  Import creates a new game; if it is already here you are asked whether to replace it.
-                </p>
-              )}
             </div>
           </div>
         ) : (
@@ -594,7 +615,14 @@ export function GamePicker({
 
             <div className="mt-1.5 border-t border-edge pt-1.5">
               {creating ? (
-                <GameForm busy={busy} error={error} onCreate={onCreate} />
+                <GameForm
+                  busy={busy}
+                  error={errorPlacement === "form" ? error : null}
+                  onCreate={(name, rulesetId, mapSizes) => {
+                    setLastAction("create");
+                    onCreate(name, rulesetId, mapSizes);
+                  }}
+                />
               ) : (
                 <button
                   type="button"
@@ -606,11 +634,49 @@ export function GamePicker({
                   + New game…
                 </button>
               )}
+              {/* ah-md91c: importing makes a game, so it lives with the games, directly below
+                  "+ New game…" and in its style - and stays below the form while that is open. */}
+              <button
+                ref={importButtonRef}
+                type="button"
+                data-testid="import-game"
+                disabled={busy}
+                onClick={() => importRef.current?.click()}
+                className="w-full rounded px-1.5 py-1 text-left text-brass hover:bg-panel disabled:opacity-50"
+              >
+                + Import game backup…
+              </button>
+              <input
+                ref={importRef}
+                data-testid="import-game-input"
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={onPickImport}
+              />
+              {pendingImport ? (
+                <ImportBackupConfirm
+                  gameName={pendingImport.gameName}
+                  busy={busy}
+                  onReplace={() => {
+                    startImport(pendingImport.file, "replace");
+                    setPendingImport(null);
+                  }}
+                  onKeepBoth={() => {
+                    startImport(pendingImport.file, "copy");
+                    setPendingImport(null);
+                  }}
+                  onCancel={() => {
+                    setPendingImport(null);
+                    importButtonRef.current?.focus();
+                  }}
+                />
+              ) : null}
             </div>
           </>
         )}
 
-        {error && !creating ? (
+        {errorPlacement === "picker" ? (
           <p data-testid="game-picker-error" role="alert" className="mt-1.5 text-danger">
             {error}
           </p>
