@@ -113,8 +113,19 @@ test("with games, Save all my games downloads one backup per game and lists them
   await expect(saveAll).toBeEnabled();
   await expect(saveAll).toBeFocused();
 
-  // Closing hands the focus back; nothing behind the dialog was reachable while it was open.
+  // The workspace's own chords stay behind the dialog: neither the help nor the palette opens
+  // under it, so one Escape still closes the dialog itself.
+  await page.keyboard.press("?");
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.press("Escape");
+  await expect(notice(page)).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // Focus goes back where it was when the app launched - the page itself.
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await expect(page.getByTestId("game-indicator")).toBeVisible();
+
+  await page.reload();
+  await expect(notice(page)).toBeVisible();
   await page.getByRole("button", { name: "Stay here for now", exact: true }).click();
   await expect(notice(page)).toHaveCount(0);
-  await expect(page.getByTestId("game-indicator")).toBeVisible();
 });

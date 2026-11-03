@@ -7,7 +7,7 @@ import {
   NEW_ADDRESS_URL,
   OLD_ADDRESS_HOST,
   failedLine,
-  saveAllGames,
+  saveAllGamesListedBy,
   savedLine,
   savingLabel
 } from "../oldAddress";
@@ -70,6 +70,13 @@ export function OldAddressNoticeView({
   return (
     <div
       data-testid="old-address-backdrop"
+      // A press on the darkened area does nothing, and must not move focus out to the page, where
+      // the workspace's chords would hear the next key.
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          event.preventDefault();
+        }
+      }}
       // Mounted over the report drop target: a file dropped on the backdrop is not an import.
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => event.preventDefault()}
@@ -117,8 +124,8 @@ export function OldAddressNoticeView({
                     {savedLine(outcome.saved)}
                   </p>
                 ) : null}
-                {outcome?.failed.map((gameName) => (
-                  <p key={gameName} data-testid="old-address-failed" role="alert" className="mt-1 text-danger">
+                {outcome?.failed.map((gameName, index) => (
+                  <p key={index} data-testid="old-address-failed" role="alert" className="mt-1 text-danger">
                     {failedLine(gameName)}
                   </p>
                 ))}
@@ -164,12 +171,19 @@ export function OldAddressNoticeView({
  * focus goes back on close to wherever it was before the dialog opened.
  */
 export function OldAddressNotice({
-  games,
+  hasGames,
+  listGames,
   saveOne,
   openExternal = OPEN_EXTERNAL_IN_NEW_TAB,
   onClose
 }: {
-  games: readonly GameToSave[];
+  /**
+   * Whether the launch found games here - or could not tell, which counts as having them: a player
+   * with games must never be told there is nothing to move.
+   */
+  hasGames: boolean;
+  /** Read again at each press, so the button saves whatever is here at that moment. */
+  listGames: () => Promise<readonly GameToSave[]>;
   /** Saves one game's backup; resolves as the shell's `TextFileSaver` does, `null` when cancelled. */
   saveOne: (game: GameToSave) => Promise<string | null>;
   openExternal?: OpenExternal;
@@ -199,12 +213,19 @@ export function OldAddressNotice({
   useEscapeToDismiss(onClose);
 
   const saveAll = () => {
-    void saveAllGames(games, saveOne, (done, total) => setPhase({ kind: "saving", done, total })).then(
+    void saveAllGamesListedBy(listGames, saveOne, (done, total) => setPhase({ kind: "saving", done, total })).then(
       (outcome) => setPhase({ kind: "finished", outcome })
     );
   };
 
-  const keepTabInside = (event: KeyboardEvent<HTMLDivElement>) => {
+  const keepKeysInside = (event: KeyboardEvent<HTMLDivElement>) => {
+    // The workspace listens on the document, and some of its chords (the palette, the help) open
+    // behind any dialog on purpose. Behind this one they would open inside the inert app, unseen,
+    // and take the next Escape for themselves. Escape itself is already handled by the dismiss
+    // layer, on the document's capture phase, before it ever reaches here.
+    if (event.key !== "Escape") {
+      event.stopPropagation();
+    }
     if (event.key !== "Tab" || panelRef.current === null) {
       return;
     }
@@ -218,14 +239,14 @@ export function OldAddressNotice({
 
   return (
     <OldAddressNoticeView
-      hasGames={games.length > 0}
+      hasGames={hasGames}
       phase={phase}
       onSaveAll={saveAll}
       onStay={onClose}
       onGoToNewAddress={() => openExternal(NEW_ADDRESS_URL)}
       panelRef={panelRef}
       saveButtonRef={saveButtonRef}
-      onKeyDown={keepTabInside}
+      onKeyDown={keepKeysInside}
     />
   );
 }

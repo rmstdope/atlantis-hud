@@ -31,30 +31,37 @@ export default function App({
   storageStop: StorageStopSource;
 }) {
   const [oldAddressOpen, setOldAddressOpen] = useState(() => isOldAddress(window.location.hostname));
-  // Read once, for the dialog; until it is known the dialog is not drawn, so it never shows the
-  // no-games words to a player who has games.
-  const [gamesHere, setGamesHere] = useState<GameToSave[] | null>(null);
+  const listGames = async (): Promise<GameToSave[]> =>
+    (await client.listGames()).map(({ metadata }) => ({
+      gameId: metadata.gameId,
+      gameName: metadata.gameName
+    }));
+  // Read once, for the dialog's words; until it is known the dialog is not drawn, so it never shows
+  // the no-games words to a player who has games. A list that cannot be read (another tab holding
+  // it) counts as having games: the steps stay, and the button reads the list again when pressed.
+  const [hasGamesHere, setHasGamesHere] = useState<boolean | null>(null);
   useEffect(() => {
     if (!oldAddressOpen) {
       return;
     }
     let current = true;
-    void client.listGames().then(
+    void listGames().then(
       (games) => {
         if (current) {
-          setGamesHere(games.map(({ metadata }) => ({ gameId: metadata.gameId, gameName: metadata.gameName })));
+          setHasGamesHere(games.length > 0);
         }
       },
-      // A list that cannot be read still owes the player the news and the new address.
       () => {
         if (current) {
-          setGamesHere([]);
+          setHasGamesHere(true);
         }
       }
     );
     return () => {
       current = false;
     };
+    // `listGames` is rebuilt every render from `client`, which is what it depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, oldAddressOpen]);
 
   const saveOne = async ({ gameId, gameName }: GameToSave) =>
@@ -81,8 +88,13 @@ export default function App({
           newAgeFromBrowser
         />
       </div>
-      {oldAddressOpen && gamesHere !== null ? (
-        <OldAddressNotice games={gamesHere} saveOne={saveOne} onClose={() => setOldAddressOpen(false)} />
+      {oldAddressOpen && hasGamesHere !== null ? (
+        <OldAddressNotice
+          hasGames={hasGamesHere}
+          listGames={listGames}
+          saveOne={saveOne}
+          onClose={() => setOldAddressOpen(false)}
+        />
       ) : null}
     </>
   );

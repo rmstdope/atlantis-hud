@@ -67,3 +67,28 @@ export async function saveAllGames<G extends GameToSave>(
   }
   return outcome;
 }
+
+/**
+ * What a failed line names when the games themselves could not be read: "Couldn’t save your
+ * games. Press the button to try again." - the agreed failure sentence, about all of them at once.
+ */
+export const UNREAD_GAMES = "your games";
+
+/**
+ * `saveAllGames` for a dialog that opened without being able to read the games list (another tab
+ * holding it, typically): the list is read again at the press, so a player who has games is never
+ * told there is nothing to move, and one that still cannot be read is a failure to try again.
+ */
+export async function saveAllGamesListedBy<G extends GameToSave>(
+  listGames: () => Promise<readonly G[]>,
+  saveOne: (game: G) => Promise<string | null>,
+  onProgress: (done: number, total: number) => void
+): Promise<SaveAllOutcome> {
+  let games: readonly G[];
+  try {
+    games = await listGames();
+  } catch {
+    return { saved: [], failed: [UNREAD_GAMES] };
+  }
+  return saveAllGames(games, saveOne, onProgress);
+}

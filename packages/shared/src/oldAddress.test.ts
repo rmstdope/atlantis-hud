@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { failedLine, isOldAddress, savedLine, saveAllGames, savingLabel } from "./oldAddress";
+import {
+  failedLine,
+  isOldAddress,
+  savedLine,
+  saveAllGames,
+  saveAllGamesListedBy,
+  savingLabel,
+  UNREAD_GAMES
+} from "./oldAddress";
 
 describe("isOldAddress", () => {
   it("is true only for the old web address", () => {
@@ -103,5 +111,28 @@ describe("saveAllGames", () => {
       (done, total) => progress.push([done, total])
     );
     expect(firstSeen).toEqual([[1, 1]]);
+  });
+});
+
+describe("saveAllGamesListedBy", () => {
+  it("reads the games at the press and saves each of them", async () => {
+    const outcome = await saveAllGamesListedBy(
+      async () => [{ gameId: "a", gameName: "Nexus" }],
+      async () => "",
+      () => {}
+    );
+    expect(outcome).toEqual({ saved: ["Nexus.atlantis-hud-game.json"], failed: [] });
+  });
+
+  it("when the games still cannot be read, says so as one failure to try again", async () => {
+    const outcome = await saveAllGamesListedBy(
+      async () => {
+        throw new Error("held by another tab");
+      },
+      async () => "",
+      () => {}
+    );
+    expect(outcome).toEqual({ saved: [], failed: [UNREAD_GAMES] });
+    expect(failedLine(UNREAD_GAMES)).toBe("Couldn’t save your games. Press the button to try again.");
   });
 });
