@@ -1,7 +1,7 @@
 import type { GameManifest } from "@atlantis/core-client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { GamePicker, ImportBackupConfirm, RemoveGameConfirm } from "./GamePicker";
+import { GamePicker, ImportBackupConfirm, RemoveGameConfirm, pickerErrorPlacement } from "./GamePicker";
 
 /**
  * The picker's remove panel (ah-58n.2).
@@ -213,5 +213,53 @@ describe("the import replace question", () => {
 
     expect(markup).toMatch(/<button[^>]*data-testid="game-import-replace"[^>]*disabled=""/);
     expect(markup).toMatch(/<button[^>]*data-testid="game-import-keep-both"[^>]*disabled=""/);
+  });
+});
+
+/**
+ * Where the picker's one shared error shows (ah-md91c, "Import fails"): in the menu's error line
+ * under the Games content, even while the new-game form is open beside the import link - the form's
+ * own box is for a failed create only.
+ */
+describe("where a failure in the Games tab is reported", () => {
+  it("shows nothing when nothing failed", () => {
+    expect(pickerErrorPlacement({ error: null, creating: true, lastAction: "import" })).toBeNull();
+  });
+
+  it("puts a failed import in the menu's error line while the form is open", () => {
+    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "import" })).toBe("picker");
+  });
+
+  it("puts a failed import in the menu's error line with the form closed", () => {
+    expect(pickerErrorPlacement({ error: "bad", creating: false, lastAction: "import" })).toBe("picker");
+  });
+
+  it("keeps a failed create in the form, as today", () => {
+    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "create" })).toBe("form");
+  });
+
+  it("uses the menu's error line for anything else with the form closed, as today", () => {
+    expect(pickerErrorPlacement({ error: "bad", creating: false, lastAction: null })).toBe("picker");
+  });
+
+  it("draws the error line under the Games content at rest", () => {
+    const markup = renderToStaticMarkup(
+      <GamePicker
+        games={[manifest("g1", "Borg TNG")]}
+        currentGameId="g1"
+        busy={false}
+        error="Could not import that backup."
+        onOpen={() => {}}
+        onCreate={() => {}}
+        onDelete={async () => null}
+        onReset={async () => null}
+        onExport={() => {}}
+        onImport={() => {}}
+        onRename={async () => true}
+      />
+    );
+    expect(markup.indexOf('data-testid="game-picker-error"')).toBeGreaterThan(
+      markup.indexOf('data-testid="import-game"')
+    );
   });
 });

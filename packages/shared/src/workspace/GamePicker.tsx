@@ -124,6 +124,27 @@ export function RemoveGameConfirm({
 }
 
 /**
+ * Where the picker's one shared `error` is reported (ah-md91c). The new-game form shows a failed
+ * create in its own box, as it always has; anything else - an import above all, which can now be
+ * pressed while the form is open - goes to the menu's error line under the Games content.
+ */
+export function pickerErrorPlacement({
+  error,
+  creating,
+  lastAction
+}: {
+  error: string | null;
+  creating: boolean;
+  /** What the player last started from the Games tab, or null when neither has been pressed. */
+  lastAction: "create" | "import" | null;
+}): "form" | "picker" | null {
+  if (error === null) {
+    return null;
+  }
+  return creating && lastAction !== "import" ? "form" : "picker";
+}
+
+/**
  * The question a backup of a game that is already here asks (ah-c0m): Replace, Keep both or
  * Cancel. Opens directly under "+ Import game backup…" on the Games tab (ah-md91c), with Cancel
  * focused; a component of its own so its markup can be pinned without a browser.
@@ -238,6 +259,12 @@ export function GamePicker({
   } | null>(null);
   const [tab, setTab] = useState<"games" | "settings">("games");
   const [pendingImport, setPendingImport] = useState<{ file: File; gameName: string } | null>(null);
+  const [lastAction, setLastAction] = useState<"create" | "import" | null>(null);
+  const errorPlacement = pickerErrorPlacement({ error, creating, lastAction });
+  const startImport = (file: File, mode: BackupImportMode) => {
+    setLastAction("import");
+    onImport(file, mode);
+  };
   // `null` = at rest; a string = the draft currently in the field.
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
@@ -355,7 +382,7 @@ export function GamePicker({
       try {
         text = await file.text();
       } catch {
-        onImport(file, "new");
+        startImport(file, "new");
         return;
       }
       const identity = backupGameIdentity(text);
@@ -363,7 +390,7 @@ export function GamePicker({
       if (existing) {
         setPendingImport({ file, gameName: existing.metadata.gameName });
       } else {
-        onImport(file, "new");
+        startImport(file, "new");
       }
     })();
   };
@@ -584,7 +611,14 @@ export function GamePicker({
 
             <div className="mt-1.5 border-t border-edge pt-1.5">
               {creating ? (
-                <GameForm busy={busy} error={error} onCreate={onCreate} />
+                <GameForm
+                  busy={busy}
+                  error={errorPlacement === "form" ? error : null}
+                  onCreate={(name, rulesetId, mapSizes) => {
+                    setLastAction("create");
+                    onCreate(name, rulesetId, mapSizes);
+                  }}
+                />
               ) : (
                 <button
                   type="button"
@@ -621,11 +655,11 @@ export function GamePicker({
                   gameName={pendingImport.gameName}
                   busy={busy}
                   onReplace={() => {
-                    onImport(pendingImport.file, "replace");
+                    startImport(pendingImport.file, "replace");
                     setPendingImport(null);
                   }}
                   onKeepBoth={() => {
-                    onImport(pendingImport.file, "copy");
+                    startImport(pendingImport.file, "copy");
                     setPendingImport(null);
                   }}
                   onCancel={() => {
@@ -638,7 +672,7 @@ export function GamePicker({
           </>
         )}
 
-        {error && !creating ? (
+        {errorPlacement === "picker" ? (
           <p data-testid="game-picker-error" role="alert" className="mt-1.5 text-danger">
             {error}
           </p>

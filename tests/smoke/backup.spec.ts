@@ -251,3 +251,24 @@ test("a backup file from a newer format version is refused with an explanation",
   await expect(page.getByTestId("game-form-error")).toContainText("newer than this build supports");
   await expect(page.getByTestId("game-gate")).toBeVisible();
 });
+
+test("an import that fails while the new-game form is open is reported in the menu's error line", async ({
+  page
+}) => {
+  await clearGames(page);
+  await createGame(page, "Backup game");
+
+  await page.getByTestId("game-indicator").click();
+  await page.getByTestId("new-game").click();
+  await expect(page.getByTestId("game-form")).toBeVisible();
+  await expect(page.getByTestId("import-game")).toBeVisible();
+
+  await page.setInputFiles("[data-testid='import-game-input']", {
+    name: "not-a-backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{}", "utf8")
+  });
+
+  await expect(page.getByTestId("game-picker-error")).toBeVisible();
+  await expect(page.getByTestId("game-form-error")).toHaveCount(0);
+});
