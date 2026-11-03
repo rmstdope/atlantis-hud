@@ -126,22 +126,26 @@ export function RemoveGameConfirm({
 /**
  * Where the picker's one shared `error` is reported (ah-md91c). The new-game form shows a failed
  * create in its own box, as it always has; anything else - an import above all, which can now be
- * pressed while the form is open - goes to the menu's error line under the Games content.
+ * pressed while the form is open - goes to the menu's error line under the Games content. On the
+ * This game tab the form is not drawn, so everything goes to the error line there.
  */
 export function pickerErrorPlacement({
   error,
   creating,
-  lastAction
+  lastAction,
+  tab
 }: {
   error: string | null;
   creating: boolean;
   /** What the player last started from the Games tab, or null when neither has been pressed. */
   lastAction: "create" | "import" | null;
+  /** The tab showing: the form is only drawn on Games. */
+  tab: "games" | "settings";
 }): "form" | "picker" | null {
   if (error === null) {
     return null;
   }
-  return creating && lastAction !== "import" ? "form" : "picker";
+  return tab === "games" && creating && lastAction !== "import" ? "form" : "picker";
 }
 
 /**
@@ -260,7 +264,7 @@ export function GamePicker({
   const [tab, setTab] = useState<"games" | "settings">("games");
   const [pendingImport, setPendingImport] = useState<{ file: File; gameName: string } | null>(null);
   const [lastAction, setLastAction] = useState<"create" | "import" | null>(null);
-  const errorPlacement = pickerErrorPlacement({ error, creating, lastAction });
+  const errorPlacement = pickerErrorPlacement({ error, creating, lastAction, tab });
   const startImport = (file: File, mode: BackupImportMode) => {
     setLastAction("import");
     onImport(file, mode);

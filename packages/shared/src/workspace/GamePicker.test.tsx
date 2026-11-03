@@ -223,23 +223,29 @@ describe("the import replace question", () => {
  */
 describe("where a failure in the Games tab is reported", () => {
   it("shows nothing when nothing failed", () => {
-    expect(pickerErrorPlacement({ error: null, creating: true, lastAction: "import" })).toBeNull();
+    expect(pickerErrorPlacement({ error: null, creating: true, lastAction: "import", tab: "games" })).toBeNull();
   });
 
   it("puts a failed import in the menu's error line while the form is open", () => {
-    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "import" })).toBe("picker");
+    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "import", tab: "games" })).toBe("picker");
   });
 
   it("puts a failed import in the menu's error line with the form closed", () => {
-    expect(pickerErrorPlacement({ error: "bad", creating: false, lastAction: "import" })).toBe("picker");
+    expect(pickerErrorPlacement({ error: "bad", creating: false, lastAction: "import", tab: "games" })).toBe("picker");
   });
 
   it("keeps a failed create in the form, as today", () => {
-    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "create" })).toBe("form");
+    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "create", tab: "games" })).toBe("form");
   });
 
   it("uses the menu's error line for anything else with the form closed, as today", () => {
-    expect(pickerErrorPlacement({ error: "bad", creating: false, lastAction: null })).toBe("picker");
+    expect(pickerErrorPlacement({ error: "bad", creating: false, lastAction: null, tab: "games" })).toBe("picker");
+  });
+
+  it("puts any failure on the This game tab in the menu's error line, even with the form left open", () => {
+    expect(pickerErrorPlacement({ error: "bad", creating: true, lastAction: "create", tab: "settings" })).toBe(
+      "picker"
+    );
   });
 
   it("draws the error line under the Games content at rest", () => {
