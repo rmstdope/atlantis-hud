@@ -83,7 +83,8 @@ durable as a file, and it is worth knowing how it can go away.
 
 You can now **export one whole game to a single backup file** and **import that file again** on the
 same platform or the other one. In a game's menu, open the **This game** tab and use **Export game
-backup…** to save a copy. With no game open, the first screen also offers **Import game backup…** so
+backup…** to save a copy. To bring one back, open the **Games** tab and use **+ Import game backup…**,
+just below **+ New game…**. With no game open, the first screen also offers **Import game backup…** so
 an empty browser can be restored straight from that file.
 
 The backup includes the game manifest, every imported turn and its raw report text, saved order

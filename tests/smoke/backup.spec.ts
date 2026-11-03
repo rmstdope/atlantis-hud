@@ -152,8 +152,9 @@ async function toImportCollision(page: Page, testInfo: { outputPath: (name: stri
   await fillOrders(page, "@study combat");
   await saveNow(page);
 
+  // ah-md91c: import lives on the Games tab, where the menu opens, below "+ New game…".
   await page.getByTestId("game-indicator").click();
-  await page.getByTestId("game-picker-tab-settings").click();
+  await expect(page.getByTestId("import-game")).toHaveText("+ Import game backup…");
   await page.setInputFiles("[data-testid='import-game-input']", backupPath);
 
   const confirm = page.getByTestId("game-import-confirm");
@@ -203,9 +204,23 @@ test("cancelling the import question leaves everything as it was", async ({ page
   await expect(page.getByTestId("game-import-confirm")).toHaveCount(0);
   await expect(page.getByTestId("game-picker")).toBeVisible();
   await expect(page.getByTestId("import-game")).toBeFocused();
-
-  await page.getByTestId("game-picker-tab-games").click();
   await expect(page.locator('[data-testid^="game-row-"]')).toHaveCount(1);
+});
+
+test("the This game tab offers export only, and import sits below + New game…", async ({ page }) => {
+  await clearGames(page);
+  await createGame(page, "Backup game");
+
+  await page.getByTestId("game-indicator").click();
+  await expect(page.getByTestId("new-game")).toBeVisible();
+  await page.getByTestId("new-game").focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("import-game")).toBeFocused();
+
+  await page.getByTestId("game-picker-tab-settings").click();
+  await expect(page.getByTestId("export-game")).toBeVisible();
+  await expect(page.getByTestId("import-game")).toHaveCount(0);
+  await expect(page.getByTestId("game-picker")).not.toContainText("Import");
 });
 
 test("a backup file from a newer format version is refused with an explanation", async ({ page }) => {
