@@ -43,30 +43,30 @@ const SECTION_LABELS: &[(&str, &str)] = &[
 /// Splits a unit line into its head and whatever labelled sections follow.
 fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
     // Every position where a known label begins a new section.
-    let mut boundaries: Vec<(usize, &str)> = Vec::new();
+    let mut boundaries: Vec<(usize, &str, &str)> = Vec::new();
     for &(label, separator) in SECTION_LABELS {
         let needle = format!(". {label}{separator}");
         let mut from = 0usize;
         while let Some(found) = body[from..].find(&needle) {
             let at = from + found;
-            boundaries.push((at, label));
+            boundaries.push((at, label, separator));
             from = at + needle.len();
         }
     }
-    boundaries.sort_unstable_by_key(|(at, _)| *at);
+    boundaries.sort_unstable_by_key(|(at, _, _)| *at);
 
-    let Some(&(first, _)) = boundaries.first() else {
+    let Some(&(first, _, _)) = boundaries.first() else {
         return (body.trim().trim_end_matches('.').to_string(), Vec::new());
     };
 
     let head = body[..first].trim().trim_end_matches('.').to_string();
 
     let mut sections = Vec::new();
-    for (position, &(at, label)) in boundaries.iter().enumerate() {
-        let value_start = at + 2 + label.len() + 1;
+    for (position, &(at, label, separator)) in boundaries.iter().enumerate() {
+        let value_start = at + ". ".len() + label.len() + separator.len();
         let value_end = boundaries
             .get(position + 1)
-            .map_or(body.len(), |(next, _)| *next);
+            .map_or(body.len(), |(next, _, _)| *next);
         if value_start > value_end || value_start > body.len() {
             continue;
         }
@@ -840,17 +840,18 @@ mod tests {
 
     /// Every preference `Unit::ReadyItem` and `Unit::MageReport` can write, in the engine's order,
     /// and the `Has visited` list `Unit::WriteReport` writes after them - which carries no colon -
-    /// must each end the section before it rather than join it.
+    /// must each end the section before it rather than join it. Before ah-vcdoj the plural line
+    /// joined the combat spell, whose tag then read as the last weapon's.
     #[test]
     fn every_preference_line_leaves_the_skills_and_study_list_whole() {
         let unit = parse_unit(
             "* Mage (55), Borg (73), leader [LEAD], 2 swords [SWOR]. Weight: 12. \
              Capacity: 0/0/15/0. Skills: fire [FIRE] 3 (180), combat [COMB] 1 (30). \
-             Combat spell: fire [FIRE]. Ready weapon: sword [SWOR]. \
+             Combat spell: fire [FIRE]. Ready weapons: sword [SWOR], pike [PIKE]. \
              Ready armor: leather armor [LARM], chain armor [CARM]. \
              Ready item: amulet of protection [AMPR]. \
              Can Study: earthquake [EQUA], force shield [FSHI]. \
-             Has visited Ardenne (12,34) and Valusia (13,35).",
+             Has visited Ardenne and Valusia.",
             true,
             "1:1,1",
             None,
@@ -873,17 +874,28 @@ mod tests {
         assert_eq!(unit.read, UnitRead::Complete);
     }
 
+    /// `quests.cpp` records a visited region by its bare name, and `Unit::WriteReport` lists them
+    /// after `. Has visited `, before any description.
     #[test]
     fn a_has_visited_list_after_the_skills_keeps_every_skill() {
-        let unit = parse_unit(
-            "* Scout (1234), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
-             Skills: combat [COMB] 1 (30), stealth [STEA] 2 (90). Has visited Ardenne (12,34).",
-            true,
-            "1:1,1",
-            None,
-        )
-        .expect("unit should parse");
-        let tags: Vec<&str> = unit.skills.iter().map(|skill| skill.tag.as_str()).collect();
-        assert_eq!(tags, ["COMB", "STEA"]);
+        for (line, description) in [
+            (
+                "* Scout (1234), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: combat [COMB] 1 (30), stealth [STEA] 2 (90). Has visited Ardenne.",
+                None,
+            ),
+            (
+                "* Scout (1234), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+                 Skills: combat [COMB] 1 (30), stealth [STEA] 2 (90). \
+                 Has visited Ardenne and Valusia; a note.",
+                Some("a note"),
+            ),
+        ] {
+            let unit = parse_unit(line, true, "1:1,1", None).expect("unit should parse");
+            let tags: Vec<&str> = unit.skills.iter().map(|skill| skill.tag.as_str()).collect();
+            assert_eq!(tags, ["COMB", "STEA"], "{line}");
+            assert_eq!(unit.description.as_deref(), description, "{line}");
+            assert_eq!(unit.read, UnitRead::Complete, "{line}");
+        }
     }
 }
