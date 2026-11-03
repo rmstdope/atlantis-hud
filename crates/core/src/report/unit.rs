@@ -16,28 +16,36 @@ use super::scan::{
     next_top_level_field, parse_combat_spell, parse_skill, split_leading_id, split_top_level,
 };
 
-/// Labelled sections a unit line may carry after its head.
+/// Labelled sections a unit line may carry after its head, each with the text that ends its label.
 ///
 /// This is a closed set, which is what makes splitting reliable. Splitting on sentence boundaries
 /// instead would tear a unit apart at its own name: a real report contains
 /// `- Advanced Carpentry Inc. (13762), ...`, whose full stop is not a sentence end at all.
-const SECTION_LABELS: &[&str] = &[
-    "Weight",
-    "Capacity",
-    "Skills",
-    "Can Study",
-    "Ready item",
-    "Ready weapon",
-    "Ready armor",
-    "Combat spell",
+///
+/// The set is every sentence `unit.cpp` can write after the items (`Unit::WriteReport`,
+/// `Unit::MageReport`, `Unit::ReadyItem`, `Unit::StudyableSkills`). One it lacks is not dropped:
+/// it sticks to the section before it and spoils that section's last entry, which is how
+/// `Ready weapons` - the plural `Unit::ReadyItem` writes for more than one weapon - cost a unit
+/// its last skill (ah-vcdoj). `Has visited` is the one label written without a colon.
+const SECTION_LABELS: &[(&str, &str)] = &[
+    ("Weight", ":"),
+    ("Capacity", ":"),
+    ("Skills", ":"),
+    ("Can Study", ":"),
+    ("Ready item", ":"),
+    ("Ready weapon", ":"),
+    ("Ready weapons", ":"),
+    ("Ready armor", ":"),
+    ("Combat spell", ":"),
+    ("Has visited", " "),
 ];
 
 /// Splits a unit line into its head and whatever labelled sections follow.
 fn split_sections(body: &str) -> (String, Vec<(String, String)>) {
     // Every position where a known label begins a new section.
     let mut boundaries: Vec<(usize, &str)> = Vec::new();
-    for label in SECTION_LABELS {
-        let needle = format!(". {label}:");
+    for &(label, separator) in SECTION_LABELS {
+        let needle = format!(". {label}{separator}");
         let mut from = 0usize;
         while let Some(found) = body[from..].find(&needle) {
             let at = from + found;
@@ -206,9 +214,9 @@ pub fn parse_unit(
                     .filter_map(|entry| parse_combat_spell(entry))
                     .collect();
             }
-            // The three remaining labels - `Ready item`, `Ready weapon` and
-            // `Ready armor` - are recognised only so their contents are not mistaken for the
-            // unit's items; nothing in the model needs them yet.
+            // The remaining labels - the `Ready ...` preferences and `Has visited` - are
+            // recognised only so their contents are not mistaken for the unit's items or glued
+            // to its last skill; nothing in the model needs them yet.
             _ => {}
         }
     }
@@ -805,5 +813,77 @@ mod tests {
         assert_eq!(unit.items.len(), 1);
         assert_eq!(unit.items[0].tag, "ORC");
         assert_eq!(unit.read, UnitRead::Complete);
+    }
+
+    /// ah-vcdoj: `unit.cpp`, `Unit::ReadyItem` writes `Ready weapon` with an `s` when more than one
+    /// weapon is readied, and `Unit::WriteReport` puts it straight after the skills. Unrecognised,
+    /// it stuck to the last skill - `sword [SWOR] 2 (90). Ready weapons: pike [PIKE]` - which then
+    /// failed to read, so a unit with two skills showed one.
+    #[test]
+    fn a_ready_weapons_line_after_the_skills_keeps_every_skill() {
+        let unit = parse_unit(
+            "* Pikemen (1234), Borg (73), behind, 10 vikings [VIKI], 10 pikes [PIKE], \
+             10 swords [SWOR]. Weight: 150. Capacity: 0/0/150/0. \
+             Skills: combat [COMB] 2 (90), endurance [ENDU] 1 (30). \
+             Ready weapons: pike [PIKE], sword [SWOR].",
+            true,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        let tags: Vec<&str> = unit.skills.iter().map(|skill| skill.tag.as_str()).collect();
+        assert_eq!(tags, ["COMB", "ENDU"]);
+        let items: Vec<&str> = unit.items.iter().map(|item| item.tag.as_str()).collect();
+        assert_eq!(items, ["VIKI", "PIKE", "SWOR"]);
+        assert_eq!(unit.read, UnitRead::Complete);
+    }
+
+    /// Every preference `Unit::ReadyItem` and `Unit::MageReport` can write, in the engine's order,
+    /// and the `Has visited` list `Unit::WriteReport` writes after them - which carries no colon -
+    /// must each end the section before it rather than join it.
+    #[test]
+    fn every_preference_line_leaves_the_skills_and_study_list_whole() {
+        let unit = parse_unit(
+            "* Mage (55), Borg (73), leader [LEAD], 2 swords [SWOR]. Weight: 12. \
+             Capacity: 0/0/15/0. Skills: fire [FIRE] 3 (180), combat [COMB] 1 (30). \
+             Combat spell: fire [FIRE]. Ready weapon: sword [SWOR]. \
+             Ready armor: leather armor [LARM], chain armor [CARM]. \
+             Ready item: amulet of protection [AMPR]. \
+             Can Study: earthquake [EQUA], force shield [FSHI]. \
+             Has visited Ardenne (12,34) and Valusia (13,35).",
+            true,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        let tags: Vec<&str> = unit.skills.iter().map(|skill| skill.tag.as_str()).collect();
+        assert_eq!(tags, ["FIRE", "COMB"]);
+        let study: Vec<&str> = unit
+            .can_study
+            .iter()
+            .map(|spell| spell.tag.as_str())
+            .collect();
+        assert_eq!(study, ["EQUA", "FSHI"]);
+        assert_eq!(
+            unit.combat_spell.map(|spell| spell.tag),
+            Some("FIRE".to_string())
+        );
+        let items: Vec<&str> = unit.items.iter().map(|item| item.tag.as_str()).collect();
+        assert_eq!(items, ["LEAD", "SWOR"]);
+        assert_eq!(unit.read, UnitRead::Complete);
+    }
+
+    #[test]
+    fn a_has_visited_list_after_the_skills_keeps_every_skill() {
+        let unit = parse_unit(
+            "* Scout (1234), Borg (73), leader [LEAD]. Weight: 10. Capacity: 0/0/15/0. \
+             Skills: combat [COMB] 1 (30), stealth [STEA] 2 (90). Has visited Ardenne (12,34).",
+            true,
+            "1:1,1",
+            None,
+        )
+        .expect("unit should parse");
+        let tags: Vec<&str> = unit.skills.iter().map(|skill| skill.tag.as_str()).collect();
+        assert_eq!(tags, ["COMB", "STEA"]);
     }
 }
