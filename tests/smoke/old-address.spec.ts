@@ -34,7 +34,7 @@ async function serveAtOldAddress(context: BrowserContext, baseURL: string) {
   });
 }
 
-const notice = (page: Page) => page.getByRole("dialog", { name: "This address is closing down" });
+const notice = (page: Page) => page.getByRole("dialog", { name: "This address is closing down", exact: true });
 
 test("with no games, the old address says there is nothing to move, and opens again at every launch", async ({
   page,
@@ -49,7 +49,7 @@ test("with no games, the old address says there is nothing to move, and opens ag
     "You have no games saved at this address, so there is nothing to move."
   );
   await expect(page.getByTestId("old-address-save-all")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Go to the new address" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Go to the new address", exact: true })).toBeFocused();
 
   // Tab stays inside: the link, Stay, Go, and round to the link again.
   for (let step = 0; step < 4; step += 1) {
@@ -58,7 +58,7 @@ test("with no games, the old address says there is nothing to move, and opens ag
   }
 
   const popupPromise = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Go to the new address" }).click();
+  await page.getByRole("button", { name: "Go to the new address", exact: true }).click();
   const popup = await popupPromise;
   await expect(popup).toHaveURL(`${NEW_ORIGIN}/`);
   await popup.close();
@@ -72,7 +72,7 @@ test("with no games, the old address says there is nothing to move, and opens ag
 
   await page.reload();
   await expect(notice(page)).toBeVisible();
-  await page.getByRole("button", { name: "Stay here for now" }).click();
+  await page.getByRole("button", { name: "Stay here for now", exact: true }).click();
   await expect(notice(page)).toHaveCount(0);
 });
 
@@ -96,7 +96,7 @@ test("with games, Save all my games downloads one backup per game and lists them
   await expect(notice(page)).toContainText(
     "Your games are saved in this browser for this address only, so the new address cannot see them. To take them with you:"
   );
-  const saveAll = page.getByRole("button", { name: "Save all my games" });
+  const saveAll = page.getByRole("button", { name: "Save all my games", exact: true });
   await expect(saveAll).toBeFocused();
 
   const names: string[] = [];
@@ -114,7 +114,7 @@ test("with games, Save all my games downloads one backup per game and lists them
   await expect(saveAll).toBeFocused();
 
   // Closing hands the focus back; nothing behind the dialog was reachable while it was open.
-  await page.getByRole("button", { name: "Stay here for now" }).click();
+  await page.getByRole("button", { name: "Stay here for now", exact: true }).click();
   await expect(notice(page)).toHaveCount(0);
   await expect(page.getByTestId("game-indicator")).toBeVisible();
 });
