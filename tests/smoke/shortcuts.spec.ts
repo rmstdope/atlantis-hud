@@ -168,11 +168,18 @@ test("the palette finds historical units and map objects", async ({ page }) => {
   await expect(page.getByTestId("import-status")).toContainText("stored for history");
 
   await page.keyboard.press("ControlOrMeta+k");
-  await page.getByTestId("palette-input").fill("Historical Scout (99999)");
+  await page.getByTestId("palette-input").fill("Drover (99998)");
   await expect(page.getByTestId("palette-item").first()).toContainText(`last seen turn ${F42_T40_TURN}`);
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("command-palette")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText(`Last seen turn ${F42_T40_TURN}`);
+
+  // ah-5z5vx: Historical Scout is of the player's own faction (42) and absent from turn 42, so it is
+  // a unit lost, never one last seen - the palette must not offer it as historical.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByTestId("palette-input").fill("Historical Scout (99999)");
+  await expect(page.getByTestId("palette-item").filter({ hasText: "99999" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByTestId("palette-input").fill("Bog [1]");
