@@ -20,7 +20,8 @@
 //!    its units dropped - a fleet can sail away, and only a sighting this fresh can vouch for who
 //!    is still there. No stored sighting ever contributes a unit of ours: the current report is
 //!    the whole truth about those (`units_a_sighting_vouches_for`). Terrain, province and exits
-//!    always come from the region as stored.
+//!    always come from the region as stored. A stale hex's remembered units are other factions'
+//!    only: one of ours the current report does not name is lost, not standing there unseen.
 //! 4. **The current report's own regions**: `Current`, `last_seen_turn` set to the current turn,
 //!    the region as reported, plus any other faction's unit a same-turn stored sighting names that
 //!    the report does not - appended and marked foreign, additive only, and only for a sighting of
@@ -141,6 +142,14 @@ pub fn units_a_sighting_vouches_for(
         .collect()
 }
 
+/// Whether a stored unit is one of the player's own: marked `own`, or of the reporting faction.
+///
+/// The faction check catches a stored row whose `own` flag an older merge restamped. Either way the
+/// current report is the whole truth about such a unit, so one it does not name is gone (ah-5z5vx).
+fn is_ours(unit: &ReportUnit, our_faction: Option<&str>) -> bool {
+    unit.own || (our_faction.is_some() && unit.faction_id.as_deref() == our_faction)
+}
+
 /// Applies a same-turn ally's extra units to the current report's own account of a hex.
 ///
 /// Additive only: nothing the current report already names is replaced, and every unit
@@ -239,6 +248,7 @@ fn with_legacy_levels_repaired(entry: &RememberedRegion) -> RememberedRegion {
 #[must_use]
 pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]) -> KnownMap {
     let current_turn = current.header.turn_number;
+    let our_faction = current.header.faction_id.as_deref();
     let mut by_key: BTreeMap<String, KnownMapHex> = BTreeMap::new();
 
     let remembered: Vec<RememberedRegion> =
@@ -370,11 +380,11 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
                         })
                         .filter_map(|(turn, candidates)| {
                             candidates.get(&entry_key).and_then(|unit| {
-                                (!current_unit_ids.contains(unit.unit_id.as_str())).then(|| {
-                                    KnownUnitSighting {
-                                        unit: unit.clone(),
-                                        last_seen_turn: *turn,
-                                    }
+                                (!current_unit_ids.contains(unit.unit_id.as_str())
+                                    && !is_ours(unit, our_faction))
+                                .then(|| KnownUnitSighting {
+                                    unit: unit.clone(),
+                                    last_seen_turn: *turn,
                                 })
                             })
                         })

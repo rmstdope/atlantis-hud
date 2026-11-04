@@ -132,6 +132,66 @@ fn a_stale_hex_remembers_its_last_valid_unit_sightings() {
     assert_eq!(hex.remembered_units[1].unit.unit_id, "600");
 }
 
+/// ah-5z5vx: one of our own units last seen in a hex that no later report described, and absent
+/// from the current report, is a unit we have lost - destroyed in battle, say - never one standing
+/// there unseen. The current report is the whole truth about our own units, so a stale hex remembers
+/// only other factions' units. A stored row whose `own` flag was lost is caught by its faction.
+#[test]
+fn a_stale_hex_never_remembers_a_unit_of_our_own() {
+    let mut older = report_at_turn(
+        "mountain",
+        "January",
+        1,
+        "* Drone (2985), Foo (1), 1 orc [ORC].\n\
+         - Ogres (2193), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+    assert!(older.units[0].own, "the fixture's Drone is one of ours");
+
+    let mut restamped = older.clone();
+    restamped.coordinate = at(3, 3);
+    restamped.region_id = "1:3,3".to_string();
+    restamped.exits.clear();
+    for unit in &mut restamped.units {
+        unit.region_id = restamped.region_id.clone();
+        unit.unit_id = format!("{}0", unit.unit_id);
+        unit.own = false;
+    }
+    older.exits.clear();
+
+    let known = resolve_known_map(
+        &empty_report("November", 6),
+        &[
+            RememberedRegion {
+                region: older,
+                last_seen_turn: 1,
+            },
+            RememberedRegion {
+                region: restamped,
+                last_seen_turn: 1,
+            },
+        ],
+    );
+
+    for (coordinate, ogres) in [(at(1, 1), "2193"), (at(3, 3), "21930")] {
+        let hex = known
+            .hexes
+            .iter()
+            .find(|hex| hex.coordinate == coordinate)
+            .expect("known");
+        assert_eq!(hex.knowledge, HexKnowledge::Stale);
+        assert_eq!(
+            hex.remembered_units
+                .iter()
+                .map(|sighting| sighting.unit.unit_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![ogres],
+            "only the foreign unit is remembered at {coordinate:?}"
+        );
+    }
+}
+
 #[test]
 fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
     let older = report_at_turn(
