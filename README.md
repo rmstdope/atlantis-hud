@@ -11,7 +11,7 @@ You do not need to build anything. There are four ways to run it.
 
 ### Use it in your browser
 
-Open **<https://atlantis-hud.kurelid.se>**. There is nothing to install and nothing to sign up for.
+Open **<https://atlantis-hud.rmstdope.eu>**. There is nothing to install and nothing to sign up for.
 
 Your games are kept by your browser, on that device — [Where your games are kept](#where-your-games-are-kept),
 just below, is worth two minutes before you start a long game.
