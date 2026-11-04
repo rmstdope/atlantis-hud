@@ -192,6 +192,53 @@ fn a_stale_hex_never_remembers_a_unit_of_our_own() {
     }
 }
 
+/// ah-5z5vx review: a same-turn stored sighting vouches only for other factions' units, and a row of
+/// ours whose `own` flag was lost is still ours by its faction - so it never enters as a foreigner.
+#[test]
+fn a_same_turn_sighting_never_vouches_for_a_restamped_unit_of_our_own() {
+    let mut stored = report_at_turn(
+        "mountain",
+        "November",
+        6,
+        "* Drone (2985), Foo (1), 1 orc [ORC].\n\
+         - Ogres (2193), Bar (2), 3 orcs [ORC].\n",
+    )
+    .regions[0]
+        .clone();
+    stored.coordinate = at(3, 3);
+    stored.region_id = "1:3,3".to_string();
+    stored.exits.clear();
+    for unit in &mut stored.units {
+        unit.region_id = stored.region_id.clone();
+        unit.own = false;
+    }
+
+    let known = resolve_known_map(
+        &empty_report("November", 6),
+        &[RememberedRegion {
+            region: stored,
+            last_seen_turn: 71, // November, Year 6
+        }],
+    );
+
+    let hex = known
+        .hexes
+        .iter()
+        .find(|hex| hex.coordinate == at(3, 3))
+        .expect("known");
+    assert_eq!(hex.knowledge, HexKnowledge::Current);
+    assert_eq!(
+        hex.region
+            .as_ref()
+            .unwrap()
+            .units
+            .iter()
+            .map(|unit| unit.unit_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["2193"]
+    );
+}
+
 #[test]
 fn a_later_sighting_elsewhere_invalidates_only_that_remembered_unit() {
     let older = report_at_turn(

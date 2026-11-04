@@ -123,12 +123,14 @@ fn key(coordinate: Coordinate) -> String {
 ///
 /// None unless the sighting is from that very turn: a unit standing there when last seen may have
 /// moved, disbanded or died since. And never one of ours: the current report is the whole truth
-/// about the player's own units, so a stored unit marked `own` that the report does not name is one
-/// that is gone - only a row an older merge restamped can hold one.
+/// about the player's own units, so a stored unit of ours (`is_ours`, by flag or by `our_faction`)
+/// that the report does not name is one that is gone - only a row an older merge restamped can hold
+/// one.
 #[must_use]
 pub fn units_a_sighting_vouches_for(
     stored: &RememberedRegion,
     current_turn: Option<u32>,
+    our_faction: Option<&str>,
 ) -> Vec<ReportUnit> {
     if current_turn != Some(stored.last_seen_turn) {
         return Vec::new();
@@ -137,7 +139,7 @@ pub fn units_a_sighting_vouches_for(
         .region
         .units
         .iter()
-        .filter(|unit| !unit.own)
+        .filter(|unit| !is_ours(unit, our_faction))
         .cloned()
         .collect()
 }
@@ -160,6 +162,7 @@ fn with_allies_units(
     region: &ReportRegion,
     stored: Option<&RememberedRegion>,
     current_turn: Option<u32>,
+    our_faction: Option<&str>,
 ) -> ReportRegion {
     let Some(stored) = stored else {
         return region.clone();
@@ -176,7 +179,7 @@ fn with_allies_units(
         .iter()
         .map(|unit| unit.unit_id.as_str())
         .collect();
-    let extra: Vec<_> = units_a_sighting_vouches_for(stored, Some(current_turn))
+    let extra: Vec<_> = units_a_sighting_vouches_for(stored, Some(current_turn), our_faction)
         .into_iter()
         .filter(|unit| !named.contains(unit.unit_id.as_str()))
         .collect();
@@ -351,7 +354,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
         let entry_key = key(entry.region.coordinate);
         let is_current_turn = current_turn == Some(entry.last_seen_turn);
         let region = ReportRegion {
-            units: units_a_sighting_vouches_for(entry, current_turn),
+            units: units_a_sighting_vouches_for(entry, current_turn, our_faction),
             ..entry.region.clone()
         };
         by_key.insert(
@@ -410,6 +413,7 @@ pub fn resolve_known_map(current: &ParsedReport, remembered: &[RememberedRegion]
             region,
             stored_by_key.get(&region_key).copied(),
             current_turn,
+            our_faction,
         );
         by_key.insert(
             region_key,

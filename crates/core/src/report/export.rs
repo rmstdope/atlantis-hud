@@ -178,6 +178,7 @@ fn gather(
                     units: crate::known_map::units_a_sighting_vouches_for(
                         entry,
                         report.header.turn_number,
+                        report.header.faction_id.as_deref(),
                     ),
                     ..entry.region.clone()
                 },
