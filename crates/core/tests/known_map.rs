@@ -1090,6 +1090,21 @@ fn a_unit_of_ours_in_a_same_turn_sighting_does_not_join_the_reports_hex() {
     assert_eq!(unit_ids_at(&known, 1, 1), ["100", "500"]);
 }
 
+/// ah-um2tg: the ally merge into a hex the current report describes decides "ours" the same way
+/// Rule 3 does - a stored row of ours whose `own` flag an older merge cleared is still ours by its
+/// faction, so it never joins the report's hex as a foreigner.
+#[test]
+fn a_restamped_unit_of_ours_in_a_same_turn_sighting_does_not_join_the_reports_hex() {
+    let mut stored = stored_with_a_unit_of_ours();
+    for unit in &mut stored.region.units {
+        unit.own = false;
+    }
+    let current = report_at_turn("plain", "January", 1, "* Us (100), 1 man [MAN].\n");
+    let known = resolve_known_map(&current, &[stored]);
+
+    assert_eq!(unit_ids_at(&known, 1, 1), ["100", "500"]);
+}
+
 /// The boundary lists every wall a report proves, so the screen can draw them: cavern (9,3,2) in the
 /// committed Arcanum report lists no northern exit, and no surface hex has a wall.
 #[test]
