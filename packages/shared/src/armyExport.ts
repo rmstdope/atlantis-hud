@@ -29,7 +29,7 @@ import type { ArmyMemberRecord, ArmyRecord } from "@atlantis/core-client";
 import { memberIsStale } from "./armies";
 import { derivedSkillsFor, type DerivedSkills } from "./battleSkills";
 
-/** One unit as the simulator's own format wants it. */
+/** One unit as atlantis.pekle.lv's own format wants it; `NewAgeUnit` is the other simulator's. */
 export type BattleUnit = {
   /** `Name (number)` - what makes two units called "Scouts" tellable apart in the simulator. */
   name: string;
@@ -42,7 +42,7 @@ export type BattleUnit = {
   combatSpell?: string;
 };
 
-/** One side of the battle. */
+/** One side of the battle, as atlantis.pekle.lv reads it. */
 export type BattleSide = { units: BattleUnit[] };
 
 /** One unit as the New Age simulator's import reads it. */
