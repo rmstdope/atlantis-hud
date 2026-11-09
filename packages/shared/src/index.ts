@@ -99,3 +99,5 @@ export * from "./workspace/UnitTableDock";
 export * from "./oldAddress";
 export * from "./workspace/OldAddressNotice";
 export { deliverGameBackupExport } from "./workspace/exportActions";
+export * from "./assistant/assistantTools";
+export * from "./assistant/assistantTransport";

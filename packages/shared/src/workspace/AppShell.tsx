@@ -177,6 +177,7 @@ import { derivedSkillsFor, mergedDerived } from "../battleSkills";
 import { carriedMergedSkills, foreignRowsWithMerged, knownMapWithMerged } from "../mergedUnits";
 import { useMergedHistory } from "./mergedHistory";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
+import { useAssistant, type AssistantTransport } from "../assistant/assistantTransport";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
 import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
@@ -522,7 +523,8 @@ export function AppShell({
   newAgeTransport,
   newAgeFromBrowser = false,
   pbemTransport,
-  storageStop
+  storageStop,
+  assistant
 }: {
   client: CoreClient;
   platformLabel: string;
@@ -580,6 +582,12 @@ export function AppShell({
    * shell passes nothing, since a Tauri store is never asked to let go.
    */
   storageStop?: StorageStopSource;
+  /**
+   * How an assistant such as Claude Code reaches this turn's tools (`assistant/assistantTools`).
+   * Desktop only: the desktop serves them over MCP on a loopback port, and the web build has no
+   * process a client could connect to.
+   */
+  assistant?: AssistantTransport;
 }) {
   // Every call into the Rust core, timed for the performance panel - after the reads the stores make
   // together when a game opens are answered once (see `sharedReads`); the same client otherwise.
@@ -4484,6 +4492,48 @@ export function AppShell({
     writeOrdersDocument
   ]);
 
+  // The document an assistant reads. A ref beside the state, so that a write it makes is what its
+  // next call reads even before React has rendered that write.
+  const assistantDocument = useRef(ordersDocument);
+  assistantDocument.current = ordersDocument;
+  useAssistant(assistant, {
+    turn: () =>
+      game === null || parsed === null || draftKey === null
+        ? null
+        : {
+            gameId: game.manifest.metadata.gameId,
+            gameName: game.manifest.metadata.gameName,
+            rulesetId: openRulesetId ?? null,
+            rulesetText,
+            parsed,
+            rawReport,
+            ordersDocument: assistantDocument.current
+          },
+    orders,
+    bannerFor: regionBanner,
+    validate: (document) =>
+      client.validateOrders({
+        rawOrders: document,
+        rulesetJson: rulesetText,
+        rawReport: rawReport || null,
+        disabledCodes: disabledAdvisoryCodes(advisoryChecks),
+        mapJson,
+        knownPassagesJson: passagesJson,
+        rememberedJson
+      }),
+    // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
+    // kept. Only the open unit's editor takes its block again: a write to another unit leaves
+    // whatever the player is typing alone, and the autosave writes the draft either way.
+    writeOrders: (update, unitId) => {
+      assistantDocument.current = update(assistantDocument.current);
+      writeOrdersDocument(unitId === selectedUnitId ? "external" : "editor", (document) => {
+        const next = update(document);
+        writer.markDirty(game, draftKey, next);
+        return next;
+      });
+    }
+  });
+
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
   const applyRoute = useCallback(
     (order: string) => {
@@ -5774,6 +5824,7 @@ export function AppShell({
       onCheckRuleset={checkRulesetChange}
       onChangeRuleset={changeRuleset}
       onDismiss={() => setSettingsOpen(false)}
+      assistant={assistant}
     />
   );
 

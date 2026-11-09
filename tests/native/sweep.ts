@@ -393,6 +393,11 @@ export const SWEEP: SweepEntry[] = [
     command: "list_study_plans",
     args: () => ({ database_path: context.databasePath, game_id: GAME_ID })
   },
+  // The assistant's relay (src-tauri/src/assistant.rs). An empty tool list, and an answer for a
+  // call that was never made, are refused or ignored without error - a binding proof either way.
+  { command: "assistant_register_tools", args: () => ({ tools: [] }) },
+  { command: "assistant_answer", args: () => ({ id: 0, answer: { text: "", isError: false } }) },
+  { command: "assistant_connection", args: () => ({}) },
   // Immediately before delete_game and after every scoped command: a reset empties the game, so
   // anything ordered after it would run against a game with none of the sweep's seeded data.
   { command: "reset_game", args: () => ({ game_id: GAME_ID, now: ISO }) },

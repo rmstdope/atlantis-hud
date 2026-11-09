@@ -12,6 +12,11 @@ desktop-runtime = [
   "dep:tauri-plugin-fs",
   "dep:tauri-plugin-http",
   "atlantis-hud-core-tauri/tauri",
+  "dep:atlantis-hud-assistant-mcp",
+  "dep:serde_json",
+  "dep:serde",
+  "dep:tokio",
+  "dep:uuid",
 ]
 
 [build-dependencies]
@@ -20,6 +25,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 atlantis-hud-core = { path = "../../../crates/core" }
 atlantis-hud-core-tauri = { path = "../../../crates/core-tauri" }
+# The MCP server an assistant such as Claude Code connects to; its tools are answered by the
+# frontend (crates/assistant-mcp). Gated with the rest of the desktop runtime.
+atlantis-hud-assistant-mcp = { path = "../../../crates/assistant-mcp", optional = true }
+serde_json = { version = "1.0", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+tokio = { version = "1", features = ["net"], optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 tauri = { version = "2", optional = true, default-features = false, features = ["wry"] }
 # Handing a URL to the operating system. Gated behind desktop-runtime so the native system
 # libraries are only required when actually building the desktop shell.

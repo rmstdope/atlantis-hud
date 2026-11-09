@@ -176,7 +176,7 @@ This starts the web shell on the default Vite port.
 pnpm --filter @atlantis/desktop dev
 ```
 
-This starts the desktop shell as a Vite app on port `4174`.
+This starts the desktop shell as a Vite app on port `4184`.
 
 ### Native desktop runtime
 

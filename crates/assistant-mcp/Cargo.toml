@@ -1,0 +1,20 @@
+[package]
+name = "atlantis-hud-assistant-mcp"
+version = "0.1.0"
+edition = "2021"
+
+# An MCP server whose tools are answered somewhere else. The desktop shell hosts it and hands each
+# call to the frontend, which is where the open turn, the live orders document and every input the
+# order checks read are already put together; this crate knows nothing about Atlantis at all.
+# Native-only, like core-persistence: the web build has no process a client could connect to.
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+rmcp = { version = "3.9", default-features = false, features = ["server", "transport-streamable-http-server"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["net", "sync", "time", "rt"] }
+tokio-util = "0.7"
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -7,6 +7,10 @@ import { desktopNewAgeTransport } from "./newAgeTransport";
 import { desktopPbemTransport } from "./pbemTransport";
 import { desktopOrdersUploader } from "./uploadOrders";
 import { useDesktopAppUpdate } from "./updateCheck";
+import { desktopAssistantTransport } from "./assistantTransport";
+
+// Made once: the shell connects the assistant when this changes, and it never does.
+const ASSISTANT = desktopAssistantTransport();
 
 /**
  * The desktop shell.
@@ -35,6 +39,8 @@ export default function App({ client }: { client: CoreClient }) {
       // Through Tauri's http plugin; rejects when this bundle is opened in a plain browser.
       newAgeTransport={desktopNewAgeTransport()}
       pbemTransport={desktopPbemTransport()}
+      // The MCP server Claude Code connects to; undefined in a plain browser.
+      assistant={ASSISTANT}
     />
   );
 }

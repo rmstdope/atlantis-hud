@@ -337,6 +337,15 @@ describe("the live Tauri command lockstep", () => {
       "utf8"
     );
     const coreWasmLibRs = readFileSync(join(ROOT, "crates", "core-wasm", "src", "lib.rs"), "utf8");
+    // The assistant's relay commands (src-tauri/src/assistant.rs) are the shell's own, like
+    // main.rs's wrappers, but no `CoreAdapter` method calls them: the desktop's assistant transport
+    // invokes them directly. So they count as declared, and are left out of the adapter's table.
+    const assistantRs = readFileSync(
+      join(ROOT, "apps", "desktop", "src-tauri", "src", "assistant.rs"),
+      "utf8"
+    );
+    const shellRs = `${mainRs}\n${assistantRs}`;
+    const assistantCommands = locallyDefinedCommands(assistantRs);
     const webCoreAdapterTs = readFileSync(
       join(ROOT, "packages", "browser-core", "src", "webCoreAdapter.ts"),
       "utf8"
@@ -348,7 +357,7 @@ describe("the live Tauri command lockstep", () => {
       Object.values(TAURI_COMMANDS).map(([command, ...keys]) => [command, keys])
     );
     const renames = commandRenames(coreTauriLibRs);
-    const parameters = commandParameters(mainRs, coreTauriLibRs);
+    const parameters = commandParameters(shellRs, coreTauriLibRs);
 
     expect(lockstep(registered, swept)).toEqual({
       registeredButNotSwept: [],
@@ -357,7 +366,10 @@ describe("the live Tauri command lockstep", () => {
     // Names: what main.rs registers, what the sweep drives and what the adapter invokes are one list
     // - the table's commands, plus the one `query` command every declared core query crosses
     // through (ah-w83n), which the adapter invokes from `CORE_QUERIES` rather than from a row.
-    expect([...Object.keys(table), "query"].sort()).toEqual([...registered].sort());
+    expect(assistantCommands.length).toBeGreaterThan(0);
+    expect([...Object.keys(table), "query"].sort()).toEqual(
+      registered.filter((command) => !assistantCommands.includes(command)).sort()
+    );
 
     // Every rename says what the function name says, and every renamed command is registered.
     for (const [fn, wire] of renames) {
@@ -370,7 +382,7 @@ describe("the live Tauri command lockstep", () => {
     // hand-maintained count that had to be bumped by every commit adding a command. A core-tauri
     // command that forgets its `rename =` attribute is still registered by path but drops out of
     // `commandRenames`, so it shows up here as registered-but-undeclared, by name.
-    expect([...declaredCommands(mainRs, coreTauriLibRs)].sort()).toEqual([...registered].sort());
+    expect([...declaredCommands(shellRs, coreTauriLibRs)].sort()).toEqual([...registered].sort());
 
     // Keys: every row's keys are the Rust parameter names, in order.
     for (const [command, keys] of Object.entries(table)) {

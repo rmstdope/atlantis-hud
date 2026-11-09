@@ -2,6 +2,12 @@
     any(target_os = "linux", target_os = "macos", target_os = "windows"),
     feature = "desktop-runtime"
 ))]
+mod assistant;
+
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos", target_os = "windows"),
+    feature = "desktop-runtime"
+))]
 use atlantis_hud_core_tauri::{
     command_create_game, command_delete_game, command_edit_game_manifest, command_export_game,
     command_import_game, command_list_games, command_open_game, command_reset_game, GameManifest,
@@ -137,6 +143,12 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
+        // The MCP server an assistant connects to. Started here rather than on demand so that
+        // Claude Code can be connected once and find the HUD on every later launch.
+        .setup(|app| {
+            assistant::start(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             create_game,
             open_game,
@@ -146,6 +158,9 @@ fn main() {
             export_game,
             import_game,
             edit_game_manifest,
+            assistant::assistant_register_tools,
+            assistant::assistant_answer,
+            assistant::assistant_connection,
             atlantis_hud_core_tauri::command_parse_report,
             atlantis_hud_core_tauri::command_parse_report_full,
             atlantis_hud_core_tauri::command_preview_report_import,
