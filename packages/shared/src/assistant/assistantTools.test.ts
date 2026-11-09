@@ -24,6 +24,9 @@ const DOCUMENT = [
   ""
 ].join("\n");
 
+/** What `get_turn_overview` names the turn `aTurn` builds: game, faction and turn number. */
+const KEY = "game-1/3/12";
+
 function aTurn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
   const home = aReportRegion({
     regionId: "1,1,1",
@@ -53,6 +56,7 @@ function aTurn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     units: []
   });
   return {
+    gameId: "game-1",
     gameName: "Test game",
     rulesetId: null,
     rulesetText: JSON.stringify({
@@ -99,9 +103,12 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = []) 
     orders: orderProcessingFor(null),
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
     validate: async () => ({ diagnostics }) as unknown as OrderValidationResult,
-    writeOrders: (document) => {
-      written.push(document);
-      current = current === null ? null : { ...current, ordersDocument: document };
+    writeOrders: (update) => {
+      if (current !== null) {
+        const document = update(current.ordersDocument);
+        written.push(document);
+        current = { ...current, ordersDocument: document };
+      }
     }
   };
   return { host, written };
@@ -130,7 +137,13 @@ describe("the assistant's tool list", () => {
     const { host } = aHost(aTurn());
 
     for (const tool of ASSISTANT_TOOLS) {
-      const answer = await call(host, tool.name, { unitId: "100", regionId: "1,1,1", orders: "work", query: "silver" });
+      const answer = await call(host, tool.name, {
+        turnKey: KEY,
+        unitId: "100",
+        regionId: "1,1,1",
+        orders: "work",
+        query: "silver"
+      });
       expect(answer.text).not.toContain("no tool called");
     }
   });
@@ -224,6 +237,34 @@ describe("answering a call", () => {
     expect(byCoordinates.province).toBe("Woods");
   });
 
+  it("refuses to list the units of a region the report does not show, rather than answering with none", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = await call(host, "list_units", { regionId: "9,9,9" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("list_regions");
+  });
+
+  it("asks for the level when coordinates alone match more than one region", async () => {
+    const turn = aTurn();
+    const below = aReportRegion({
+      regionId: "1,1,2",
+      coordinate: { x: 1, y: 1, z: 2 },
+      terrain: "tunnels",
+      province: "Deep",
+      units: []
+    });
+    const { host } = aHost({ ...turn, parsed: { ...turn.parsed, regions: [...turn.parsed.regions, below] } });
+
+    const ambiguous = await call(host, "get_region", { x: 1, y: 1 });
+    const unambiguous = json((await call(host, "get_region", { x: 2, y: 1 })).text);
+
+    expect(ambiguous.isError).toBe(true);
+    expect(ambiguous.text).toContain("z");
+    expect(unambiguous.province).toBe("Woods");
+  });
+
   it("lists every region of the turn, saying whose units stand in it", async () => {
     const { host } = aHost(aTurn());
 
@@ -251,7 +292,7 @@ describe("answering a call", () => {
   it("writes one unit's orders into the document, leaving the rest as it was", async () => {
     const { host, written } = aHost(aTurn());
 
-    const answer = await call(host, "set_unit_orders", { unitId: "101", orders: "study FARM\n" });
+    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "study FARM\n" });
 
     expect(answer.isError).toBe(false);
     expect(written).toHaveLength(1);
@@ -262,7 +303,7 @@ describe("answering a call", () => {
   it("reports what the validator makes of a unit's orders once they are written", async () => {
     const { host } = aHost(aTurn(), [aDiagnostic({ lineStart: 9, lineEnd: 9, unitId: "101" })]);
 
-    const answer = json((await call(host, "set_unit_orders", { unitId: "101", orders: "fly" })).text);
+    const answer = json((await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "fly" })).text);
 
     expect(answer.written).toBe(true);
     expect(answer.problems).toEqual(["its line 1 error unknown-order: Unknown order FLY."]);
@@ -272,7 +313,7 @@ describe("answering a call", () => {
     const turn = aTurn({ ordersDocument: "#atlantis 3\n\n;*** plain (1,1) in Coast ***\n\n#end\n" });
     const { host, written } = aHost(turn);
 
-    await call(host, "set_unit_orders", { unitId: "100", orders: "work" });
+    await call(host, "set_unit_orders", { turnKey: KEY, unitId: "100", orders: "work" });
 
     expect(written[0]).toContain("unit 100\nwork");
   });
@@ -280,7 +321,59 @@ describe("answering a call", () => {
   it("refuses to write orders for a unit that is not the faction's own", async () => {
     const { host, written } = aHost(aTurn());
 
-    const answer = await call(host, "set_unit_orders", { unitId: "900", orders: "work" });
+    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "900", orders: "work" });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+  });
+
+  it("hands out a key for the open turn, and refuses a write made for any other turn", async () => {
+    const { host, written } = aHost(aTurn());
+
+    const overview = json((await call(host, "get_turn_overview")).text);
+    const stale = await call(host, "set_unit_orders", { turnKey: "game-1/3/11", unitId: "101", orders: "work" });
+
+    expect(overview.turnKey).toBe(KEY);
+    expect(stale.isError).toBe(true);
+    expect(stale.text).toContain("get_turn_overview");
+    expect(written).toEqual([]);
+  });
+
+  it("makes its write on the document as it then stands, keeping what the player typed since", async () => {
+    const { host } = aHost(aTurn());
+    let landed = "";
+    let touched = "";
+    host.writeOrders = (update, unitId) => {
+      landed = update(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax"));
+      touched = unitId;
+    };
+
+    await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "study FARM" });
+
+    expect(landed).toContain("unit 100\ntax");
+    expect(landed).toContain("unit 101\nstudy FARM");
+    expect(touched).toBe("101");
+  });
+
+  it.each([
+    ["the unit's own header", "unit 101\nstudy FARM"],
+    ["another unit's block", "work\nunit 100\nmove N"],
+    ["a header in another case, indented", "work\n  UNIT 100\nmove N"],
+    ["the end of the file", "work\n#end"],
+    ["the start of the file", "#atlantis 3\nwork"]
+  ])("refuses orders that carry %s, which would reshape the document", async (_what, orders) => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+  });
+
+  it("refuses orders that are not text", async () => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: { order: "work" } });
 
     expect(answer.isError).toBe(true);
     expect(written).toEqual([]);

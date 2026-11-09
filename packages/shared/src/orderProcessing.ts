@@ -14,6 +14,7 @@ import {
   findFormBlocks,
   findUnitBlocks,
   formBlockFor,
+  isDocumentStructure,
   longOrderOf,
   repeatsLongOrder,
   readUnitOrders,
@@ -59,6 +60,7 @@ export interface OrderProcessing {
   readonly regionUnitIdsAt: WithoutSyntax<typeof regionUnitIdsAt>;
   readonly formBlockFor: WithoutSyntax<typeof formBlockFor>;
   readonly blockFor: WithoutSyntax<typeof blockFor>;
+  readonly isDocumentStructure: WithoutSyntax<typeof isDocumentStructure>;
   readonly readUnitOrders: WithoutSyntax<typeof readUnitOrders>;
   readonly writeUnitOrders: WithoutSyntax<typeof writeUnitOrders>;
   readonly ensureUnitBlock: WithoutSyntax<typeof ensureUnitBlock>;
@@ -108,6 +110,7 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
     regionUnitIdsAt: (document, region) => regionUnitIdsAt(document, region, syntax),
     formBlockFor: (document, alias, regionUnitIds) => formBlockFor(document, alias, regionUnitIds, syntax),
     blockFor: (document, unitId, regionUnitIds) => blockFor(document, unitId, regionUnitIds, syntax),
+    isDocumentStructure: (line) => isDocumentStructure(line, syntax),
     readUnitOrders: (document, unitId, regionUnitIds) => readUnitOrders(document, unitId, regionUnitIds, syntax),
     writeUnitOrders: (document, unitId, orders, regionUnitIds) =>
       writeUnitOrders(document, unitId, orders, regionUnitIds, syntax),

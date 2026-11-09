@@ -15,6 +15,7 @@ import type { OrderProcessing } from "../orderProcessing";
 
 /** The turn on screen, as the tools read it. */
 export interface AssistantTurn {
+  readonly gameId: string;
   readonly gameName: string;
   readonly rulesetId: string | null;
   /** The game data as served, or `null` while it is still loading. */
@@ -33,8 +34,11 @@ export interface AssistantHost {
   bannerFor(regionId: string): string | null;
   /** The HUD's own validation of `document`, against everything else on screen. */
   validate(document: string): Promise<OrderValidationResult>;
-  /** Puts `document` in the editor and saves it, exactly as an orders import does. */
-  writeOrders(document: string): void;
+  /**
+   * Applies `update`, which rewrites `unitId`'s block, to the document as it stands when the write
+   * lands - which may hold something typed since the tool read it - and saves the result.
+   */
+  writeOrders(update: (document: string) => string, unitId: string): void;
 }
 
 /** One tool as MCP lists it. */
@@ -66,7 +70,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        regionId: { type: "string", description: "Only units in this region, e.g. \"12,4,1\"." },
+        regionId: { type: "string", description: "Only units in this region, as list_regions names it, e.g. \"1:12,4\"." },
         includeForeign: { type: "boolean", description: "Include units of other factions." }
       }
     }
@@ -93,10 +97,10 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        regionId: { type: "string", description: "e.g. \"12,4,1\"." },
+        regionId: { type: "string", description: "As list_regions names it, e.g. \"1:12,4\"." },
         x: { type: "number" },
         y: { type: "number" },
-        z: { type: "number", description: "The level; 1 is the surface in most worlds." }
+        z: { type: "number", description: "The level. Needed when x and y exist on more than one." }
       }
     }
   },
@@ -119,10 +123,17 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        turnKey: {
+          type: "string",
+          description: "The turnKey from get_turn_overview. A write for any other turn is refused."
+        },
         unitId: UNIT_ID,
-        orders: { type: "string", description: "The unit's complete orders, one order per line." }
+        orders: {
+          type: "string",
+          description: "The unit's complete orders, one order per line, without its 'unit' line."
+        }
       },
-      required: ["unitId", "orders"]
+      required: ["turnKey", "unitId", "orders"]
     }
   },
   {
@@ -263,6 +274,11 @@ function numberedLines(lines: readonly string[], from: number): string {
   return lines.map((line, index) => `${from + index}: ${line}`).join("\n");
 }
 
+/** Names the turn on screen, so a write can say which turn it was worked out for. */
+function turnKeyOf(turn: AssistantTurn): string {
+  return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
+}
+
 async function answer(host: AssistantHost, turn: AssistantTurn, name: string, args: Record<string, unknown>) {
   const { parsed } = turn;
   const ownUnits = parsed.regions.flatMap((region) => region.units.filter((unit) => unit.own));
@@ -272,6 +288,7 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       const validation = await host.validate(turn.ordersDocument);
       const errors = validation.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
       return ok({
+        turnKey: turnKeyOf(turn),
         game: turn.gameName,
         ruleset: turn.rulesetId,
         faction: { id: parsed.header.factionId, name: parsed.header.factionName, types: parsed.header.factionTypes },
@@ -294,6 +311,9 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     case "list_units": {
       const regionId = stringArg(args, "regionId");
       const includeForeign = args.includeForeign === true;
+      if (regionId !== undefined && !parsed.regions.some((region) => region.regionId === regionId)) {
+        refuse(`This turn's report shows no region ${regionId}. list_regions names every one it does.`);
+      }
       const rows = parsed.regions
         .filter((region) => regionId === undefined || region.regionId === regionId)
         .flatMap((region) =>
@@ -351,6 +371,12 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       const x = numberArg(args, "x");
       const y = numberArg(args, "y");
       const z = numberArg(args, "z");
+      if (regionId === undefined && z === undefined) {
+        const levels = parsed.regions.filter((candidate) => candidate.coordinate.x === x && candidate.coordinate.y === y);
+        if (levels.length > 1) {
+          refuse(`(${x},${y}) is on several levels; say which with z: ${levels.map((level) => level.coordinate.z).join(", ")}.`);
+        }
+      }
       const region = parsed.regions.find((candidate) =>
         regionId !== undefined
           ? candidate.regionId === regionId
@@ -379,24 +405,26 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     }
 
     case "set_unit_orders": {
+      if (requiredString(args, "turnKey") !== turnKeyOf(turn)) {
+        refuse("The open turn has changed since this was worked out. Call get_turn_overview and read the turn again.");
+      }
       const unitId = requiredString(args, "unitId");
-      const orders = requiredString(args, "orders");
+      const orders = typeof args.orders === "string" ? args.orders : refuse('"orders" must be text, one order per line.');
+      if (orders.split(/\r?\n/u).some((line) => host.orders.isDocumentStructure(line))) {
+        refuse("Send only the unit's own orders: no 'unit' line, region banner, #atlantis or #end.");
+      }
       const found = findUnit(parsed, unitId) ?? refuse(`This turn's report shows no unit ${unitId}.`);
       if (!found.unit.own) {
         refuse(`Unit ${unitId} is not the faction's own; only own units can be given orders.`);
       }
       const ids = unitIdsOf(found.region);
-      const next = host.orders.applyUnitOrders(
-        turn.ordersDocument,
-        unitId,
-        orders,
-        host.bannerFor(found.region.regionId),
-        ids
-      );
+      const banner = host.bannerFor(found.region.regionId);
+      const apply = (document: string) => host.orders.applyUnitOrders(document, unitId, orders, banner, ids);
+      const next = apply(turn.ordersDocument);
       if (next === turn.ordersDocument && host.orders.readUnitOrders(next, unitId, ids) === null) {
         refuse(`Unit ${unitId} has no block in the orders document and none could be made for it.`);
       }
-      host.writeOrders(next);
+      host.writeOrders(apply, unitId);
       const validation = await host.validate(next);
       const problems = host.orders
         .diagnosticsForUnit(next, unitId, validation.diagnostics, ids)

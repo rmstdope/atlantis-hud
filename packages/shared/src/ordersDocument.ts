@@ -81,6 +81,11 @@ function belongsToDocument(line: string, syntax: OrderCommentSyntax): boolean {
   );
 }
 
+/** Whether a line would change the shape of the document if it were written inside a unit's block. */
+export function isDocumentStructure(line: string, syntax: OrderCommentSyntax): boolean {
+  return line.trim() !== "" && (unitHeaderId(line, syntax) !== null || belongsToDocument(line, syntax));
+}
+
 /** Finds every unit block in a document. */
 export function findUnitBlocks(
   document: string,

@@ -4501,6 +4501,7 @@ export function AppShell({
       game === null || parsed === null || draftKey === null
         ? null
         : {
+            gameId: game.manifest.metadata.gameId,
             gameName: game.manifest.metadata.gameName,
             rulesetId: openRulesetId ?? null,
             rulesetText,
@@ -4520,12 +4521,16 @@ export function AppShell({
         knownPassagesJson: passagesJson,
         rememberedJson
       }),
-    // Through the same path an orders import takes: the editor takes its block again, and the
-    // autosave writes the draft.
-    writeOrders: (document) => {
-      assistantDocument.current = document;
-      writeOrdersDocument("external", document);
-      writer.markDirty(game, draftKey, document);
+    // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
+    // kept. Only the open unit's editor takes its block again: a write to another unit leaves
+    // whatever the player is typing alone, and the autosave writes the draft either way.
+    writeOrders: (update, unitId) => {
+      assistantDocument.current = update(assistantDocument.current);
+      writeOrdersDocument(unitId === selectedUnitId ? "external" : "editor", (document) => {
+        const next = update(document);
+        writer.markDirty(game, draftKey, next);
+        return next;
+      });
     }
   });
 
