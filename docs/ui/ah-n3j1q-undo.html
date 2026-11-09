@@ -1,0 +1,113 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Undo takes back only what it wrote</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--soft:#1e2733;--ink:#dbe3ec;--ink2:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--bright:#eebe63;--select:#4a9fd8;--ok:#4fb783;--warn:#e0a458;--danger:#e89494}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:32px 24px 64px}
+header,main{max-width:1180px;margin:0 auto}
+h1{font-size:25px}h1 span{color:var(--brass)}
+header p{color:var(--ink2);max-width:92ch;margin-top:10px;font-size:14px}
+h3{margin:34px 0 4px;font-size:13px;letter-spacing:1.6px;text-transform:uppercase;color:var(--brass)}
+h3+p{color:var(--ink2);font-size:13px;margin-bottom:12px;max-width:92ch}
+.row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
+@media(max-width:900px){.row{grid-template-columns:1fr}}
+.pane{background:var(--raised);border:1px solid var(--edge);border-radius:6px;overflow:hidden;font:13px/1.5 'Helvetica Neue',Arial,sans-serif}
+.top{display:flex;gap:10px;padding:7px 12px;border-bottom:1px solid var(--edge);color:var(--ink2)}
+.top b{color:var(--ink);font-weight:500}
+.body{padding:12px;display:grid;gap:10px}
+.note{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border:1px solid;border-radius:4px;padding:4px 8px}
+.note.ok{border-color:#2c4a3e;background:#16271f;color:#8fd6b0}
+.note.off{border-color:var(--edge);background:var(--panel);color:var(--dim)}
+.note.amber{border-color:#6b5230;background:#2a2116;color:var(--warn)}
+.undo{border:1px solid var(--select);color:var(--select);border-radius:4px;padding:0 6px}
+.sub{flex-basis:100%;font-size:12px;opacity:.9}
+.ask{border:1px solid var(--brass);border-radius:5px;padding:10px;background:var(--panel)}
+.ask p{margin-bottom:6px}.ask ul{margin:0 0 8px 18px;color:var(--ink2)}
+.btn{border:1px solid var(--edge);color:var(--ink2);border-radius:4px;padding:2px 9px;margin-right:6px;display:inline-block}
+.btn.go{border-color:var(--brass);color:var(--brass)}
+.sec{border:1px solid #6b5a33;border-radius:5px}
+.sec .hd{padding:4px 8px;color:var(--brass);background:#221d12;border-bottom:1px solid #6b5a33;display:flex;gap:8px}
+.sec .hd i{margin-left:auto;font-style:normal;color:var(--dim)}
+pre{font:12px/1.55 'SF Mono',Menlo,monospace;padding:9px;margin:0;white-space:pre;overflow:auto}
+.doc{background:#0b0f14;border:1px solid var(--soft);border-radius:6px}
+.doc .cap{font:11.5px 'Helvetica Neue',Arial,sans-serif;color:var(--dim);padding:6px 9px;border-bottom:1px solid var(--soft)}
+.s{color:var(--ok)}.l{color:var(--bright)}.c{color:var(--dim)}
+.opt{margin-top:26px;background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:14px;font-size:14px;max-width:92ch}
+</style></head><body><header><h1>Undo takes back only what it wrote</h1><p>The agreed drawing: after Put into my orders, if something else changes your orders while the planner is open, Undo stays, takes back only the mages it wrote, and names any it had to leave alone.</p></header><main><h3>1 · Just after the write</h3><p>The same in every option, and the same as today. Nothing else has changed, so Undo simply takes the write back.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+<span class="s">STUDY FORC</span>
+unit 412  ; Kira
+<span class="s">STUDY PATT</span>
+unit 87   ; Tolm
+<span class="s">TEACH 412</span>
+unit 905  ; Sael
+<span class="s">STUDY SPIR</span>
+unit 331  ; Orrin
+WORK</pre></div></div><h3>2 · Something else changed afterwards</h3><p>Claude Code gave Orrin (331), who is not one of the four, new orders. Undo stays, and says what it will do.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span><span class="sub">Your orders have changed since. Undo takes back only these mages.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+<span class="s">STUDY FORC</span>
+unit 412  ; Kira
+<span class="s">STUDY PATT</span>
+unit 87   ; Tolm
+<span class="s">TEACH 412</span>
+unit 905  ; Sael
+<span class="s">STUDY SPIR</span>
+unit 331  ; Orrin
+<span class="l">TAX</span>   <span class="c">; written later, by Claude Code</span></pre></div></div><h3>3 · Undo pressed</h3><p>The four mages go back. Orrin keeps what he was given.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note off"><span>Took back the study orders for 4 mages. Your later changes are still there.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+WORK
+unit 412  ; Kira
+STUDY FIRE
+unit 87   ; Tolm
+STUDY PATT
+unit 905  ; Sael
+STUDY FIRE
+unit 331  ; Orrin
+<span class="l">TAX</span>   <span class="c">; kept</span></pre></div></div><h3>4 · A later change hit one of the same mages</h3><p>Ereb's orders were rewritten after the study write. Undo says it will leave him.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span><span class="sub">Ereb (1234) has changed since, so Undo will leave him as he is.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+<span class="l">STUDY GATE</span>  <span class="c">; written later, by Claude Code</span>
+unit 412  ; Kira
+<span class="s">STUDY PATT</span>
+unit 87   ; Tolm
+<span class="s">TEACH 412</span>
+unit 905  ; Sael
+<span class="s">STUDY SPIR</span>
+unit 331  ; Orrin
+WORK</pre></div></div><h3>5 · Undo pressed, with Ereb changed</h3><p>The other three go back and Ereb stays, named.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note off"><span>Took back the study orders for 3 mages. Left Ereb (1234) as he is: his orders changed after the write.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+<span class="l">STUDY GATE</span>  <span class="c">; left as it is</span>
+unit 412  ; Kira
+STUDY FIRE
+unit 87   ; Tolm
+STUDY PATT
+unit 905  ; Sael
+STUDY FIRE
+unit 331  ; Orrin
+WORK</pre></div></div><h3>6 · Every mage has changed since</h3><p>Nothing is left for Undo to do, so it goes, and the line says why.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note off"><span>Wrote study orders for 4 mages; 1 other order replaced.</span><span class="sub">All 4 mages have changed since, so there is nothing left to undo.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+<span class="l">STUDY GATE</span>  <span class="c">; written later, by Claude Code</span>
+unit 412  ; Kira
+<span class="l">STUDY PATT</span>
+unit 87   ; Tolm
+<span class="l">TEACH 412</span>
+unit 905  ; Sael
+<span class="l">STUDY SPIR</span>
+unit 331  ; Orrin
+WORK</pre></div></div><h3>7 · Many mages changed since</h3><p>Every mage left alone is named, however long the line gets.</p><div class="row"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note off"><span>Took back the study orders for 2 mages. Left Ereb (1234), Kira (412), Tolm (87), Sael (905), Bryn (66), Odo (701) and Ysolt (218) as they are: their orders changed after the write.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div><div class="doc"><div class="cap">Your orders document</div><pre>unit 1234 ; Ereb
+<span class="l">STUDY GATE</span>  <span class="c">; written later, by Claude Code</span>
+unit 412  ; Kira
+<span class="s">STUDY PATT</span>
+unit 87   ; Tolm
+<span class="s">TEACH 412</span>
+unit 905  ; Sael
+<span class="s">STUDY SPIR</span>
+unit 331  ; Orrin
+WORK</pre></div></div><h3>In a narrow window</h3><p>The line wraps as one block; Undo stays straight after the first sentence.</p><div style="max-width:360px"><div class="pane"><div class="top"><b>Study planner</b><span>Orders</span></div><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span><span class="sub">Ereb (1234) has changed since, so Undo will leave him as he is.</span></div><div class="sec"><div class="hd">Your faction<i>Put into my orders &nbsp; Copy &nbsp; Save…</i></div><pre>unit 1234  ; Ereb
+STUDY FORC
+…</pre></div></div></div></div><h2 style='margin-top:40px'>Every sentence, as it ships</h2><h3>Before pressing, something else changed</h3><p></p><div class="pane"><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span><span class="sub">Your orders have changed since. Undo takes back only these mages.</span></div></div></div><h3>Before pressing, one mage changed</h3><p></p><div class="pane"><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span><span class="sub">Ereb (1234) has changed since, so Undo will leave him as he is.</span></div></div></div><h3>Before pressing, two mages changed</h3><p></p><div class="pane"><div class="body"><div class="note ok"><span>Wrote study orders for 4 mages; 1 other order replaced.</span> <span class="undo">Undo</span><span class="sub">Ereb (1234) and Kira (412) have changed since, so Undo will leave them as they are.</span></div></div></div><h3>After Undo, later changes kept</h3><p></p><div class="pane"><div class="body"><div class="note off"><span>Took back the study orders for 4 mages. Your later changes are still there.</span></div></div></div><h3>After Undo, one mage left</h3><p></p><div class="pane"><div class="body"><div class="note off"><span>Took back the study orders for 3 mages. Left Ereb (1234) as he is: his orders changed after the write.</span></div></div></div><h3>Every mage changed</h3><p></p><div class="pane"><div class="body"><div class="note off"><span>Wrote study orders for 4 mages; 1 other order replaced.</span><span class="sub">All 4 mages have changed since, so there is nothing left to undo.</span></div></div></div><h3>Nothing else changed (as today)</h3><p></p><div class="pane"><div class="body"><div class="note off"><span>Put your orders back as they were.</span></div></div></div><div class="opt">Agreed: Undo keeps later changes, warns before pressing, names every mage left alone, and uses full sentences.</div></main></body></html>
