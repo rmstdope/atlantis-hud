@@ -40,6 +40,7 @@ function doors(): { doors: PaletteDoors; calls: string[] } {
       openExport: say("openExport"),
       exportMageSheet: say("exportMageSheet"),
       openBattles: say("openBattles"),
+      showAssistantChanges: say("showAssistantChanges"),
       openProduction: say("openProduction"),
       addHexNote: say("addHexNote"),
       revealHexNote: say("revealHexNote"),
@@ -393,6 +394,19 @@ describe("assemblePaletteInput (ah-1xl5)", () => {
     expect(row).toMatchObject({ key: "95/18642", text: "Push to FORC 3" });
     row?.run();
     expect(calls).toEqual(["revealMageNote 95/18642"]);
+  });
+});
+
+describe("the assistant changes command (ah-bcdri)", () => {
+  it("is listed only while something is on the list, and shows the panel", () => {
+    const { doors: d, calls } = doors();
+
+    expect(actionIds(world())).not.toContain("show-assistant-changes");
+    const input = assemblePaletteInput(world({ assistantChangesListed: true }), d);
+    const action = input.actions?.find((candidate) => candidate.id === "show-assistant-changes");
+    expect(action?.label).toBe("Show assistant changes");
+    action?.run();
+    expect(calls).toEqual(["showAssistantChanges"]);
   });
 });
 

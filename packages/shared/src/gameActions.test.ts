@@ -16,6 +16,7 @@ import {
   resetGame
 } from "./gameActions";
 import { loadSavedView, saveMapView } from "./workspace/mapViewportStorage";
+import { loadAssistantChanges, saveAssistantChanges } from "./assistant/assistantChangesStorage";
 
 // A second ruleset this build "ships" only for this test, so `changeRuleset`'s actual move can be
 // exercised - `rulesets.ts` ships exactly one ruleset otherwise, which cannot tell "known and
@@ -411,6 +412,17 @@ describe("resetting a game", () => {
 
     expect(loadSavedView("emptied")).toBeNull();
     expect(loadSavedView("untouched")).not.toBeNull();
+  });
+
+  it("forgets the assistant changes listed for the emptied game", async () => {
+    stubGlobalStorage();
+    const scope = { gameId: "emptied", factionId: "3", turn: 71 };
+    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }] });
+    expect(loadAssistantChanges(scope).changes).toHaveLength(1);
+
+    await resetGame(fakeClient(), "emptied", null, NOW, vi.fn());
+
+    expect(loadAssistantChanges(scope).changes).toEqual([]);
   });
 });
 

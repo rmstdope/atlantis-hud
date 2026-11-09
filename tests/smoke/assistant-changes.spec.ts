@@ -1,0 +1,203 @@
+import { expect, test, type Page } from "@playwright/test";
+import { expectOrders, fillOrders, loadReport, ordersInput, saveNow, selectHex, selectUnit } from "./gameSetup";
+import { DESKTOP_SHELL_TAG } from "./shells";
+
+/**
+ * The panel that shows what an assistant wrote (ah-bcdri). Tagged for `desktop-shell`: only the
+ * desktop bundle passes an assistant transport, and this walk installs a stand-in for it.
+ *
+ * Every rule and every word is pinned in `assistantChanges.test.ts` and
+ * `AssistantChangesPanel.test.tsx`. What is here is what a static render cannot reach: who holds the
+ * cursor, Esc, dragging, the narrow sheet, and coming back after a reload.
+ */
+
+type Answer = { text: string; isError: boolean };
+
+declare global {
+  interface Window {
+    __assistantCall?: (name: string, args: Record<string, unknown>) => Promise<Answer>;
+  }
+}
+
+const MAGE = "881";
+const MAGE_HEX = "1:26,52";
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    let onCall: ((call: { id: number; name: string; arguments: Record<string, unknown> }) => Promise<Answer>) | null = null;
+    let id = 0;
+    (window as unknown as { __ATLANTIS_DESKTOP_ASSISTANT__: unknown }).__ATLANTIS_DESKTOP_ASSISTANT__ = {
+      async connect(_tools: unknown, handler: typeof onCall) {
+        onCall = handler;
+        return () => undefined;
+      },
+      async connection() {
+        return { url: "http://127.0.0.1:1/mcp", token: "stand-in", error: null };
+      }
+    };
+    window.__assistantCall = (name, args) => {
+      if (onCall === null) {
+        throw new Error("the assistant is not connected yet");
+      }
+      id += 1;
+      return onCall({ id, name, arguments: args });
+    };
+  });
+});
+
+async function call(page: Page, name: string, args: Record<string, unknown> = {}): Promise<Answer> {
+  return page.evaluate(([tool, input]) => window.__assistantCall?.(tool as string, input as Record<string, unknown>) as Promise<Answer>, [name, args] as const);
+}
+
+async function turnKey(page: Page): Promise<string> {
+  await expect.poll(async () => (await call(page, "get_turn_overview")).isError).toBe(false);
+  return (JSON.parse((await call(page, "get_turn_overview")).text) as { turnKey: string }).turnKey;
+}
+
+/** Writes `orders` for `unitId`, the way the assistant's `set_unit_orders` does. */
+async function write(page: Page, key: string, unitId: string, orders: string) {
+  const answer = await call(page, "set_unit_orders", { turnKey: key, unitId, orders });
+  expect(answer.isError, answer.text).toBe(false);
+}
+
+/** The faction's own units, so a walk need not know the fixture by heart. */
+async function ownUnits(page: Page, count: number): Promise<string[]> {
+  const rows = JSON.parse((await call(page, "list_units")).text) as { unitId: string }[];
+  return rows.map((row) => row.unitId).filter((unitId) => unitId !== MAGE).slice(0, count);
+}
+
+const panel = (page: Page) => page.getByTestId("assistant-changes-panel");
+const chip = (page: Page) => page.getByTestId("assistant-changes-chip");
+const count = (page: Page) => page.getByTestId("assistant-changes-count");
+const entry = (page: Page, unitId: string) => page.getByTestId(`assistant-change-${unitId}`);
+
+async function openOnMage(page: Page) {
+  await loadReport(page);
+  await selectHex(page, MAGE_HEX);
+  await selectUnit(page, MAGE);
+  return turnKey(page);
+}
+
+test(
+  "writes show as they land without taking the cursor, and can be taken back",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    const key = await openOnMage(page);
+    const [first, second, third] = await ownUnits(page, 3);
+    await ordersInput(page).click();
+    await expect(panel(page)).toHaveCount(0);
+
+    await write(page, key, first as string, "work");
+    await expect(panel(page)).toBeVisible();
+    await expect(count(page)).toHaveText("1 unit");
+    await expect(ordersInput(page)).toBeFocused();
+
+    // A write to the very unit being typed in lands, keeps the cursor, and says so.
+    await fillOrders(page, "study FORC");
+    await write(page, key, MAGE, "study PATT");
+    await expectOrders(page, /study PATT/u);
+    await expect(page.getByTestId("orders-assistant-rewrote")).toBeVisible();
+    await expect(ordersInput(page)).toBeFocused();
+    await expect(entry(page, MAGE)).toContainText("study FORC");
+    await page.keyboard.type(" ");
+    await expect(page.getByTestId("orders-assistant-rewrote")).toHaveCount(0);
+
+    // A hand edit marks it; typing back to what the assistant wrote takes the mark away.
+    await expect(entry(page, MAGE)).toContainText("edited since");
+    await page.keyboard.press("Backspace");
+    await expect(entry(page, MAGE)).not.toContainText("edited since");
+
+    // Revert one, and the panel keeps the cursor.
+    await page.getByTestId(`assistant-change-revert-${first as string}`).click();
+    await expect(entry(page, first as string)).toHaveCount(0);
+    await expect(panel(page)).toBeFocused();
+
+    // Revert all asks, and Esc in the question is Cancel.
+    await write(page, key, second as string, "work");
+    await write(page, key, third as string, "work");
+    await page.getByTestId("assistant-changes-revert-all").click();
+    const question = page.getByTestId("assistant-changes-question");
+    await expect(question).toContainText("Revert 3 units?");
+    await expect(page.getByTestId("assistant-changes-cancel")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(question).toHaveCount(0);
+    await expect(panel(page)).toBeVisible();
+
+    await page.getByTestId("assistant-changes-revert-all").click();
+    await page.getByTestId("assistant-changes-confirm").click();
+    await expect(panel(page)).toHaveCount(0);
+    await expectOrders(page, /study FORC/u);
+  }
+);
+
+test(
+  "a closed panel stays closed, comes back as it was left, and moves or docks with the window",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    const key = await openOnMage(page);
+    const [first, second] = await ownUnits(page, 2);
+    await write(page, key, first as string, "work");
+    await expect(panel(page)).toBeVisible();
+
+    // Dragged by its top bar, like the app's dialogs.
+    const bar = page.getByTestId("assistant-changes-bar");
+    const before = (await panel(page).boundingBox())!;
+    const barBox = (await bar.boundingBox())!;
+    await page.mouse.move(barBox.x + 200, barBox.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(barBox.x + 260, barBox.y - 40, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(async () => (await panel(page).boundingBox())!.x).toBeGreaterThan(before.x + 30);
+
+    // Esc from inside closes it, and the cursor lands on the chip.
+    await page.getByTestId("assistant-changes-keep-all").focus();
+    await page.keyboard.press("Escape");
+    await expect(panel(page)).toBeHidden();
+    await expect(chip(page)).toContainText("Assistant: 1");
+    await expect(chip(page)).toBeFocused();
+
+    // Closed stays closed while the number rises.
+    await write(page, key, second as string, "work");
+    await expect(chip(page)).toContainText("Assistant: 2");
+    await expect(panel(page)).toBeHidden();
+
+    // The list comes back, still closed, after a reload.
+    await saveNow(page);
+    await page.reload();
+    await expect(chip(page)).toContainText("Assistant: 2");
+    await expect(panel(page)).toBeHidden();
+
+    // The chip brings it back and gives it the cursor.
+    await chip(page).click();
+    await expect(panel(page)).toBeVisible();
+    await expect(panel(page)).toBeFocused();
+    await expect(chip(page)).toHaveCount(0);
+    await expect(count(page)).toHaveText("2 units");
+
+    // The command list reaches it too, and it is only listed while something is.
+    await page.getByTestId("assistant-changes-close").click();
+    await expect(chip(page)).toBeFocused();
+    await page.keyboard.press("ControlOrMeta+k");
+    await page.getByTestId("palette-input").fill("Show assistant changes");
+    await expect(page.getByTestId("palette-item")).toHaveCount(1);
+    await page.keyboard.press("Enter");
+    await expect(panel(page)).toBeVisible();
+    await expect(panel(page)).toBeFocused();
+
+    // A narrow window makes it a sheet across the bottom that cannot be dragged.
+    await page.setViewportSize({ width: 700, height: 720 });
+    const sheet = (await panel(page).boundingBox())!;
+    expect(sheet.width).toBe(700);
+    expect(sheet.y + sheet.height).toBe(720);
+    await expect(panel(page)).toHaveAttribute("data-sheet", "");
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    // Keep all empties it for good; nothing to bring back.
+    await page.getByTestId("assistant-changes-keep-all").click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(chip(page)).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("app-header")).toBeVisible();
+    await expect(chip(page)).toHaveCount(0);
+  }
+);

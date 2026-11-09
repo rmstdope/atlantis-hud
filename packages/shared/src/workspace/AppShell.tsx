@@ -178,6 +178,9 @@ import { carriedMergedSkills, foreignRowsWithMerged, knownMapWithMerged } from "
 import { useMergedHistory } from "./mergedHistory";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
 import { useAssistant, type AssistantTransport } from "../assistant/assistantTransport";
+import { revertAssistantChanges } from "../assistant/assistantChanges";
+import { AssistantChangesPanel } from "./AssistantChangesPanel";
+import { useAssistantChanges } from "./useAssistantChanges";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
 import { comparisonChipLabel, type ComparisonTurn } from "../turnCompare";
@@ -1713,6 +1716,16 @@ export function AppShell({
    */
   const unitsById = useMemo(() => latestTurnUnitsById(model), [model]);
 
+  // What the assistant has changed in this turn's orders, for the panel (ah-bcdri).
+  const assistantChanges = useAssistantChanges({
+    enabled: assistant !== undefined,
+    game,
+    parsed,
+    document: ordersDocument,
+    validated,
+    orders
+  });
+
   /**
    * Goes to the unit a turn message names.
    *
@@ -1999,7 +2012,8 @@ export function AppShell({
           hexNotes,
           studyPlans,
           plannerGroups: plannerGroupRows,
-          gates: gateMemory
+          gates: gateMemory,
+          assistantChangesListed: assistantChanges.views.length > 0
         },
         {
           // The dock's focus effect needs the rows rendered, as the dossier's "show their units"
@@ -2029,6 +2043,7 @@ export function AppShell({
             setBattlesOpen(true);
           },
           openProduction: () => setProductionOpen(true),
+          showAssistantChanges: assistantChanges.show,
           addHexNote: (regionId) => {
             if (useWorkspaceStore.getState().collapsed.region) {
               useWorkspaceStore.getState().togglePanel("region");
@@ -2044,6 +2059,8 @@ export function AppShell({
         }
       ),
     [
+      assistantChanges.views.length,
+      assistantChanges.show,
       hexNotes,
       studyPlans,
       plannerGroupRows,
@@ -4332,8 +4349,15 @@ export function AppShell({
     [game, draftKey, writer, writeOrdersDocument]
   );
 
+  /** The unit whose orders box the assistant just rewrote under the player's cursor. */
+  const [assistantRewroteUnit, setAssistantRewroteUnit] = useState<string | null>(null);
+  useEffect(() => {
+    setAssistantRewroteUnit(null);
+  }, [selectedUnitId, draftKey]);
+
   const onOrdersChange = useCallback(
     (unitId: string, unitOrders: string) => {
+      setAssistantRewroteUnit(null);
       writeOrdersDocument("editor", (document) => {
         // The block is created on the first keystroke, not on selection: an edit that arrives with
         // no text in it has typed nothing (ah-0gs8).
@@ -4526,7 +4550,12 @@ export function AppShell({
     // kept. Only the open unit's editor takes its block again: a write to another unit leaves
     // whatever the player is typing alone, and the autosave writes the draft either way.
     writeOrders: (update, unitId) => {
-      assistantDocument.current = update(assistantDocument.current);
+      const written = update(assistantDocument.current);
+      assistantChanges.recordWrite(unitId, assistantDocument.current, written);
+      assistantDocument.current = written;
+      if (unitId === selectedUnitId && ordersEditor.current?.hasFocus() === true) {
+        setAssistantRewroteUnit(unitId);
+      }
       writeOrdersDocument(unitId === selectedUnitId ? "external" : "editor", (document) => {
         const next = update(document);
         writer.markDirty(game, draftKey, next);
@@ -4534,6 +4563,26 @@ export function AppShell({
       });
     }
   });
+
+  /** Puts Before back for the units that may go back, and leaves a hand-edited one alone (ah-bcdri). */
+  const revertAssistantUnits = (unitIds: readonly string[]) => {
+    const listed = assistantChanges.state;
+    const result = revertAssistantChanges(assistantDocument.current, listed, unitIds, orders);
+    if (result.reverted.length === 0) {
+      return;
+    }
+    assistantChanges.replace(result.state);
+    assistantDocument.current = result.document;
+    if (assistantRewroteUnit !== null && result.reverted.includes(assistantRewroteUnit)) {
+      setAssistantRewroteUnit(null);
+    }
+    const editorShowsOne = selectedUnitId !== null && result.reverted.includes(selectedUnitId);
+    writeOrdersDocument(editorShowsOne ? "external" : "editor", (document) => {
+      const next = revertAssistantChanges(document, listed, result.reverted, orders).document;
+      writer.markDirty(game, draftKey, next);
+      return next;
+    });
+  };
 
   /** Writes a planned route into the selected unit's block, replacing any MOVE already there. */
   const applyRoute = useCallback(
@@ -6037,6 +6086,9 @@ export function AppShell({
           setComparison(null);
           closePopover("turns");
         }}
+        assistantChip={assistantChanges.chipLabel}
+        onShowAssistantChanges={assistantChanges.show}
+        assistantChipRef={assistantChanges.chipRef}
         mageSheetChip={mageSheetChipLabel}
         mageSheetsPanel={
           <MageSheetsPanel
@@ -6328,6 +6380,18 @@ export function AppShell({
         />
       ) : null}
 
+      {assistantChanges.views.length > 0 ? (
+        <AssistantChangesPanel
+          views={assistantChanges.views}
+          open={assistantChanges.open}
+          panelRef={assistantChanges.panelRef}
+          onClose={assistantChanges.close}
+          onKeepAll={assistantChanges.keepAll}
+          onRevert={revertAssistantUnits}
+          onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId === "" ? undefined : regionId)}
+        />
+      ) : null}
+
       <div className="relative min-h-0 flex-1">
         <MapCanvas
           ref={mapCanvas}
@@ -6565,6 +6629,7 @@ export function AppShell({
                     snippets={snippets}
                     caretCompletions={caretCompletions}
                     editorRef={ordersEditor}
+                    assistantRewrote={assistantRewroteUnit !== null && assistantRewroteUnit === selectedUnitId}
                     onWalkProblems={walkProblems}
                     onShowProblemsIn={showProblemsIn}
                     problemTargets={problemTargets}

@@ -285,3 +285,36 @@ describe("a unit's problem with no line", () => {
     expect(markup).toContain('data-testid="orders-input"');
   });
 });
+
+describe("the line above the orders box", () => {
+  const unit = aReportUnit({ unitId: "100", own: true });
+  const drawUnit = (assistantRewrote: boolean) =>
+    renderToStaticMarkup(
+      <OrdersPanel orders={orderProcessingFor("neworigins")}
+        unit={unit}
+        unitId="100"
+        formed={null}
+        regionUnitIds={new Set(["100"])}
+        hex={{ regionId: "1:1,1" } as never}
+        document={"#atlantis 3\nunit 100\nwork\n#end\n"}
+        externalRevision={0}
+        ownFactionName="your faction"
+        onChange={() => {}}
+        validated={{ text: "", diagnostics: [], silver: [], production: NO_PRODUCTION, students: NO_STUDENTS, faction: NO_FACTION_ORDERS, unclaimedSilverUse: null }}
+        save={{ kind: "clean" }}
+        commands={[]}
+        orderVocabulary={[]}
+        snippets={[]}
+        caretCompletions={async () => ({ position: "command", wordStart: 0, word: "", options: [], endingCommands: [] })}
+        assistantRewrote={assistantRewrote}
+      />
+    );
+
+  it("says the assistant rewrote the orders being typed in", () => {
+    expect(drawUnit(true)).toContain("The assistant just rewrote these orders. Your text is under Before.");
+  });
+
+  it("is absent otherwise", () => {
+    expect(drawUnit(false)).not.toContain("just rewrote");
+  });
+});

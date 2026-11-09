@@ -437,3 +437,16 @@ describe("the fetch control", () => {
 function controlTag(markup: string): string {
   return markup.match(/<button[^>]*data-testid="fetch-control"[^>]*>/)?.[0] ?? "";
 }
+
+describe("the assistant changes chip", () => {
+  it("is absent while nothing is hidden", () => {
+    expect(draw()).not.toContain("assistant-changes-chip");
+  });
+
+  it("shows its words and names what pressing it does", () => {
+    const markup = draw({ assistantChip: "Assistant: 3 · ⚠ 1" });
+
+    expect(markup).toContain('data-testid="assistant-changes-chip"');
+    expect(markup).toContain("Assistant: 3 · ⚠ 1");
+  });
+});

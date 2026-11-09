@@ -1,4 +1,4 @@
-import type { ChangeEvent, DragEvent, MutableRefObject, ReactNode } from "react";
+import type { ChangeEvent, DragEvent, MutableRefObject, ReactNode, Ref } from "react";
 import type { ValidationMarker } from "./validationInputs";
 import { useRef } from "react";
 import type { MageSheetChip } from "../alliedMageChip";
@@ -93,6 +93,12 @@ type AppHeaderProps = {
   mageSheetChip: MageSheetChip | null;
   /** The panel itself, rendered under the chip when it is open. */
   mageSheetsPanel: ReactNode;
+  /** The chip's words while the assistant changes panel is closed with something listed, else null. */
+  assistantChip?: string | null;
+  /** Opens the assistant changes panel again. */
+  onShowAssistantChanges?: () => void;
+  /** Where the cursor goes when the panel is closed from the keyboard. */
+  assistantChipRef?: Ref<HTMLButtonElement>;
   /** The panel itself, rendered under the faction name when it is open. */
   factionPanel: ReactNode;
   status: StatusLine | null;
@@ -229,6 +235,9 @@ export function AppHeader({
   mergedPanel,
   mageSheetChip,
   mageSheetsPanel,
+  assistantChip = null,
+  onShowAssistantChanges,
+  assistantChipRef,
   factionPanel,
   status,
   counts,
@@ -557,6 +566,18 @@ export function AppHeader({
             </span>
           </button>
         </ChipPopover>
+      ) : null}
+
+      {assistantChip !== null ? (
+        <button
+          type="button"
+          ref={assistantChipRef}
+          data-testid="assistant-changes-chip"
+          onClick={onShowAssistantChanges}
+          className="rounded-full border border-brass bg-panel-raised px-2.5 py-0.5 tabular-nums text-brass hover:border-brass-bright hover:text-brass-bright"
+        >
+          {assistantChip}
+        </button>
       ) : null}
 
       {/*

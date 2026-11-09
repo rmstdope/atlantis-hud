@@ -23,6 +23,7 @@ import { rulesetGaps, type RulesetGaps } from "./rulesetGaps";
 import { gameAfterDelete, gameNameOf, newGameId, newGameManifest } from "./gameSession";
 import { rulesetById } from "./rulesets";
 import { forgetMapView } from "./workspace/mapViewportStorage";
+import { forgetAssistantChanges } from "./assistant/assistantChangesStorage";
 
 /** The slice of the client these actions need - a fake in the tests is an object literal. */
 export type GameClient = Pick<
@@ -167,6 +168,7 @@ export async function deleteGame(
     discardOpenDraft();
   }
   await client.deleteGame(gameId);
+  forgetAssistantChanges(gameId);
   const games = await client.listGames();
 
   if (!deletingOpenGame) {
@@ -210,6 +212,7 @@ export async function resetGame(
   }
   const opened = await client.resetGame(gameId, now);
   forgetMapView(gameId);
+  forgetAssistantChanges(gameId);
   return { opened, games: await client.listGames(), wasOpenGame };
 }
 

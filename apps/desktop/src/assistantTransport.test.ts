@@ -43,6 +43,13 @@ describe("desktopAssistantTransport", () => {
     );
   });
 
+  it("prefers a stand-in a smoke test installed, with no Tauri runtime present", () => {
+    const standIn = { connect: vi.fn(), connection: vi.fn() };
+    vi.stubGlobal("window", { __ATLANTIS_DESKTOP_ASSISTANT__: standIn });
+
+    expect(desktopAssistantTransport()).toBe(standIn);
+  });
+
   // Vitest fails the run on an unhandled rejection, which is what this one would be.
   it("lets the relay's timeout deal with an answer that cannot be sent", async () => {
     const deliver = await connectedWith(() => Promise.resolve({ text: "orders", isError: false }));
