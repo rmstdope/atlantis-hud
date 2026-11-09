@@ -2,6 +2,7 @@ import type { OrderDiagnostic, OpenedGame, ParsedReport } from "@atlantis/core-c
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NO_ASSISTANT_CHANGES,
+  assistantChangeProblems,
   assistantChangeViews,
   assistantChipLabel,
   currentOrdersOf,
@@ -54,9 +55,13 @@ export function useAssistantChanges(input: {
   }
   const state = held.key === key ? held.state : NO_ASSISTANT_CHANGES;
 
+  const problems = useMemo(
+    () => assistantChangeProblems({ state, parsed, validated, orders }),
+    [state, parsed, validated, orders]
+  );
   const views = useMemo(
-    () => (state.changes.length === 0 ? [] : assistantChangeViews({ state, document, parsed, validated, orders })),
-    [state, document, parsed, validated, orders]
+    () => (state.changes.length === 0 ? [] : assistantChangeViews({ state, document, parsed, problems, orders })),
+    [state, document, parsed, problems, orders]
   );
 
   useEffect(() => {

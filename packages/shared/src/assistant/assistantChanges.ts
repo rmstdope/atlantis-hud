@@ -198,6 +198,30 @@ function compareLocated(a: Located | undefined, b: Located | undefined): number 
 }
 
 /**
+ * Each listed unit's problems, as the check last answered.
+ *
+ * Apart from `assistantChangeViews` because it walks the checked text once per unit, and the
+ * answer moves only when the check does: the views are redrawn on every keystroke.
+ */
+export function assistantChangeProblems(input: {
+  state: AssistantChangesState;
+  parsed: ParsedReport | null;
+  validated: { text: string; diagnostics: OrderDiagnostic[] };
+  orders: OrderProcessing;
+}): Map<string, string[]> {
+  const { state, parsed, validated, orders } = input;
+  const located = locatedUnits(parsed);
+  return new Map(
+    state.changes.map((change) => {
+      const place = located.get(change.unitId);
+      const regionUnitIds = place === undefined ? undefined : new Set(place.region.units.map((unit) => unit.unitId));
+      const found = orders.diagnosticsForUnit(validated.text, change.unitId, validated.diagnostics, regionUnitIds);
+      return [change.unitId, found.map((diagnostic) => diagnostic.message)];
+    })
+  );
+}
+
+/**
  * The list as it should be drawn, sorted by hex and then unit number.
  *
  * A unit's place comes from where it stands, which a write cannot change, so it slots in when it
@@ -208,10 +232,10 @@ export function assistantChangeViews(input: {
   state: AssistantChangesState;
   document: string;
   parsed: ParsedReport | null;
-  validated: { text: string; diagnostics: OrderDiagnostic[] };
+  problems: ReadonlyMap<string, readonly string[]>;
   orders: OrderProcessing;
 }): AssistantChangeView[] {
-  const { state, document, parsed, validated, orders } = input;
+  const { state, document, parsed, problems, orders } = input;
   const current = currentOrdersOf(document, state.changes.map((change) => change.unitId), orders);
   const located = locatedUnits(parsed);
   return state.changes
@@ -229,16 +253,7 @@ export function assistantChangeViews(input: {
         name: place?.unit.name ?? "",
         where: place === undefined ? "" : whereOf(place.region),
         edited,
-        problems: edited
-          ? []
-          : orders
-              .diagnosticsForUnit(
-                validated.text,
-                change.unitId,
-                validated.diagnostics,
-                place === undefined ? undefined : new Set(place.region.units.map((unit) => unit.unitId))
-              )
-              .map((diagnostic) => diagnostic.message),
+        problems: edited ? [] : [...(problems.get(change.unitId) ?? [])],
         rows: alignOrderLines(change.before, change.after),
         beforeEmpty: change.before === "",
         afterEmpty: change.after === ""

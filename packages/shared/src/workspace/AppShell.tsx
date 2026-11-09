@@ -4552,8 +4552,9 @@ export function AppShell({
     writeOrders: (update, unitId) => {
       const written = update(assistantDocument.current);
       assistantChanges.recordWrite(unitId, assistantDocument.current, written);
+      const changed = written !== assistantDocument.current;
       assistantDocument.current = written;
-      if (unitId === selectedUnitId && ordersEditor.current?.hasFocus() === true) {
+      if (changed && unitId === selectedUnitId && ordersEditor.current?.hasFocus() === true) {
         setAssistantRewroteUnit(unitId);
       }
       writeOrdersDocument(unitId === selectedUnitId ? "external" : "editor", (document) => {

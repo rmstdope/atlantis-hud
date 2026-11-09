@@ -8,6 +8,7 @@ import {
 import { orderProcessingFor } from "../orderProcessing";
 import {
   alignOrderLines,
+  assistantChangeProblems,
   assistantChangeViews,
   assistantChipLabel,
   countLabel,
@@ -219,7 +220,7 @@ describe("assistantChangeViews", () => {
       state,
       document: text,
       parsed,
-      validated: { text, diagnostics },
+      problems: assistantChangeProblems({ state, parsed, validated: { text, diagnostics }, orders }),
       orders
     });
   }

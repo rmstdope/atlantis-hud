@@ -71,6 +71,17 @@ describe("assistant changes storage", () => {
     expect(loadAssistantChanges(TURN_71, storage).changes).toEqual([]);
   });
 
+  it("saves over a record it cannot read", () => {
+    const storage = memoryStorage();
+    saveAssistantChanges(TURN_71, LIST, storage);
+    const [key] = storage.data.keys();
+    storage.setItem(key as string, "{not json");
+
+    saveAssistantChanges(TURN_71, LIST, storage);
+
+    expect(loadAssistantChanges(TURN_71, storage)).toEqual(LIST);
+  });
+
   it("does not throw when storage is missing or blocked", () => {
     const blocked: ViewportStorage = {
       getItem: () => {

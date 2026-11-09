@@ -1,5 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
-import { expectOrders, fillOrders, loadReport, ordersInput, saveNow, selectHex, selectUnit } from "./gameSetup";
+import { readReport } from "@atlantis/fixtures";
+import {
+  clearGames,
+  createGame,
+  expectOrders,
+  fillOrders,
+  importReport,
+  loadReport,
+  ordersInput,
+  saveNow,
+  selectHex,
+  selectUnit
+} from "./gameSetup";
 import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
@@ -18,6 +30,9 @@ declare global {
     __assistantCall?: (name: string, args: Record<string, unknown>) => Promise<Answer>;
   }
 }
+
+const TURN_70 = readReport("g7f95t70");
+const TURN_71 = readReport("g7f95t71");
 
 const MAGE = "881";
 const MAGE_HEX = "1:26,52";
@@ -94,6 +109,9 @@ test(
 
     // A write to the very unit being typed in lands, keeps the cursor, and says so.
     await fillOrders(page, "study FORC");
+    // A write that changes nothing says nothing.
+    await write(page, key, MAGE, "study FORC");
+    await expect(page.getByTestId("orders-assistant-rewrote")).toHaveCount(0);
     await write(page, key, MAGE, "study PATT");
     await expectOrders(page, /study PATT/u);
     await expect(page.getByTestId("orders-assistant-rewrote")).toBeVisible();
@@ -186,11 +204,35 @@ test(
 
     // A narrow window makes it a sheet across the bottom that cannot be dragged.
     await page.setViewportSize({ width: 700, height: 720 });
+    await expect(panel(page)).toHaveAttribute("data-sheet", "");
     const sheet = (await panel(page).boundingBox())!;
     expect(sheet.width).toBe(700);
     expect(sheet.y + sheet.height).toBe(720);
-    await expect(panel(page)).toHaveAttribute("data-sheet", "");
     await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(panel(page)).not.toHaveAttribute("data-sheet", "");
+
+    // Dragged and full, it stays inside the window and scrolls; a new entry above holds the list still.
+    const rows = (JSON.parse((await call(page, "list_units")).text) as { unitId: string; regionId: string }[])
+      .filter((row) => row.regionId.startsWith("1:") && row.unitId !== first && row.unitId !== second)
+      .map((row) => ({ ...row, at: row.regionId.slice(2).split(",").map(Number) as [number, number] }))
+      .sort((a, b) => a.at[1] - b.at[1] || a.at[0] - b.at[0] || Number(a.unitId) - Number(b.unitId));
+    const [topmost, ...rest] = rows;
+    for (const row of rest.slice(0, 12)) {
+      await write(page, key, row.unitId, "work");
+    }
+    await expect.poll(async () => {
+      const box = (await panel(page).boundingBox())!;
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(720);
+    const list = page.getByTestId("assistant-changes-list");
+    await list.evaluate((element) => element.scrollTo(0, 400));
+    const reading = page.locator("[data-testid^='assistant-change-'][data-unit]").nth(3);
+    const readingId = await reading.getAttribute("data-unit");
+    const seen = page.getByTestId(`assistant-change-${readingId as string}`);
+    const topBefore = (await seen.boundingBox())!.y;
+    await write(page, key, (topmost as { unitId: string }).unitId, "work");
+    await expect(entry(page, (topmost as { unitId: string }).unitId)).toHaveCount(1);
+    await expect.poll(async () => Math.round((await seen.boundingBox())!.y)).toBe(Math.round(topBefore));
 
     // Keep all empties it for good; nothing to bring back.
     await page.getByTestId("assistant-changes-keep-all").click();
@@ -198,6 +240,25 @@ test(
     await expect(chip(page)).toHaveCount(0);
     await page.reload();
     await expect(page.getByTestId("app-header")).toBeVisible();
+    await expect(chip(page)).toHaveCount(0);
+  }
+);
+
+test(
+  "the list empties for good when a new turn opens",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    await clearGames(page);
+    await createGame(page, "Assistant turns game");
+    await importReport(page, "turn70.txt", TURN_70);
+    const key = await turnKey(page);
+    const [first] = await ownUnits(page, 1);
+    await write(page, key, first as string, "work");
+    await expect(panel(page)).toBeVisible();
+
+    await importReport(page, "turn71.txt", TURN_71);
+
+    await expect(panel(page)).toHaveCount(0);
     await expect(chip(page)).toHaveCount(0);
   }
 );

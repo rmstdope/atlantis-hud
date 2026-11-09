@@ -32,7 +32,7 @@ function viewportStorageKey(gameId: string): string {
  * Degrades gracefully under Node (where `localStorage` is undefined) and when the browser blocks
  * storage access entirely.
  */
-function optionalStorage(): ViewportStorage | null {
+export function optionalStorage(): ViewportStorage | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {

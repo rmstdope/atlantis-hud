@@ -292,6 +292,16 @@ describe("replacing a game with its backup", () => {
 });
 
 describe("deleting a game", () => {
+  it("forgets the assistant changes listed for it", async () => {
+    stubGlobalStorage();
+    const scope = { gameId: "gone", factionId: "3", turn: 71 };
+    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }] });
+
+    await deleteGame(fakeClient(), "gone", null, NOW, vi.fn());
+
+    expect(loadAssistantChanges(scope).changes).toEqual([]);
+  });
+
   it("discards the open draft before deleting, when the deleted game is the open one", async () => {
     const calls: string[] = [];
     const client = fakeClient({

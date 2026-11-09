@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type Ref, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type Ref, type RefObject } from "react";
 import {
   countLabel,
   problemMark,
@@ -78,7 +78,7 @@ function Entry({
   onSelectUnit: (unitId: string, regionId: string) => void;
 }) {
   return (
-    <article data-testid={`assistant-change-${view.unitId}`} className="border-b border-edge p-2 last:border-b-0">
+    <article data-testid={`assistant-change-${view.unitId}`} data-unit={view.unitId} className="border-b border-edge p-2 last:border-b-0">
       <div className="mb-1 flex flex-wrap items-baseline gap-2">
         <button
           type="button"
@@ -110,8 +110,8 @@ function Entry({
       {view.edited ? (
         <p className="m-0 mt-1 text-pane-sm text-ink-soft">{EDITED_EXPLANATION}</p>
       ) : (
-        view.problems.map((problem) => (
-          <p key={problem} className="m-0 mt-1 text-pane-sm text-warn">
+        view.problems.map((problem, index) => (
+          <p key={index} className="m-0 mt-1 text-pane-sm text-warn">
             <ProblemMessage message={problem} />
           </p>
         ))
@@ -133,6 +133,8 @@ type ContentProps = {
   onSelectUnit: (unitId: string, regionId: string) => void;
   cancelRef: RefObject<HTMLButtonElement | null>;
   revertAllRef: RefObject<HTMLButtonElement | null>;
+  listRef?: RefObject<HTMLDivElement | null>;
+  onListScroll?: () => void;
 };
 
 /** What the panel draws, kept apart from the measuring and focus hooks so it can be rendered without a DOM. */
@@ -148,7 +150,9 @@ export function AssistantChangesContent({
   onRevert,
   onSelectUnit,
   cancelRef,
-  revertAllRef
+  revertAllRef,
+  listRef,
+  onListScroll
 }: ContentProps) {
   const canGoBack = views.filter((view) => !view.edited).length;
   const prompt = revertAllPrompt(canGoBack);
@@ -210,13 +214,61 @@ export function AssistantChangesContent({
           </button>
         </div>
       ) : null}
-      <div data-testid="assistant-changes-list" className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={listRef}
+        data-testid="assistant-changes-list"
+        onScroll={onListScroll}
+        className="min-h-0 flex-1 overflow-auto [overflow-anchor:none]"
+      >
         {views.map((view) => (
           <Entry key={view.unitId} view={view} onRevert={onRevert} onSelectUnit={onSelectUnit} />
         ))}
       </div>
     </>
   );
+}
+
+/**
+ * Holds a scrolled list still when an entry lands above what is on screen.
+ *
+ * Entries are sorted by hex, so a new one can arrive anywhere. Chromium would anchor the scroll by
+ * itself and WebKit, which the desktop app runs in, does not, so the browser's anchoring is off
+ * (`overflow-anchor`) and this does it the same way in both. A list at the top is left alone: the
+ * player there is watching the top of the list, and the new entry should show.
+ */
+function useHeldScroll(unitKey: string) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const anchor = useRef<{ unitId: string; offset: number } | null>(null);
+
+  const remember = useCallback(() => {
+    const list = listRef.current;
+    anchor.current = null;
+    if (list === null || list.scrollTop <= 0) {
+      return;
+    }
+    const top = list.getBoundingClientRect().top;
+    for (const child of Array.from(list.children) as HTMLElement[]) {
+      const box = child.getBoundingClientRect();
+      if (box.bottom > top) {
+        anchor.current = { unitId: child.dataset.unit ?? "", offset: box.top - top };
+        return;
+      }
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const held = anchor.current;
+    if (list !== null && held !== null) {
+      const element = list.querySelector<HTMLElement>(`[data-unit="${held.unitId}"]`);
+      if (element !== null) {
+        list.scrollTop += element.getBoundingClientRect().top - list.getBoundingClientRect().top - held.offset;
+      }
+    }
+    remember();
+  }, [unitKey, remember]);
+
+  return { listRef, onListScroll: remember };
 }
 
 /**
@@ -248,6 +300,7 @@ export function AssistantChangesPanel({
   const drag = useDialogDrag();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const revertAllRef = useRef<HTMLButtonElement | null>(null);
+  const { listRef, onListScroll } = useHeldScroll(views.map((view) => view.unitId).join(" "));
   const canGoBack = views.filter((view) => !view.edited).map((view) => view.unitId);
   const stillAsking = asking && canGoBack.length > 0;
 
@@ -279,6 +332,11 @@ export function AssistantChangesPanel({
   // Whatever pressed a button that is about to vanish, the cursor stays in the panel.
   const keepFocusInPanel = () => drag.dialogRef.current?.focus({ preventScroll: true });
   const dragStyle = narrow ? undefined : drag.dialogStyle;
+  // Once dragged it is pinned by its top, so what it may grow into is what is left below that.
+  const movedStyle =
+    dragStyle === undefined
+      ? undefined
+      : { ...dragStyle, bottom: "auto", maxHeight: `calc(100dvh - ${String(dragStyle.top)}px - 14px)` };
 
   return (
     <div
@@ -289,7 +347,7 @@ export function AssistantChangesPanel({
       aria-label="Assistant changes"
       tabIndex={-1}
       hidden={!open}
-      style={dragStyle ? { ...dragStyle, bottom: "auto" } : undefined}
+      style={movedStyle}
       onKeyDown={(event: KeyboardEvent) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -336,6 +394,8 @@ export function AssistantChangesPanel({
         onSelectUnit={onSelectUnit}
         cancelRef={cancelRef}
         revertAllRef={revertAllRef}
+        listRef={listRef}
+        onListScroll={onListScroll}
       />
     </div>
   );

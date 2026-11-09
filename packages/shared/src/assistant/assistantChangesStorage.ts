@@ -7,7 +7,7 @@
  * per game, holding one list per faction, each for the turn it belongs to.
  */
 
-import type { ViewportStorage } from "../workspace/mapViewportStorage";
+import { optionalStorage, type ViewportStorage } from "../workspace/mapViewportStorage";
 import { NO_ASSISTANT_CHANGES, type AssistantChange, type AssistantChangesState } from "./assistantChanges";
 
 /** Whose list: a game, a faction in it, and the turn open. */
@@ -18,14 +18,6 @@ type StoredLists = Record<string, StoredList>;
 
 function storageKey(gameId: string): string {
   return `atlantis-hud-assistant-changes-v1-${gameId}`;
-}
-
-function localStorageOrNull(): ViewportStorage | null {
-  try {
-    return typeof localStorage === "undefined" ? null : localStorage;
-  } catch {
-    return null;
-  }
 }
 
 function isChange(value: unknown): value is AssistantChange {
@@ -56,6 +48,15 @@ function readLists(gameId: string, storage: ViewportStorage): StoredLists {
   return typeof parsed === "object" && parsed !== null ? (parsed as StoredLists) : {};
 }
 
+/** As `readLists`, except a record that cannot be read is written over rather than kept for ever. */
+function readListsToReplace(gameId: string, storage: ViewportStorage): StoredLists {
+  try {
+    return readLists(gameId, storage);
+  } catch {
+    return {};
+  }
+}
+
 function writeLists(gameId: string, lists: StoredLists, storage: ViewportStorage): void {
   if (Object.keys(lists).length === 0) {
     storage.removeItem(storageKey(gameId));
@@ -67,7 +68,7 @@ function writeLists(gameId: string, lists: StoredLists, storage: ViewportStorage
 /** The list for `scope`. One kept for any other turn is removed: a new turn empties it for good. */
 export function loadAssistantChanges(
   scope: AssistantChangesScope,
-  storage: ViewportStorage | null = localStorageOrNull()
+  storage: ViewportStorage | null = optionalStorage()
 ): AssistantChangesState {
   if (storage === null) {
     return NO_ASSISTANT_CHANGES;
@@ -93,13 +94,13 @@ export function loadAssistantChanges(
 export function saveAssistantChanges(
   scope: AssistantChangesScope,
   state: AssistantChangesState,
-  storage: ViewportStorage | null = localStorageOrNull()
+  storage: ViewportStorage | null = optionalStorage()
 ): void {
   if (storage === null) {
     return;
   }
   try {
-    const lists = readLists(scope.gameId, storage);
+    const lists = readListsToReplace(scope.gameId, storage);
     if (state.changes.length === 0) {
       delete lists[scope.factionId];
     } else {
@@ -114,7 +115,7 @@ export function saveAssistantChanges(
 /** Drops every list `gameId` has. For a game deleted or emptied, whose turns may come back. */
 export function forgetAssistantChanges(
   gameId: string,
-  storage: ViewportStorage | null = localStorageOrNull()
+  storage: ViewportStorage | null = optionalStorage()
 ): void {
   try {
     storage?.removeItem(storageKey(gameId));
