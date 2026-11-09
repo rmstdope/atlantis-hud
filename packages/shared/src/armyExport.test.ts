@@ -8,7 +8,8 @@ import {
   battleSideOf,
   battleUnitOf,
   exportReadiness,
-  exportedStatus
+  exportedStatus,
+  newAgeSideOf
 } from "./armyExport";
 import { NO_DERIVED_SKILLS, withRosterSkills } from "./battleSkills";
 
@@ -132,7 +133,7 @@ describe("battleSideOf and battleFileOf", () => {
 
     const file = battleFileOf(army, null, NO_DERIVED_SKILLS);
 
-    expect(Object.keys(file)).toEqual(["attackers", "defenders"]);
+    expect(Object.keys(file)).toEqual(["attackers", "defenders", "attacker", "defender"]);
     expect(file.attackers.units).toHaveLength(1);
     expect(file.defenders.units).toEqual([]);
     expect(battleSideOf(null, NO_DERIVED_SKILLS)).toEqual({ units: [] });
@@ -151,9 +152,122 @@ describe("battleSideOf and battleFileOf", () => {
   });
 
   it("writes the file as indented JSON", () => {
-    const text = battleFileText(battleFileOf(null, null, NO_DERIVED_SKILLS));
+    const file = battleFileOf(null, null, NO_DERIVED_SKILLS);
 
-    expect(text).toBe(JSON.stringify({ attackers: { units: [] }, defenders: { units: [] } }, null, 2));
+    expect(battleFileText(file)).toBe(JSON.stringify(file, null, 2));
+    expect(battleFileText(file)).toContain('\n  "attackers": {');
+  });
+});
+
+describe("the New Age half of the file", () => {
+  const STAND_IN = {
+    name: "Stand-in — replace me",
+    behind: false,
+    mage: false,
+    items: [],
+    skills: []
+  };
+
+  const onSide = (...units: Parameters<typeof battleUnitOf>[0][]) => ({
+    units: units.map((member) => battleUnitOf(member, NO_DERIVED_SKILLS))
+  });
+
+  it("maps a unit to the shape the New Age simulator reads", () => {
+    const side = onSide(
+      aMember({
+        unitId: "7954",
+        name: "Shieldwall",
+        flags: ["behind"],
+        items: [{ amount: 30, name: "leaders", tag: "LEAD" }],
+        skills: [{ name: "fire", tag: "FIRE", level: 2, points: 90 }],
+        combatSpell: { name: "fire", tag: "FIRE" }
+      })
+    );
+
+    expect(newAgeSideOf(side)).toEqual({
+      units: [
+        {
+          name: "Shieldwall (7954)",
+          behind: true,
+          mage: true,
+          items: [{ abbr: "LEAD", count: 30 }],
+          skills: [{ abbr: "FIRE", level: 2 }],
+          combat_spell: "FIRE"
+        }
+      ]
+    });
+  });
+
+  it("says a plain unit is not behind and not a mage, and writes no combat_spell", () => {
+    const [unit] = newAgeSideOf(onSide(aMember())).units;
+
+    expect(unit).toEqual({
+      name: "Shieldwall (7954)",
+      behind: false,
+      mage: false,
+      items: [],
+      skills: []
+    });
+    expect(unit).not.toHaveProperty("combat_spell");
+  });
+
+  it.each(["MANI", "PATT", "FORC", "SPIR"])("calls a unit holding %s a mage", (tag) => {
+    const member = aMember({ skills: [{ name: tag, tag, level: 1, points: 30 }] });
+
+    expect(newAgeSideOf(onSide(member)).units[0].mage).toBe(true);
+  });
+
+  it("does not call a unit with only a combat skill a mage", () => {
+    const member = aMember({ skills: [{ name: "combat", tag: "COMB", level: 3, points: 180 }] });
+
+    expect(newAgeSideOf(onSide(member)).units[0].mage).toBe(false);
+  });
+
+  it("carries each Army on its chosen side, in both halves", () => {
+    const northern = anArmy("Northern Host", [aMember({ unitId: "1", name: "North" })]);
+    const coastal = anArmy("Coastal Watch", [aMember({ unitId: "2", name: "Coast" })]);
+
+    const file = battleFileOf(northern, coastal, NO_DERIVED_SKILLS);
+
+    expect(file.attackers.units.map((unit) => unit.name)).toEqual(["North (1)"]);
+    expect(file.attacker.units.map((unit) => unit.name)).toEqual(["North (1)"]);
+    expect(file.defenders.units.map((unit) => unit.name)).toEqual(["Coast (2)"]);
+    expect(file.defender.units.map((unit) => unit.name)).toEqual(["Coast (2)"]);
+  });
+
+  it("puts one blank stand-in on an empty New Age defending side, and none on the other half", () => {
+    const northern = anArmy("Northern Host", [aMember()]);
+
+    const file = battleFileOf(northern, null, NO_DERIVED_SKILLS);
+
+    expect(file.defender.units).toEqual([STAND_IN]);
+    expect(file.defenders.units).toEqual([]);
+    expect(file.attacker.units).toHaveLength(1);
+  });
+
+  it("puts one blank stand-in on an empty New Age attacking side, and none on the other half", () => {
+    const coastal = anArmy("Coastal Watch", [aMember()]);
+
+    const file = battleFileOf(null, coastal, NO_DERIVED_SKILLS);
+
+    expect(file.attacker.units).toEqual([STAND_IN]);
+    expect(file.attackers.units).toEqual([]);
+    expect(file.defender.units).toHaveLength(1);
+  });
+
+  it("leaves the atlantis.pekle.lv half as it was", () => {
+    const army = anArmy("Northern Host", [
+      aMember({
+        flags: ["behind"],
+        items: [{ amount: 30, name: "leaders", tag: "LEAD" }],
+        combatSpell: { name: "fire", tag: "FIRE" }
+      })
+    ]);
+
+    const file = battleFileOf(army, null, NO_DERIVED_SKILLS);
+
+    expect(file.attackers).toEqual(battleSideOf(army, NO_DERIVED_SKILLS));
+    expect(file.defenders).toEqual({ units: [] });
   });
 });
 
@@ -318,7 +432,7 @@ describe("exportReadiness", () => {
         kind: "foreign",
         text: "1 unit belongs to another faction. It goes out with no skills — no battle we have seen involved it."
       },
-      { kind: "empty-side", text: "The defending side will be empty." }
+      { kind: "empty-side", text: "The defending side will be empty. On the New Age simulator it holds one blank stand-in unit; replace it there." }
     ]);
   });
 
@@ -386,7 +500,7 @@ describe("exportReadiness", () => {
         scanning: false,
         unreadTurns: 0
       }).notices
-    ).toEqual([{ kind: "empty-side", text: "The defending side will be empty." }]);
+    ).toEqual([{ kind: "empty-side", text: "The defending side will be empty. On the New Age simulator it holds one blank stand-in unit; replace it there." }]);
 
     expect(
       exportReadiness({
@@ -398,7 +512,7 @@ describe("exportReadiness", () => {
         scanning: false,
         unreadTurns: 0
       }).notices
-    ).toEqual([{ kind: "empty-side", text: "The attacking side will be empty." }]);
+    ).toEqual([{ kind: "empty-side", text: "The attacking side will be empty. On the New Age simulator it holds one blank stand-in unit; replace it there." }]);
   });
 
   it("counts an Army chosen on both sides twice", () => {
