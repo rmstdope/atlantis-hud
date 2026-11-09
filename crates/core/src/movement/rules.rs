@@ -1264,6 +1264,17 @@ impl std::fmt::Display for RulesetError {
 
 impl std::error::Error for RulesetError {}
 
+/// Items the game refuses to `TRANSPORT` or `DISTRIBUTE` although no published page says so.
+///
+/// `rules/economy_transport` names men, summoned creatures, ships, mounts, war machines and items
+/// made with artifact lore, and neither `data/LIVE` nor `data/XXXX` is any of those (`ah-c2jte`).
+/// The engine still flags both `ItemType::NOTRANSPORT` (`../Atlantis gamedata.cpp`), and
+/// `ParseTransportableItem` (`../Atlantis items.cpp`) matches no such item, so the order is refused
+/// as it is read. The catalogues of New Origins, Arcanum and Trident all carry these two tags, and
+/// every other flagged item in them is already refused by the rules page's kinds. New Age has no
+/// published engine; the navigator saw Trident refuse `LIVE` (`ah-c2jte`).
+const ENGINE_REFUSES_TO_TRANSPORT: [&str; 2] = ["LIVE", "XXXX"];
+
 impl Ruleset {
     /// Parses and validates a ruleset.
     ///
@@ -1651,8 +1662,17 @@ impl Ruleset {
     /// True for a tag the catalogue cannot place, in the same spirit as [`Ruleset::can_be_given`]:
     /// the pages state a restriction and are silent otherwise, so silence and ignorance look the
     /// same and the permissive reading is the one that matches them.
+    ///
+    /// [`ENGINE_REFUSES_TO_TRANSPORT`] is the one exception to reading the pages: the two items the
+    /// game refuses without any page saying so.
     #[must_use]
     pub fn can_be_transported(&self, tag: &str) -> bool {
+        if ENGINE_REFUSES_TO_TRANSPORT
+            .iter()
+            .any(|refused| refused.eq_ignore_ascii_case(tag))
+        {
+            return false;
+        }
         if self.is_man(tag) {
             return false;
         }
@@ -2166,6 +2186,19 @@ mod tests {
     }
 
     #[test]
+    fn what_the_engine_alone_refuses_stays_put_whatever_the_case_of_its_tag() {
+        let ruleset = ruleset();
+
+        assert!(!ruleset.can_be_transported("LIVE"), "livestock");
+        assert!(!ruleset.can_be_transported("live"), "any case");
+        assert!(
+            !ruleset.can_be_transported("XXXX"),
+            "amulet of invulnerability"
+        );
+        assert!(ruleset.can_be_transported("GRAI"), "grain, the other food");
+    }
+
+    #[test]
     fn ordinary_goods_and_the_items_no_rule_reaches_may_be_transported() {
         let ruleset = ruleset();
 
@@ -2191,7 +2224,8 @@ mod tests {
             .filter(|tag| !ruleset.can_be_transported(tag))
             .count();
 
-        assert_eq!(refused, 105);
+        // The hundred and five the pages decide, and the two only the engine does.
+        assert_eq!(refused, 107);
     }
 
     #[test]
