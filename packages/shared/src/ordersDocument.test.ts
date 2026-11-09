@@ -43,7 +43,9 @@ import {
   writeRouteOrder,
   writeUnitOrders,
   type FormBlock,
-  type UnitBlock
+  type UnitBlock,
+  regionBanners,
+  withoutUnitBlock
 } from "./ordersDocument";
 
 /** Shaped exactly like the template a real report carries. */
@@ -1862,5 +1864,41 @@ describe("repeated month-long orders (ah-1f87z)", () => {
       ].join("\n")
     );
     expect(unrepeatLongOrders("  WORK", "origins", (now) => now)).toEqual({ orders: "  WORK", now: [] });
+  });
+});
+
+describe("withoutUnitBlock and regionBanners (ah-n3j1q)", () => {
+  const BANNER = ";*** plain (7,53) in Foo ***";
+  const OTHER = ";*** plain (8,54) in Bar ***";
+
+  it("lists the document's region banners, trimmed", () => {
+    expect(regionBanners(["#atlantis 95", `  ${BANNER}`, "unit 1", OTHER, "#end"].join("\n"))).toEqual([
+      BANNER,
+      OTHER
+    ]);
+  });
+
+  it("removes a block and the blank line above it, leaving its neighbours", () => {
+    const document = ["#atlantis 95", BANNER, "", "unit 1", "work", "", "unit 2", "STUDY FORC", "", "#end"].join("\n");
+    expect(withoutUnitBlock(document, "2", [], "origins")).toBe(
+      ["#atlantis 95", BANNER, "", "unit 1", "work", "", "#end"].join("\n")
+    );
+  });
+
+  it("removes a named banner left with nothing under it", () => {
+    const document = ["#atlantis 95", "", BANNER, "", "unit 2", "STUDY FORC", "", "#end"].join("\n");
+    expect(withoutUnitBlock(document, "2", [BANNER], "origins")).toBe(["#atlantis 95", "", "#end"].join("\n"));
+  });
+
+  it("keeps a named banner that still has a unit under it, and any banner it was not told about", () => {
+    const shared = ["#atlantis 95", BANNER, "", "unit 1", "work", "", "unit 2", "STUDY FORC", "", "#end"].join("\n");
+    expect(withoutUnitBlock(shared, "2", [BANNER], "origins")).toContain(BANNER);
+    const alone = ["#atlantis 95", BANNER, "", "unit 2", "STUDY FORC", "", "#end"].join("\n");
+    expect(withoutUnitBlock(alone, "2", [], "origins")).toContain(BANNER);
+  });
+
+  it("leaves the document alone when the unit has no block", () => {
+    const document = ["#atlantis 95", "unit 1", "work", "#end"].join("\n");
+    expect(withoutUnitBlock(document, "9", [], "origins")).toBe(document);
   });
 });

@@ -199,9 +199,46 @@ describe("StudyPlannerOrders — put into my orders", () => {
     expect(html).toMatch(/study-planner-save-17"[^>]*disabled/);
   });
 
+  it("the_notice_draws_its_second_sentence_below_undo", () => {
+    const line = drawWith({
+      notice: {
+        text: "Wrote study orders for 4 mages.",
+        detail: "Ereb (1234) has changed since, so Undo will leave him as he is.",
+        undoable: true
+      }
+    });
+    const detail = line.indexOf('data-testid="study-planner-write-notice-detail"');
+    expect(detail).toBeGreaterThan(line.indexOf('data-testid="study-planner-write-undo"'));
+    expect(line).toContain("Ereb (1234) has changed since, so Undo will leave him as he is.");
+    expect(line).toContain("border-standing-known-edge");
+  });
+
+  it("the_notice_draws_nothing_extra_without_a_second_sentence", () => {
+    const line = drawWith({ notice: { text: "Wrote.", detail: null, undoable: true } });
+    expect(line).not.toContain("study-planner-write-notice-detail");
+  });
+
+  it("the_notice_is_greyed_and_keeps_its_sentence_when_nothing_is_left_to_undo", () => {
+    const line = drawWith({
+      notice: {
+        text: "Wrote study orders for 1 mage.",
+        detail: "1 mage has changed since, so there is nothing left to undo.",
+        undoable: false
+      }
+    });
+    expect(line).not.toContain("study-planner-write-undo");
+    expect(line).toContain("1 mage has changed since, so there is nothing left to undo.");
+    expect(line).toContain("border-edge bg-panel text-ink-dim");
+  });
+
+  it("the_notice_can_take_focus_when_undo_goes", () => {
+    const line = drawWith({ notice: { text: "Wrote.", detail: null, undoable: false } });
+    expect(line).toMatch(/data-testid="study-planner-write-notice"[^>]*tabindex="-1"|tabindex="-1"[^>]*data-testid="study-planner-write-notice"/u);
+  });
+
   it("the_notice_offers_undo_only_while_it_is_undoable", () => {
     const undoable = drawWith({
-      notice: { text: "Wrote study orders for 1 mage.", undoable: true }
+      notice: { text: "Wrote study orders for 1 mage.", detail: null, undoable: true }
     });
     expect(undoable).toContain('data-testid="study-planner-write-notice"');
     expect(undoable).toContain("Wrote study orders for 1 mage.");
@@ -210,7 +247,7 @@ describe("StudyPlannerOrders — put into my orders", () => {
     expect(undoable).toContain("border-select px-1.5 text-select");
 
     const spent = drawWith({
-      notice: { text: "Wrote study orders for 1 mage.", undoable: false }
+      notice: { text: "Wrote study orders for 1 mage.", detail: null, undoable: false }
     });
     expect(spent).toContain('data-testid="study-planner-write-notice"');
     expect(spent).not.toContain("study-planner-write-undo");
