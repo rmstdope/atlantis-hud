@@ -1344,7 +1344,7 @@ export function AppShell({
     [memory.knownMap, mergedReports]
   );
 
-  // Moving water repaints the whole map every frame, so by default it moves only on a small map -
+  // Every step of moving water repaints the whole map, so by default it moves only on a small map -
   // counted on the level shown, which is what is drawn (see `waterAnimation.ts`).
   const hexesOnLevel = useMemo(
     () => model.hexes.reduce((count, hex) => (hex.coordinate.z === level ? count + 1 : count), 0),

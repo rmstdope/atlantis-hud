@@ -50,6 +50,8 @@ import {
   ghostSlots as slotsForGhosts
 } from "./mapFraming";
 import { useOverlayInsets } from "./useOverlayInsets";
+import { useWaterDrift } from "./useWaterDrift";
+import { WATER_LOOP_ATTRIBUTE } from "./waterDrift";
 import { useWorkspaceStore } from "../workspaceStore";
 import type { RouteOverlay } from "./routeOverlay";
 import { RouteComet } from "./RouteComet";
@@ -570,8 +572,8 @@ function TexturePicture({ texture }: { texture: NonNullable<HexView["texture"]> 
       {texture.mirrored ? (
         // A picture that does not tile (Painted, ah-d9jb.3) wraps into its own
         // reflection: upright, mirrored, upright, so every seam meets itself. The loop
-        // is two widths long, so the slide runs twice as long to keep Standard's speed.
-        <g>
+        // is two widths long, so the slide runs twice as far at Standard's speed.
+        <g {...{ [WATER_LOOP_ATTRIBUTE]: 2 }}>
           {[-2, -1, 0].map((x) => (
             <image
               key={x}
@@ -585,14 +587,6 @@ function TexturePicture({ texture }: { texture: NonNullable<HexView["texture"]> 
               style={{ filter: `brightness(${texture.brightness})` }}
             />
           ))}
-          <animateTransform
-            attributeName="transform"
-            type="translate"
-            from="0 0"
-            to="2 0"
-            dur="36s"
-            repeatCount="indefinite"
-          />
         </g>
       ) : (
         <image
@@ -607,7 +601,7 @@ function TexturePicture({ texture }: { texture: NonNullable<HexView["texture"]> 
       )}
     </g>
   ) : texture.moves ? (
-    <g>
+    <g {...{ [WATER_LOOP_ATTRIBUTE]: 1 }}>
       {[-1, 0, 1].map((x) => (
         <image
           key={x}
@@ -620,14 +614,6 @@ function TexturePicture({ texture }: { texture: NonNullable<HexView["texture"]> 
           style={{ filter: `brightness(${texture.brightness})` }}
         />
       ))}
-      <animateTransform
-        attributeName="transform"
-        type="translate"
-        from="0 0"
-        to="1 0"
-        dur="18s"
-        repeatCount="indefinite"
-      />
     </g>
   ) : (
     <image
@@ -731,6 +717,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(function Ma
   // reopens a stack the player had open.
   const [openNotesId, setOpenNotesId] = useState<string | null>(null);
 
+  useWaterDrift(rootRef, showTextures && textureStyle.animateWater);
   const selectRef = useRef(onSelectRegion);
   selectRef.current = onSelectRegion;
 
