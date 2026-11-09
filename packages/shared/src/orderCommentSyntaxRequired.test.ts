@@ -76,7 +76,10 @@ const POLICY_OPERATIONS = [
   "formedSelectionFor",
   "ordersExportText",
   "writeRouteOrder",
-  "studyWritePlan"
+  "studyWritePlan",
+  "recordStudyWrite",
+  "studyWriteStanding",
+  "takeBackStudyWrite"
 ] as const satisfies readonly (keyof OrderProcessing)[];
 
 const OrderProcessingHidesSyntax: HasSyntaxKey = false;
@@ -94,7 +97,7 @@ const PolicyOperationsHideSyntaxInputs: {
 describe("the order comment policy lives in one processing context", () => {
   it("constructs every policy operation at the ruleset boundary", () => {
     const orders = orderProcessingFor("neworigins");
-    expect(POLICY_OPERATIONS).toHaveLength(40);
+    expect(POLICY_OPERATIONS).toHaveLength(43);
     for (const operation of POLICY_OPERATIONS) {
       expect(orders[operation]).toBeTypeOf("function");
     }

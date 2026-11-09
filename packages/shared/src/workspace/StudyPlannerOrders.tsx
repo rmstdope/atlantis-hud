@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { CopyButton } from "./CopyButton";
 import { StudyOrdersWritePrompt } from "./StudyOrdersWritePrompt";
 import type { StudyOrders } from "../studyOrders";
@@ -19,6 +20,8 @@ export function StudyPlannerOrders({
   writePlan,
   asking,
   notice,
+  noticeRef,
+  undoRef,
   onAskWrite,
   onConfirmWrite,
   onCancelWrite,
@@ -42,7 +45,10 @@ export function StudyPlannerOrders({
   /** True while the confirmation stands: every section's buttons are disabled under it. */
   asking: boolean;
   /** The line about the last write of this visit, or null. */
-  notice: { text: string; undoable: boolean } | null;
+  notice: { text: string; detail: string | null; undoable: boolean } | null;
+  /** The line itself, where focus lands when Undo goes (ah-n3j1q). */
+  noticeRef?: Ref<HTMLParagraphElement>;
+  undoRef?: Ref<HTMLButtonElement>;
   onAskWrite: () => void;
   onConfirmWrite: () => void;
   onCancelWrite: () => void;
@@ -74,9 +80,13 @@ export function StudyPlannerOrders({
         />
       ) : null}
       {notice === null ? null : (
+        // Block flow rather than flex: a narrow window wraps the line as one block, with Undo
+        // straight after the first sentence and the second sentence below it (ah-n3j1q).
         <p
+          ref={noticeRef}
+          tabIndex={-1}
           data-testid="study-planner-write-notice"
-          className={`m-0 flex items-center gap-2 rounded border px-2 py-1 ${
+          className={`m-0 rounded border px-2 py-1 outline-none ${
             notice.undoable
               ? "border-standing-known-edge bg-standing-known-fill text-standing-known-ink"
               : "border-edge bg-panel text-ink-dim"
@@ -85,14 +95,20 @@ export function StudyPlannerOrders({
           {notice.text}
           {notice.undoable ? (
             <button
+              ref={undoRef}
               type="button"
               data-testid="study-planner-write-undo"
               onClick={onUndoWrite}
-              className="rounded border border-select px-1.5 text-select hover:bg-select/15"
+              className="ml-2 rounded border border-select px-1.5 text-select hover:bg-select/15"
             >
               Undo
             </button>
           ) : null}
+          {notice.detail === null ? null : (
+            <span data-testid="study-planner-write-notice-detail" className="block text-pane-sm opacity-90">
+              {notice.detail}
+            </span>
+          )}
         </p>
       )}
       {orders.sections.length === 0 ? (

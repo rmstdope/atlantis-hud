@@ -364,6 +364,33 @@ export function withoutUnitBlocksOutside(
   return lines.join("\n");
 }
 
+/** Every `;***` region banner in the document, trimmed, in document order. */
+export function regionBanners(document: string): string[] {
+  return document
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => REGION_BANNER.test(line));
+}
+
+/**
+ * The document without `unitId`'s block, and without any of `banners` that this leaves with nothing
+ * under it. The inverse of {@link ensureUnitBlock}: the caller names the banners that were added
+ * along with the block, so a heading the player already had is never removed.
+ */
+export function withoutUnitBlock(
+  document: string,
+  unitId: string,
+  banners: readonly string[],
+  syntax: OrderCommentSyntax
+): string {
+  const block = findUnitBlocks(document, syntax).find((candidate) => candidate.unitId === unitId);
+  if (block === undefined) {
+    return document;
+  }
+  const lines = withoutBlockAt(document.split("\n"), block.headerLine, block.lastLine);
+  return withoutEmptiedBanners(lines.join("\n"), new Set(banners), syntax);
+}
+
 /**
  * Folds every stale `unit new-<n>` block back into the `FORM` that creates it.
  *

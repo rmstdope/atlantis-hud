@@ -133,3 +133,92 @@ test("a planned cast is written beside the study, and unticking the box leaves i
   await expectOrders(page, /COMBAT FIRE/u);
   await expectOrders(page, /claim 200/u);
 });
+
+// ah-n3j1q: Undo answers for the mages it wrote. The planner stays over the editor, and the editor's
+// own text is changed underneath it - by `fill` when focus does not matter, and by changing a line in
+// place when Undo must keep the focus, which is what a write arriving unattended looks like.
+
+/** One of the player's units, away from the mage, that the study write does not touch. */
+const BYSTANDER = { hex: "1:7,53", unit: "18642" };
+const MAGE_AT = { hex: MAGE_HEX, unit: MAGE };
+
+/** The player has a mage planned, and the editor open on `unitId`, when the planner writes. */
+async function writePlanWithEditorOn(
+  page: import("@playwright/test").Page,
+  at: { hex: string; unit: string }
+) {
+  await openPlannerWithHandWrittenOrders(page);
+  await page.keyboard.press("Escape");
+  await selectHex(page, at.hex);
+  await selectUnit(page, at.unit);
+  await page.keyboard.press("F4");
+  await page.getByTestId("study-planner-view-orders").click();
+  await page.getByTestId("study-planner-write").click();
+  await page.getByTestId("study-orders-write-confirm").click();
+  await expect(page.getByTestId("study-planner-write-notice")).toContainText("Wrote study orders");
+}
+
+/** Types into the editor's first line without moving focus, as an assistant's write does. */
+async function changeEditorInPlace(page: import("@playwright/test").Page) {
+  await page.getByTestId("orders-input").evaluate((root) => {
+    const line = root.querySelector(".cm-line");
+    if (line === null) {
+      throw new Error("the orders editor has no line");
+    }
+    line.textContent = `${line.textContent ?? ""} ; later`;
+  });
+}
+
+test("a later change to another unit survives Undo, and the line says so", async ({ page }) => {
+  await writePlanWithEditorOn(page, BYSTANDER);
+
+  await fillOrders(page, "tax");
+  const detail = page.getByTestId("study-planner-write-notice-detail");
+  await expect(detail).toHaveText("Your orders have changed since. Undo takes back only these mages.");
+
+  await page.getByTestId("study-planner-write-undo").click();
+  await expect(page.getByTestId("study-planner-write-notice")).toHaveText(
+    "Took back the study orders for 1 mage. Your later changes are still there."
+  );
+
+  await page.keyboard.press("Escape");
+  await expectOrders(page, /tax/u);
+  await selectHex(page, MAGE_HEX);
+  await selectUnit(page, MAGE);
+  await expectOrders(page, /build Tower/u);
+  await expectOrdersNot(page, /STUDY FORC/u);
+});
+
+test("a change to the written mage withdraws Undo and says why", async ({ page }) => {
+  await writePlanWithEditorOn(page, MAGE_AT);
+
+  await fillOrders(page, "STUDY PATT");
+  await expect(page.getByTestId("study-planner-write-notice-detail")).toHaveText(
+    "1 mage has changed since, so there is nothing left to undo."
+  );
+  await expect(page.getByTestId("study-planner-write-undo")).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await expectOrders(page, /STUDY PATT/u);
+});
+
+test("pressing Undo from the keyboard leaves focus on the line", async ({ page }) => {
+  await writePlanWithEditorOn(page, BYSTANDER);
+
+  await page.getByTestId("study-planner-write-undo").focus();
+  await page.keyboard.press("Enter");
+  const notice = page.getByTestId("study-planner-write-notice");
+  await expect(notice).toHaveText("Put your orders back as they were.");
+  await expect(notice).toBeFocused();
+});
+
+test("focus moves to the line when the last mage changes while Undo holds it", async ({ page }) => {
+  await writePlanWithEditorOn(page, MAGE_AT);
+
+  await page.getByTestId("study-planner-write-undo").focus();
+  await changeEditorInPlace(page);
+
+  const notice = page.getByTestId("study-planner-write-notice");
+  await expect(page.getByTestId("study-planner-write-undo")).toHaveCount(0);
+  await expect(notice).toBeFocused();
+});

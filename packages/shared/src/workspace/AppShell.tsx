@@ -4493,7 +4493,8 @@ export function AppShell({
   ]);
 
   // The document an assistant reads. A ref beside the state, so that a write it makes is what its
-  // next call reads even before React has rendered that write.
+  // next call reads even before React has rendered that write. The study planner's Undo reads it
+  // for the same reason (ah-n3j1q).
   const assistantDocument = useRef(ordersDocument);
   assistantDocument.current = ordersDocument;
   useAssistant(assistant, {
@@ -5860,6 +5861,7 @@ export function AppShell({
           orders={orders}
           regionBanner={regionBanner}
           onWriteOrdersDocument={writeStudyOrdersDocument}
+          readOrdersDocument={() => assistantDocument.current}
           tree={studyTree}
           plans={studyPlans}
           viewedTurn={parsed?.header.turnNumber ?? null}

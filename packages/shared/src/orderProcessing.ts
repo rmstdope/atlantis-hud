@@ -34,6 +34,7 @@ import { formBlockTags } from "./formBlockTags";
 import { contentChanges, indentBlock, indentChanges, lineDepths, tidyInsertion } from "./orderIndent";
 import { describeOrdersImport, importedOrdersDocument, unitIdForDiagnostic, unitLabelForDiagnostic } from "./ordersImport";
 import { orderCommentSyntaxFor, type OrderCommentSyntax } from "./rulesets";
+import { recordStudyWrite, studyWriteStanding, takeBackStudyWrite } from "./studyOrdersUndo";
 import { studyWritePlan } from "./studyOrdersWrite";
 import { diffOrders } from "./turnDiff";
 import { deliverOrdersExport } from "./workspace/exportActions";
@@ -96,6 +97,9 @@ export interface OrderProcessing {
   readonly ordersExportText: WithoutSyntax<typeof ordersExportText>;
   readonly writeRouteOrder: WithoutSyntaxInput<typeof writeRouteOrder>;
   readonly studyWritePlan: WithoutSyntaxInput<typeof studyWritePlan>;
+  readonly recordStudyWrite: WithoutSyntaxInput<typeof recordStudyWrite>;
+  readonly studyWriteStanding: WithoutSyntax<typeof studyWriteStanding>;
+  readonly takeBackStudyWrite: WithoutSyntax<typeof takeBackStudyWrite>;
 }
 
 export function orderProcessingFor(rulesetId: string | null | undefined): OrderProcessing {
@@ -161,6 +165,9 @@ export function orderProcessingFor(rulesetId: string | null | undefined): OrderP
     ordersExportText: (document, templateText, withDescriptions) =>
       ordersExportText(document, templateText, withDescriptions, syntax),
     writeRouteOrder: (input) => writeRouteOrder({ ...input, syntax }),
-    studyWritePlan: (input) => studyWritePlan({ ...input, syntax })
+    studyWritePlan: (input) => studyWritePlan({ ...input, syntax }),
+    recordStudyWrite: (input) => recordStudyWrite({ ...input, syntax }),
+    studyWriteStanding: (write, current) => studyWriteStanding(write, current, syntax),
+    takeBackStudyWrite: (write, current) => takeBackStudyWrite(write, current, syntax)
   };
 }

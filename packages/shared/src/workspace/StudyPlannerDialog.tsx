@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { paletteKeyReduce, PALETTE_PAGE_ROWS } from "../commandPalette";
 import {
   knownChip,
@@ -17,6 +17,7 @@ import type { MagicTree } from "../magicTree";
 import { planLine, scheduleRows, scheduleTurns } from "../studySchedule";
 import { plannerNotices } from "../studyTeaching";
 import { studyOrders } from "../studyOrders";
+import type { StudyWrite } from "../studyOrdersUndo";
 import { offeredWritePlan } from "../studyOrdersWrite";
 import type { StandingAfterOrders } from "../studyStanding";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
@@ -75,6 +76,7 @@ export function StudyPlannerDialog({
   orders: orderProcessing,
   regionBanner,
   onWriteOrdersDocument,
+  readOrdersDocument,
   onSaveNote,
   onScheduleChange,
   rule,
@@ -125,6 +127,11 @@ export function StudyPlannerDialog({
   regionBanner: (regionId: string) => string | null;
   /** Replaces the whole document, as an external write. `AppShell`'s `writeStudyOrdersDocument`. */
   onWriteOrdersDocument: (next: string) => void;
+  /**
+   * The document as it stands this instant, ahead of any render. Undo decides from this rather than
+   * from `ordersDocument`, so a change landing just before the press is still kept (ah-n3j1q).
+   */
+  readOrdersDocument: () => string;
   /** The edit, not the result: it is applied against the stored row when the write runs. */
   onSavePlan: (
     factionId: string,
@@ -202,10 +209,31 @@ export function StudyPlannerDialog({
    * The last write of this visit, or the fact that it was undone. Dies with the dialog, exactly as
    * `view` does - and so, deliberately, does the one undo this bead offers (`ah-lyg6.4.2`, U1).
    */
-  type WriteNotice =
-    | { kind: "wrote"; text: string; before: string; after: string }
-    | { kind: "undone" };
+  type WriteNotice = { kind: "wrote"; text: string; write: StudyWrite } | { kind: "undone"; text: string };
   const [writeNotice, setWriteNotice] = useState<WriteNotice | null>(null);
+  // Moves by itself as the document does: another writer changing the last mage withdraws Undo
+  // without anything here being pressed (ah-n3j1q).
+  const standing = useMemo(
+    () =>
+      writeNotice?.kind === "wrote"
+        ? orderProcessing.studyWriteStanding(writeNotice.write, ordersDocument)
+        : null,
+    [writeNotice, ordersDocument, orderProcessing]
+  );
+  const undoable = standing?.undoable === true;
+
+  // When Undo goes, focus lands on the line rather than on the page behind the planner. Read in
+  // render, as `summonedFrom` is: by the time an effect runs React has removed the button, and with
+  // it the only evidence it was focused.
+  const noticeLine = useRef<HTMLParagraphElement | null>(null);
+  const undoButton = useRef<HTMLButtonElement | null>(null);
+  const undoHeldFocus = useRef(false);
+  undoHeldFocus.current = undoButton.current !== null && undoButton.current === document.activeElement;
+  useLayoutEffect(() => {
+    if (!undoable && undoHeldFocus.current) {
+      noticeLine.current?.focus();
+    }
+  }, [undoable]);
   const [asking, setAsking] = useState(false);
 
   const ownEntries = useMemo(
@@ -450,37 +478,38 @@ export function StudyPlannerDialog({
           notice={
             writeNotice === null
               ? null
-              : writeNotice.kind === "undone"
-                ? { text: "Put your orders back as they were.", undoable: false }
-                : {
-                    text: writeNotice.text,
-                    // U1: the Undo stands only while the document is byte for byte what the
-                    // write left it. A keystroke, an import or a restore ends it.
-                    undoable: ordersDocument === writeNotice.after
-                  }
+              : {
+                  text: writeNotice.text,
+                  detail: standing?.detail ?? null,
+                  undoable
+                }
           }
+          noticeRef={noticeLine}
+          undoRef={undoButton}
           onAskWrite={() => setAsking(true)}
           onCancelWrite={() => setAsking(false)}
           onConfirmWrite={() => {
             if (writePlan === null) {
               return;
             }
-            const before = ordersDocument;
+            const write = orderProcessing.recordStudyWrite({ before: ordersDocument, plan: writePlan });
             onWriteOrdersDocument(writePlan.next);
-            setWriteNotice({
-              kind: "wrote",
-              text: writePlan.resultText,
-              before,
-              after: writePlan.next
-            });
+            setWriteNotice({ kind: "wrote", text: writePlan.resultText, write });
             setAsking(false);
           }}
           onUndoWrite={() => {
-            if (writeNotice === null || writeNotice.kind !== "wrote") {
+            if (writeNotice?.kind !== "wrote") {
               return;
             }
-            onWriteOrdersDocument(writeNotice.before);
-            setWriteNotice({ kind: "undone" });
+            // Before the write, whatever it decides: Undo goes either way, and a click in WebKit
+            // never focused the button for the render-time check above to see.
+            noticeLine.current?.focus();
+            const taken = orderProcessing.takeBackStudyWrite(writeNotice.write, readOrdersDocument());
+            if (taken === null) {
+              return;
+            }
+            onWriteOrdersDocument(taken.next);
+            setWriteNotice({ kind: "undone", text: taken.text });
           }}
         />
       ) : view === "schedule" ? (

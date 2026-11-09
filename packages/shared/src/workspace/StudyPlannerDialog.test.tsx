@@ -297,6 +297,7 @@ describe("the Orders tab", () => {
         ordersDocument=""
         regionBanner={() => null}
         onWriteOrdersDocument={() => {}}
+        readOrdersDocument={() => ""}
         onSavePlan={() => {}}
         onSaveNote={() => {}}
         onScheduleChange={() => {}}
