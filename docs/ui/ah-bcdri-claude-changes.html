@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude's Changes Panel</title>
+<title>Assistant Changes Panel</title>
 <style>
 /* One screen of the HUD with the panel floating over it, no veil; the demo controls sit outside the app frame. */
 :root{
@@ -41,7 +41,7 @@ button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid va
 textarea{width:100%;box-sizing:border-box;resize:none;background:var(--ground);color:var(--ink);border:1px solid var(--edge);border-radius:4px;padding:6px;font:12.5px/1.6 var(--mono)}
 .side p{margin:0;color:var(--dim);font-size:11.5px}
 
-.changes{position:absolute;left:14px;bottom:14px;width:min(45rem,calc(100% - 28px - 19rem));max-height:calc(100% - 60px);display:grid;grid-template-rows:auto 1fr;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 30px #0009}
+.changes{position:absolute;left:14px;bottom:14px;width:min(45rem,calc(100% - 28px - 19rem));max-height:calc(100% - 60px);display:grid;grid-template-rows:auto auto 1fr;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 30px #0009}
 .changes[hidden]{display:none}
 .head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--edge);cursor:move;user-select:none}
 .head strong{font-weight:600}
@@ -50,6 +50,9 @@ textarea{width:100%;box-sizing:border-box;resize:none;background:var(--ground);c
 .x{background:none;border:0;color:var(--dim);padding:0 6px}
 .x:hover{color:var(--ink)}
 .list{overflow:auto;min-height:0}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;background:var(--panel);border-bottom:1px solid var(--edge)}
+.confirm[hidden]{display:none}
+.confirm .gap{flex:1}
 .unit{padding:8px;border-bottom:1px solid var(--edge-soft)}
 .unit:last-child{border-bottom:0}
 .uhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:5px}
@@ -76,7 +79,8 @@ textarea{width:100%;box-sizing:border-box;resize:none;background:var(--ground);c
   .body{grid-template-columns:1fr}
   .map{height:9rem}
   .side{border-left:0;border-top:1px solid var(--edge);grid-template-rows:auto 7rem auto}
-  .changes{position:static;width:auto;max-height:none;border-width:1px 0 0;box-shadow:none;border-radius:0}
+  .hud{position:relative}
+  .changes{left:0;right:0;bottom:0;width:auto;max-height:55%;border-width:1px 0 0;border-radius:0}
 }
 </style>
 </head>
@@ -84,12 +88,12 @@ textarea{width:100%;box-sizing:border-box;resize:none;background:var(--ground);c
 
 <div class="page">
   <header>
-    <h1>Orders Claude writes, shown as they land</h1>
+    <h1>Orders the assistant writes, shown as they land</h1>
     <p class="lede">Mockup for ah-bcdri. The unit list, orders and map are example data. Click into the orders editor and type while you press the button: the panel updates and your cursor stays put.</p>
   </header>
 
   <div class="demo">
-    <button class="btn go" id="next" type="button">Claude writes the next unit</button>
+    <button class="btn go" id="next" type="button">The assistant writes the next unit</button>
     <button class="btn" id="reset" type="button">Start over</button>
     <span class="said" id="said" aria-live="polite"></span>
   </div>
@@ -106,18 +110,19 @@ textarea{width:100%;box-sizing:border-box;resize:none;background:var(--ground);c
       <div class="side">
         <h2>Orders · Miners (1102)</h2>
         <textarea id="editor" aria-label="Orders for Miners" spellcheck="false">produce iron</textarea>
-        <p>Your own unit, open while Claude works on others.</p>
+        <p>Your own unit, open while the assistant works on others.</p>
       </div>
     </div>
-    <section class="changes" id="panel" aria-label="Claude's changes">
+    <section class="changes" id="panel" aria-label="Assistant changes">
       <div class="head">
-        <strong>Claude's changes</strong>
+        <strong>Assistant changes</strong>
         <span class="count" id="count"></span>
         <span class="gap"></span>
         <button class="btn" id="keep" type="button">Keep all</button>
         <button class="btn" id="revertAll" type="button">Revert all</button>
         <button class="x" id="close" type="button" aria-label="Close the panel">✕</button>
       </div>
+      <div class="confirm" id="confirm" hidden><span id="askText"></span><span class="gap"></span><button class="btn" id="yes" type="button"></button><button class="btn" id="no" type="button">Cancel</button></div>
       <div class="list" id="list"></div>
     </section>
   </div>
@@ -137,7 +142,7 @@ const START = [
 ];
 const WRITES = [
   {id:1510,before:["produce swords"],after:["produce 5 swords"],said:"Smiths joins the list as a new change."},
-  {id:1234,before:["avoid 1","work"],after:["avoid 1","move N N E"],said:"Scouts is written again: still one entry, compared with the orders before Claude's first write."},
+  {id:1234,before:["avoid 1","work"],after:["avoid 1","move N N E"],said:"Scouts is written again: still one entry, compared with the orders before the assistant's first write."},
   {id:1301,before:[],after:[],said:"Traders is written back to what it was, so it drops off the list."}
 ];
 let entries, step, open, selected;
@@ -165,6 +170,9 @@ function side(text,kind,right){
   if(text===null) return `<div class="l${r}"></div>`;
   return `<div class="l${kind?" "+kind:""}${r}">${esc(text)}</div>`;
 }
+/* Upper left first, row by row, then unit number. */
+const place=e=>UNITS[e.id].where.match(/\((\d+),(\d+)\)/).slice(1).map(Number);
+function byHex(a,b){const[ax,ay]=place(a),[bx,by]=place(b);return ay-by||ax-bx||a.id-b.id}
 function card(e){
   const u=UNITS[e.id];
   let rows;
@@ -172,7 +180,7 @@ function card(e){
   else if(!e.after.length) rows=side(e.before[0],"gone",false)+`<div class="l none r">no orders</div>`;
   else rows=align(e.before,e.after).map(([a,b,k])=>k==="same"?side(a,"",false)+side(b,"",true):side(a,"gone",false)+side(b,"add",true)).join("");
   const flag=e.edited?`<span class="flag edit">✎ edited since</span>`:e.problem?`<span class="flag warn">⚠ 1 problem</span>`:"";
-  const title=e.edited?' title="You have changed this unit since Claude wrote it, so a revert would lose your edit."':"";
+  const title=e.edited?' title="You have changed this unit since the assistant wrote it, so a revert would lose your edit."':"";
   return `<article class="unit">
     <div class="uhead">
       <button class="name" type="button" data-sel="${e.id}">${esc(u.name)} (${e.id})</button>
@@ -180,16 +188,18 @@ function card(e){
       <button class="btn" type="button" data-rev="${e.id}"${e.edited?" disabled":""}${title}>Revert</button>
     </div>
     <div class="sbs"><div class="cap">Before</div><div class="cap">After</div>${rows}</div>
-    ${e.edited?'<p class="why edit">You changed these orders after Claude wrote them. Revert is off so it cannot overwrite your edit.</p>':e.problem?`<p class="why">${esc(e.problem)}</p>`:""}
+    ${e.edited?'<p class="why edit">You changed these orders after the assistant wrote them. Revert is off so it cannot overwrite your edit.</p>':e.problem?`<p class="why">${esc(e.problem)}</p>`:""}
   </article>`;
 }
 function render(){
+  entries.sort(byHex);
   const n=entries.length;
+  const problems=entries.filter(e=>e.problem&&!e.edited).length;
   $("list").innerHTML=entries.map(card).join("");
   $("count").textContent=`${n} unit${n===1?"":"s"}`;
   $("panel").hidden=!open||n===0;
   $("chip").hidden=open||n===0;
-  $("chip").textContent=`Claude: ${n}`;
+  $("chip").textContent=`Assistant: ${n}${problems?` · ⚠ ${problems}`:""}`;
   $("revertAll").disabled=!entries.some(e=>!e.edited);
   $("next").disabled=step>=WRITES.length;
   drawMap();
@@ -218,20 +228,29 @@ function drawMap(){
 }
 function reset(){
   entries=START.map(e=>({...e}));step=0;open=true;selected=null;
-  $("said").textContent="Three units have changed. The panel opened by itself and took no focus.";
+  $("said").textContent="Three units have changed, listed by hex. The panel opened by itself and took no focus.";
   render();
 }
 $("next").onclick=()=>{const w=WRITES[step++];write(w);$("said").textContent=w.said;render()};
 $("reset").onclick=reset;
 $("close").onclick=()=>{open=false;$("said").textContent="Closed, not cleared: the chip in the header brings it back.";render()};
 $("chip").onclick=()=>{open=true;$("said").textContent="";render()};
-$("keep").onclick=()=>{entries=[];$("said").textContent="Kept. The orders stay as Claude wrote them and the list is empty.";render()};
-$("revertAll").onclick=()=>{
+$("keep").onclick=()=>{entries=[];$("said").textContent="Kept. The orders stay as the assistant wrote them and the list is empty.";render()};
+function revertAll(){
   const left=entries.filter(e=>e.edited).length;
   entries=entries.filter(e=>e.edited);
   $("said").textContent=left?"Reverted, except the unit you edited yourself.":"All reverted.";
   render();
+}
+$("revertAll").onclick=()=>{
+  const n=entries.filter(e=>!e.edited).length;
+  if(n<2){revertAll();return}
+  $("askText").textContent=`Revert ${n} units? The assistant's orders for them will be gone.`;
+  $("yes").textContent=`Revert ${n} units`;
+  $("confirm").hidden=false;
 };
+$("yes").onclick=()=>{$("confirm").hidden=true;revertAll()};
+$("no").onclick=()=>{$("confirm").hidden=true};
 $("list").onclick=ev=>{
   const b=ev.target.closest("button");if(!b)return;
   if(b.dataset.rev){entries=entries.filter(e=>String(e.id)!==b.dataset.rev);$("said").textContent="Reverted. That unit has its earlier orders back.";render()}
