@@ -1,14 +1,14 @@
 import { useState } from "react";
 import type { ArmyRecord } from "@atlantis/core-client";
 
-import { exportReadiness } from "../armyExport";
+import { BOTH_SIMULATORS_TEXT, exportReadiness } from "../armyExport";
 import type { DerivedSkills } from "../battleSkills";
 import { DialogFrame } from "./DialogFrame";
 
 /**
  * Which Armies fight, and which side each is on.
  *
- * Two pickers and a swap, because that is the whole of the question: the simulator's file has an
+ * Two pickers and a swap, because that is the whole of the question: a battle file has an
  * attacking side and a defending one, and either may be empty. The Army whose strip opened the
  * dialog starts as the attackers, which is the common case - you are looking at the force you are
  * about to send in.
@@ -106,6 +106,9 @@ export function ArmyExportDialog({
       close={{ testId: "army-export-close", label: "close export", look: "framed", autoFocus: true }}
       bar={<h2 className="text-ink">Export to battle simulator</h2>}
     >
+      <p data-testid="army-export-both" className="-mt-1 text-ink-dim">
+        {BOTH_SIMULATORS_TEXT}
+      </p>
       <div className="flex flex-col gap-1.5 border-t border-edge pt-2">
         {picker("attackers", "Attackers", attackerId, setAttackerId)}
         <div className="flex justify-end">

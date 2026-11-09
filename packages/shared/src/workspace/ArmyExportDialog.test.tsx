@@ -99,8 +99,28 @@ describe("ArmyExportDialog", () => {
       "1 unit was not in this turn's report. It goes out as it was when last seen."
     );
     expect(markup).toContain("1 unit belongs to another faction.");
-    expect(markup).toContain("The defending side will be empty.");
+    expect(markup).toContain(
+      "The defending side will be empty. On the New Age simulator it holds one blank stand-in unit; replace it there."
+    );
     expect(noticeCount(markup)).toBe(3);
+  });
+
+  it("says the file opens in both, whatever state the export is in", () => {
+    const line = "This file opens in both atlantis.pekle.lv and the New Age simulator.";
+
+    expect(markupOf()).toContain(line);
+    // Export is off in each of these, and the line stays.
+    expect(markupOf({ armies: [], initialAttackerId: "" })).toContain(line);
+    expect(markupOf({ initialAttackerId: "" })).toContain(line);
+    expect(markupOf({ initialAttackerId: MIXED.id, scanning: true })).toContain(line);
+  });
+
+  it("puts that line directly under the title, above the pickers", () => {
+    const markup = markupOf({ initialAttackerId: MIXED.id });
+    const line = markup.indexOf('data-testid="army-export-both"');
+
+    expect(line).toBeGreaterThan(markup.indexOf("Export to battle simulator</h2>"));
+    expect(line).toBeLessThan(markup.indexOf('data-testid="army-export-attackers"'));
   });
 
   it("offers every Army on both sides, with its member count", () => {

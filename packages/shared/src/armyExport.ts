@@ -2,11 +2,13 @@
  * What the Army export dialog decides, kept apart from how it looks.
  *
  * Third of the ah-1mpx family and the one the whole family exists for: an Army leaves the
- * application as a JSON battle file the simulator at <https://atlantis.pekle.lv> loads.
+ * application as one JSON battle file that two simulators load, <https://atlantis.pekle.lv> and the
+ * New Age one at <https://atlantis-newage.com/simulator>. Each reads its own top-level keys and
+ * ignores the other's (ah-mkwyo), so the player never says which simulator the file is for.
  *
- * The format was established by reading the simulator's own bundle rather than its published
- * example. Three facts about it are bound into the functions below and are the reason each is
- * shaped as it is:
+ * Both formats were established by reading each simulator's own bundle rather than a published
+ * example. Three facts about atlantis.pekle.lv's are bound into the functions below and are the
+ * reason each is shaped as it is:
  *
  * 1. The loader **requires both `attackers` and `defenders` keys**. Missing either and it refuses
  *    the whole file with `Failed to parse the json, check json formatting!`.
@@ -15,6 +17,9 @@
  *    the native branch.
  * 3. **Unrecognised skill and item abbreviations are dropped silently.** Nothing here tries to
  *    predict that; a file that loads is not a file that carried everything.
+ *
+ * And one about the New Age simulator's: it **refuses a side with no unit on it**, which is why that
+ * half of the file alone holds a stand-in where a side is empty.
  *
  * Pure, like `mapExport.ts` beside it: no React, no store, no clock.
  */
@@ -40,8 +45,45 @@ export type BattleUnit = {
 /** One side of the battle. */
 export type BattleSide = { units: BattleUnit[] };
 
-/** The whole file. Both keys are always present - the loader refuses it otherwise. */
-export type BattleFile = { attackers: BattleSide; defenders: BattleSide };
+/** One unit as the New Age simulator's import reads it. */
+export type NewAgeUnit = {
+  /** The same `Name (number)` as `BattleUnit.name`, which is also how its report picker names one. */
+  name: string;
+  behind: boolean;
+  mage: boolean;
+  items: { abbr: string; count: number }[];
+  skills: { abbr: string; level: number }[];
+  /** Omitted entirely when the unit has no combat spell. */
+  combat_spell?: string;
+};
+
+/** One side of the battle as the New Age simulator reads it. */
+export type NewAgeSide = { units: NewAgeUnit[] };
+
+/**
+ * The whole file, one half per simulator. All four keys are always present: `attackers` and
+ * `defenders` are atlantis.pekle.lv's, `attacker` and `defender` the New Age simulator's, and each
+ * loader refuses the file without its own pair.
+ */
+export type BattleFile = {
+  attackers: BattleSide;
+  defenders: BattleSide;
+  attacker: NewAgeSide;
+  defender: NewAgeSide;
+};
+
+/** The line under the dialog's title, always there. */
+export const BOTH_SIMULATORS_TEXT =
+  "This file opens in both atlantis.pekle.lv and the New Age simulator.";
+
+/** What the blank unit on an empty New Age side is called, so the player replaces it there. */
+export const STAND_IN_NAME = "Stand-in — replace me";
+
+/**
+ * Skills that make a unit a mage to the New Age simulator: the list its own report picker tests,
+ * alongside a set combat spell, when it fills in the same `mage` flag.
+ */
+const NEW_AGE_MAGE_SKILLS: ReadonlySet<string> = new Set(["MANI", "PATT", "FORC", "SPIR"]);
 
 /** Silver is money rather than equipment, and the simulator has nothing to do with it. */
 const SILVER_TAG = "SILV";
@@ -91,15 +133,49 @@ export function battleSideOf(army: ArmyRecord | null, derived: DerivedSkills): B
   };
 }
 
-/** Both sides. Both keys are always present - the loader refuses the file otherwise. */
+function newAgeUnitOf(unit: BattleUnit): NewAgeUnit {
+  const newAge: NewAgeUnit = {
+    name: unit.name,
+    behind: unit.flags?.includes(BEHIND_FLAG) ?? false,
+    mage:
+      unit.combatSpell !== undefined ||
+      unit.skills.some((skill) => NEW_AGE_MAGE_SKILLS.has(skill.abbr)),
+    items: unit.items.map((item) => ({ abbr: item.abbr, count: item.amount })),
+    skills: unit.skills
+  };
+  if (unit.combatSpell !== undefined) {
+    newAge.combat_spell = unit.combatSpell;
+  }
+  return newAge;
+}
+
+/**
+ * The same side for the New Age simulator, built from the finished one so the two halves of the
+ * file cannot disagree about who went out. A side with nobody on it holds one blank unit, because
+ * that simulator refuses the file otherwise.
+ */
+export function newAgeSideOf(side: BattleSide): NewAgeSide {
+  return {
+    units:
+      side.units.length === 0
+        ? [{ name: STAND_IN_NAME, behind: false, mage: false, items: [], skills: [] }]
+        : side.units.map(newAgeUnitOf)
+  };
+}
+
+/** Both sides, for both simulators. Every key is always present - see `BattleFile`. */
 export function battleFileOf(
   attackers: ArmyRecord | null,
   defenders: ArmyRecord | null,
   derived: DerivedSkills
 ): BattleFile {
+  const attackerSide = battleSideOf(attackers, derived);
+  const defenderSide = battleSideOf(defenders, derived);
   return {
-    attackers: battleSideOf(attackers, derived),
-    defenders: battleSideOf(defenders, derived)
+    attackers: attackerSide,
+    defenders: defenderSide,
+    attacker: newAgeSideOf(attackerSide),
+    defender: newAgeSideOf(defenderSide)
   };
 }
 
@@ -237,9 +313,9 @@ export function exportReadiness(args: {
   }
 
   if (attackers === null) {
-    notices.push({ kind: "empty-side", text: "The attacking side will be empty." });
+    notices.push({ kind: "empty-side", text: `The attacking side will be empty.${STAND_IN_WARNING}` });
   } else if (defenders === null) {
-    notices.push({ kind: "empty-side", text: "The defending side will be empty." });
+    notices.push({ kind: "empty-side", text: `The defending side will be empty.${STAND_IN_WARNING}` });
   }
 
   return {
@@ -280,6 +356,9 @@ function rememberedText(remembered: number, count: number): string {
   const all = remembered === count ? "All " : "";
   return `${all}${remembered} units were not in this turn's report. They go out as they were when last seen.`;
 }
+
+const STAND_IN_WARNING =
+  " On the New Age simulator it holds one blank stand-in unit; replace it there.";
 
 const SCANNING_TEXT =
   "Still reading this game's battle reports. The foreign units' skills are not counted yet.";

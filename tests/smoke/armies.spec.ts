@@ -183,8 +183,11 @@ test("exports an Army as a battle file", async ({ page }, testInfo) => {
   await page.getByTestId("army-export").click();
   await expect(page.getByTestId("army-export-panel")).toBeVisible();
   await expect(page.getByTestId("army-export-summary")).toContainText("1 unit will be exported.");
-  await expect(page.getByTestId("army-export-notice")).toContainText(
-    "The defending side will be empty."
+  await expect(page.getByTestId("army-export-both")).toHaveText(
+    "This file opens in both atlantis.pekle.lv and the New Age simulator."
+  );
+  await expect(page.getByTestId("army-export-notice")).toHaveText(
+    /The defending side will be empty\. On the New Age simulator it holds one blank stand-in unit; replace it there\./
   );
 
   const downloading = page.waitForEvent("download");
@@ -197,15 +200,23 @@ test("exports an Army as a battle file", async ({ page }, testInfo) => {
   const file = JSON.parse(readFileSync(path, "utf8")) as {
     attackers: { units: { name: string; skills: unknown[] }[] };
     defenders: { units: unknown[] };
+    attacker: { units: { name: string; behind: boolean; items: unknown[] }[] };
+    defender: { units: { name: string; items: unknown[]; skills: unknown[] }[] };
   };
 
-  // Both keys, always: the simulator refuses the whole file when either is missing, and `skills`
-  // is the array its format sniff reads even when the unit has none.
-  expect(Object.keys(file)).toEqual(["attackers", "defenders"]);
+  // All four keys, always: each simulator refuses the whole file without its own pair, and `skills`
+  // is the array atlantis.pekle.lv's format sniff reads even when the unit has none.
+  expect(Object.keys(file)).toEqual(["attackers", "defenders", "attacker", "defender"]);
   expect(file.defenders.units).toEqual([]);
   expect(file.attackers.units).toHaveLength(1);
   expect(file.attackers.units[0].name).toContain(`(${OWN_UNIT})`);
   expect(Array.isArray(file.attackers.units[0].skills)).toBe(true);
+
+  // The New Age half: the same Army on the side chosen, and one blank unit on the empty side.
+  expect(file.attacker.units.map((unit) => unit.name)).toEqual([file.attackers.units[0].name]);
+  expect(file.defender.units).toEqual([
+    { name: "Stand-in — replace me", behind: false, mage: false, items: [], skills: [] }
+  ]);
 
   await expect(page.getByTestId("import-status")).toContainText("exported Northern Host");
 });
