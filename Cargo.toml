@@ -5,6 +5,7 @@ members = [
   "crates/core-persistence",
   "crates/core-wasm",
   "crates/core-tauri",
+  "crates/assistant-mcp",
   "apps/desktop/src-tauri"
 ]
 resolver = "2"

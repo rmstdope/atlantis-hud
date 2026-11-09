@@ -174,7 +174,8 @@ export function commandParameters(
     const [, name, params] = match;
     parameters[name] = splitTopLevel(params)
       .map(readParameter)
-      .filter((parameter) => parameter.name !== "app");
+      // `app: tauri::AppHandle` and `state: tauri::State<…>` are Tauri's own, injected by the shell.
+      .filter((parameter) => parameter.name !== "app" && parameter.name !== "state");
   }
 
   for (const [fn, wire] of commandRenames(coreTauriLibRs)) {

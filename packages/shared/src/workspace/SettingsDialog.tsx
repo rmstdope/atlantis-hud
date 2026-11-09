@@ -7,6 +7,8 @@ import type { RulesetGaps } from "../rulesetGaps";
 import { useState } from "react";
 import type { AdvisoryCheckCode } from "@atlantis/core-client";
 import { DialogFrame } from "./DialogFrame";
+import { AssistantSettings } from "./AssistantSettings";
+import type { AssistantTransport } from "../assistant/assistantTransport";
 import { APP_VERSION } from "../appVersion";
 import { RULESETS } from "../rulesets";
 import { snippetBodyProblem, snippetNameProblem } from "../orderSnippets";
@@ -62,7 +64,8 @@ export function SettingsDialog({
   onChangeMapSizes,
   onCheckRuleset,
   onChangeRuleset,
-  onDismiss
+  onDismiss,
+  assistant
 }: {
   platformLabel: string;
   appUpdate: AppUpdateControl;
@@ -74,6 +77,8 @@ export function SettingsDialog({
   onCheckRuleset: (rulesetId: string) => Promise<RulesetGaps>;
   onChangeRuleset: (rulesetId: string) => Promise<void>;
   onDismiss: () => void;
+  /** The shell's assistant transport; the Global tab says how to connect Claude Code when there is one. */
+  assistant?: AssistantTransport;
 }) {
   // Local rather than lifted: the dialog unmounts when closed, so every open lands on Global,
   // which is the wanted default.
@@ -140,6 +145,7 @@ export function SettingsDialog({
 
       <div className="mt-3 min-h-32 rounded border border-edge bg-panel-raised p-3">
         {tab === "global" ? <GlobalSettings /> : null}
+        {tab === "global" && assistant ? <AssistantSettings assistant={assistant} /> : null}
         {tab === "game" ? (
           <GameSettings
             game={game}

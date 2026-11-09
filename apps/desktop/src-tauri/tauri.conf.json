@@ -5,7 +5,7 @@
   "identifier": "com.atlantis.hud",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:4174",
+    "devUrl": "http://localhost:4184",
     "beforeDevCommand": "pnpm --filter @atlantis/desktop dev",
     "beforeBuildCommand": "pnpm --filter @atlantis/desktop build"
   },
