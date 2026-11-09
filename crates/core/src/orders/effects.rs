@@ -4488,8 +4488,8 @@ impl Working {
                 .cloned()
                 .unwrap_or_else(Vec::new);
             // No GIVE permission is asked: `TRANSPORT` has its own gate, `can_be_transported`,
-            // checked below - the two lists are not the same (`IENT` may not be given but may be
-            // transported).
+            // checked below - the two lists are not the same (`rules/economy_transport` refuses
+            // mounts, and `data/horse` does not say a horse cannot be given).
             // An exact amount counts the sharers' goods too, men and silver excepted: men are
             // never pooled (`pooled_items`), and an exact silver shipment's draw is the SILVER
             // column's (`ah-9yvv`). `ALL` ships the sender's own alone (`amt = u->items.GetNum`).
