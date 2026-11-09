@@ -1,7 +1,8 @@
-//! `ah-c2jte`. Two items are refused by the game though `rules/economy_transport` names no kind
-//! they belong to: livestock [LIVE] (`data/LIVE`: a trade resource and food) and the amulet of
-//! invulnerability [XXXX] (`data/XXXX`, made by no `create ...` spell). The engine flags both
-//! `ItemType::NOTRANSPORT` (`../Atlantis gamedata.cpp`) and `ParseTransportableItem`
+//! `ah-c2jte`. Three items are refused by the game though `rules/economy_transport` names no kind
+//! they belong to: livestock [LIVE] (`data/LIVE`: a trade resource and food), the amulet of
+//! invulnerability [XXXX] (`data/XXXX`, made by no `create ...` spell) and, in New Origins alone,
+//! the imprisoned entity [IENT] (`data/IENT`). The engine flags them `ItemType::NOTRANSPORT`
+//! (`../Atlantis gamedata.cpp`; IENT on its `master`) and `ParseTransportableItem`
 //! (`../Atlantis items.cpp`) matches no such item, so the order is refused as it is read.
 //!
 //! The navigator met it in Trident: `TRANSPORT 6062 ALL LIVE EXCEPT 8` reviewed clean and the game
@@ -26,7 +27,7 @@ fn report() -> String {
         "",
         "+ Waystation [1] : Caravanserai.",
         "  * Broker (5531), Foo (1), leader [LEAD], 20 livestock [LIVE], amulet of \
-         invulnerability [XXXX], 10 grain [GRAI], 50000 silver [SILV]. Weight: 15. \
+         invulnerability [XXXX], imprisoned entity [IENT], 10 grain [GRAI], 50000 silver [SILV]. Weight: 15. \
          Capacity: 0/0/15/0. Skills: quartermaster [QUAM] 3 (180).",
         "",
         "mountain (2,2) in Nowhere, 5 dwarves (dwarves), $3.",
@@ -132,6 +133,27 @@ fn an_amulet_of_invulnerability_warns_and_stays_with_the_sender() {
                 "{world} {word}: the amulet stays with the sender"
             );
         }
+    }
+}
+
+/// Only New Origins has the item (`data/IENT`; no New Age world's catalogue carries it).
+#[test]
+fn an_imprisoned_entity_warns_and_stays_with_the_sender() {
+    let rules = atlantis_hud_fixtures::RULESET_JSON;
+    for word in ["TRANSPORT", "DISTRIBUTE"] {
+        let orders = format!("unit 5531\n{word} 6857 1 IENT\n");
+
+        let found = findings_on_the_line(rules, &orders);
+        assert_eq!(found.len(), 1, "{word}: {found:?}");
+        assert_eq!(
+            found[0].message, "The game will not transport IENT, so they stay with this unit.",
+            "{word}"
+        );
+        assert_eq!(
+            broker_after(rules, &orders, "IENT"),
+            Some(1),
+            "{word}: the entity stays with the sender"
+        );
     }
 }
 

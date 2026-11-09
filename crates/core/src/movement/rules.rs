@@ -1267,13 +1267,16 @@ impl std::error::Error for RulesetError {}
 /// Items the game refuses to `TRANSPORT` or `DISTRIBUTE` although no published page says so.
 ///
 /// `rules/economy_transport` names men, summoned creatures, ships, mounts, war machines and items
-/// made with artifact lore, and neither `data/LIVE` nor `data/XXXX` is any of those (`ah-c2jte`).
-/// The engine still flags both `ItemType::NOTRANSPORT` (`../Atlantis gamedata.cpp`), and
-/// `ParseTransportableItem` (`../Atlantis items.cpp`) matches no such item, so the order is refused
-/// as it is read. The catalogues of New Origins, Arcanum and Trident all carry these two tags, and
-/// every other flagged item in them is already refused by the rules page's kinds. New Age has no
-/// published engine; the navigator saw Trident refuse `LIVE` (`ah-c2jte`).
-const ENGINE_REFUSES_TO_TRANSPORT: [&str; 2] = ["LIVE", "XXXX"];
+/// made with artifact lore, and none of `data/LIVE`, `data/XXXX` or `data/IENT` is any of those
+/// (`ah-c2jte`). The engine still flags all three `ItemType::NOTRANSPORT` (`../Atlantis
+/// gamedata.cpp`, `IENT` on its `master`), and `ParseTransportableItem` (`../Atlantis items.cpp`)
+/// matches no such item, so the order is refused as it is read. Every other flagged item in the
+/// catalogues of New Origins, Arcanum and Trident is already refused by the rules page's kinds.
+///
+/// `LIVE` and `XXXX` are in all three catalogues, `IENT` in New Origins alone. New Age publishes no
+/// engine: the navigator saw Trident refuse `LIVE`, and Arcanum's `LIVE` and both New Age worlds'
+/// `XXXX` are inferred from the New Origins engine, on the navigator's say-so (`ah-c2jte`).
+const ENGINE_REFUSES_TO_TRANSPORT: [&str; 3] = ["LIVE", "XXXX", "IENT"];
 
 impl Ruleset {
     /// Parses and validates a ruleset.
@@ -1655,15 +1658,15 @@ impl Ruleset {
     /// spell can make is an artefact.** Twenty-one skills are named that way; eighteen name an
     /// item that exists and every one of those eighteen requires artifact lore, and the three
     /// that name no item make an aura and two kinds of phantasm - and phantasms are already
-    /// refused as summoned creatures. Five items are reached by no rule at all (`PORT`, `MWAG`,
-    /// `GLID`, `HPOT`, `IENT`) and stay transportable: a hand-written list of them would not be
+    /// refused as summoned creatures. Four items are reached by no rule at all (`PORT`, `MWAG`,
+    /// `GLID`, `HPOT`) and stay transportable: a hand-written list of them would not be
     /// supported by the game's own data and would rot silently if the game changed.
     ///
     /// True for a tag the catalogue cannot place, in the same spirit as [`Ruleset::can_be_given`]:
     /// the pages state a restriction and are silent otherwise, so silence and ignorance look the
     /// same and the permissive reading is the one that matches them.
     ///
-    /// [`ENGINE_REFUSES_TO_TRANSPORT`] is the one exception to reading the pages: the two items the
+    /// [`ENGINE_REFUSES_TO_TRANSPORT`] is the one exception to reading the pages: the items the
     /// game refuses without any page saying so.
     #[must_use]
     pub fn can_be_transported(&self, tag: &str) -> bool {
@@ -2195,6 +2198,7 @@ mod tests {
             !ruleset.can_be_transported("XXXX"),
             "amulet of invulnerability"
         );
+        assert!(!ruleset.can_be_transported("IENT"), "imprisoned entity");
         assert!(ruleset.can_be_transported("GRAI"), "grain, the other food");
     }
 
@@ -2206,12 +2210,11 @@ mod tests {
         assert!(ruleset.can_be_transported("FUR"));
         assert!(ruleset.can_be_transported("SILV"));
 
-        // No rule reaches these five; the navigator's decision leaves them transportable.
+        // No rule reaches these four; the navigator's decision leaves them transportable.
         assert!(ruleset.can_be_transported("PORT"), "portal");
         assert!(ruleset.can_be_transported("MWAG"), "magic wagon");
         assert!(ruleset.can_be_transported("GLID"), "glider");
         assert!(ruleset.can_be_transported("HPOT"), "healing potion");
-        assert!(ruleset.can_be_transported("IENT"), "imprisoned entity");
     }
 
     #[test]
@@ -2224,8 +2227,8 @@ mod tests {
             .filter(|tag| !ruleset.can_be_transported(tag))
             .count();
 
-        // The hundred and five the pages decide, and the two only the engine does.
-        assert_eq!(refused, 107);
+        // The hundred and five the pages decide, and the three only the engine does.
+        assert_eq!(refused, 108);
     }
 
     #[test]
