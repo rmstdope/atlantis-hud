@@ -390,11 +390,18 @@ describe("what the map hands a theme", () => {
     expect(pattern).not.toContain("patternTransform");
   });
 
-  it("moves water textures along their rotated pattern axis", () => {
+  it("hands no water to the browser's own animation, which repaints every frame (ah-5l9jg)", () => {
+    expect(draw(probe(), [], allBadges(true), undefined, true)).not.toContain("<animateTransform");
+    expect(
+      draw(probe(), [], allBadges(true), undefined, true, { ...DEFAULT_TEXTURE_STYLE, tiles: false })
+    ).not.toContain("<animateTransform");
+  });
+
+  it("marks water textures to slide along their rotated pattern axis", () => {
     const svg = draw(probe(), [], allBadges(true), undefined, true);
 
     expect(svg).toMatch(
-      /<pattern id="biome-texture-ocean-[^"]+"[^>]*>.*<animateTransform attributeName="transform" type="translate" from="0 0" to="1 0" dur="18s" repeatCount="indefinite"><\/animateTransform><\/g><\/pattern>/
+      /<pattern id="biome-texture-ocean-[^"]+"[^>]*><g data-water-loop="1"><image/
     );
   });
 
@@ -413,10 +420,8 @@ describe("what the map hands a theme", () => {
     expect(images[1]).toContain('x="0"');
     expect(images[2]).toContain('x="0"');
     expect(images[2]).not.toContain("transform");
-    // Standard's speed: one width per 18 s, so the two-width loop takes 36 s.
-    expect(pattern).toContain(
-      '<animateTransform attributeName="transform" type="translate" from="0 0" to="2 0" dur="36s" repeatCount="indefinite">'
-    );
+    // Standard's speed over a loop two widths long.
+    expect(pattern).toContain('<g data-water-loop="2">');
   });
 
   it("turns a picture that does not tile inside a frame that covers the hex", () => {
@@ -464,14 +469,14 @@ describe("what the map hands a theme", () => {
 
     expect(svg).toMatch(/<filter id="lake-fresh"[^>]*>.*?feColorMatrix.*?<\/filter>/);
     expect(pattern).toContain('<g filter="url(#lake-fresh)"><image href="/biomes/ocean_512.png"');
-    expect(pattern).not.toContain("<animateTransform");
-    expect(sea).toContain("<animateTransform");
+    expect(pattern).not.toContain("data-water-loop");
+    expect(sea).toContain("data-water-loop");
     expect(sea).not.toContain("lake-fresh");
 
     const covering = drawn({ ...DEFAULT_TEXTURE_STYLE, tiles: false });
     const covered = covering.match(/<pattern id="biome-texture-lake-[^"]+-c"[^>]*>.*?<\/pattern>/)?.[0];
     expect(covered).toContain('filter="url(#lake-fresh)"');
-    expect(covered).not.toContain("<animateTransform");
+    expect(covered).not.toContain("data-water-loop");
   });
 
   it("defines the fresh-water tint only while textures are drawn", () => {
@@ -481,7 +486,7 @@ describe("what the map hands a theme", () => {
   it("leaves water textures still when their animation is off", () => {
     const svg = draw(probe(), [], allBadges(true), undefined, true, { ...DEFAULT_TEXTURE_STYLE, animateWater: false });
 
-    expect(svg).not.toContain("<animateTransform");
+    expect(svg).not.toContain("data-water-loop");
   });
 
   it("hands a theme the fade already damped by its own factor", () => {

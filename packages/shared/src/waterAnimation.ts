@@ -1,10 +1,10 @@
 /**
  * Whether the ocean's texture moves.
  *
- * Moving water repaints the whole map on every frame, forever, even when nobody touches it: on a
- * map of three thousand hexes that was most of a slower machine's time, before a single click. So by
- * default it moves only on a small map, and a player on a strong machine can ask for it everywhere -
- * or nowhere. "Small" is counted on the level being shown, since that is what is drawn.
+ * Every step of moving water repaints the whole map, forever, even when nobody touches it, and on
+ * a map of three thousand hexes each repaint is expensive. So by default it moves only on a small
+ * map, and a player on a strong machine can ask for it everywhere - or nowhere. "Small" is counted
+ * on the level being shown, since that is what is drawn. How often it steps is `waterDrift.ts`.
  *
  * A plain module, so the store, the dialog and the map can all import it.
  */
