@@ -59,12 +59,29 @@ fn token_in(dir: &Path) -> Result<String, String> {
     }
     let token = uuid::Uuid::new_v4().simple().to_string();
     std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    // Emptied and made private before the token goes in, so it is never readable by anyone else.
-    let mut file = std::fs::File::create(&path).map_err(|error| error.to_string())?;
+    let mut file = create_private(&path).map_err(|error| error.to_string())?;
+    // Creating sets the mode of a new file only, and an empty one may already be here.
     keep_private(&path).map_err(|error| error.to_string())?;
     file.write_all(token.as_bytes())
         .map_err(|error| error.to_string())?;
     Ok(token)
+}
+
+/// Private from the moment it exists, so nobody else can open it and wait for the token to arrive.
+#[cfg(unix)]
+fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::create(path)
 }
 
 /// The token is what stops another account on this machine writing the player's orders.

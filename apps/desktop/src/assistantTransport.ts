@@ -19,7 +19,15 @@ export function desktopAssistantTransport(): AssistantTransport | undefined {
       const { listen } = await import("@tauri-apps/api/event");
       const stop = await listen<AssistantCall>("assistant://call", (event) => {
         const call = event.payload;
-        void onCall(call).then((answer) => invoke("assistant_answer", { id: call.id, answer }));
+        void onCall(call)
+          .catch((error: unknown) => ({
+            text: `The HUD failed to answer: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true
+          }))
+          .then((answer) => invoke("assistant_answer", { id: call.id, answer }))
+          .catch(() => {
+            // The shell could not take the answer, so the relay's timeout fails the call.
+          });
       });
       await invoke("assistant_register_tools", { tools });
       return stop;
