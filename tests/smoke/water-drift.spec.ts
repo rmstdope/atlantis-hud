@@ -53,7 +53,8 @@ function driftOf(page: Page, sampleMs: number): Promise<Sample | null> {
 
 test("the sea steps at the agreed rate and speed on a small map at the default setting", async ({ page }) => {
   await loadReport(page);
-  await expect(page.locator("[data-water-loop]").first()).toBeAttached();
+  // The first redraw, not just the mounted group: until then the position reads as nothing.
+  await expect(page.locator("[data-water-loop]").first()).toHaveAttribute("transform", /translate/u);
 
   const sample = await driftOf(page, SAMPLE_MS);
 
