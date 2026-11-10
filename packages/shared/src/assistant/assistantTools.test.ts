@@ -199,13 +199,20 @@ function anEarlierTurnSource(): EarlierTurnSource {
       })
     ]
   });
+  const home = parsed.regions[0]!;
   const templated = aParsedReport({
     header: aReportHeaderInfo({ factionId: "3", turnNumber: 9 }),
-    regions: parsed.regions,
+    regions: [
+      {
+        ...home,
+        units: [...home.units, aReportUnit({ unitId: "102", name: "Scouts", regionId: "1,1,1", own: true, factionId: "3", men: 1 })]
+      }
+    ],
     ordersTemplate: { text: TEMPLATE_ORDERS, factionId: "3", units: [] }
   });
   return {
     list: async () => [
+      { turnNumber: 8, season: null, importedAt: "2026-01-08" },
       { turnNumber: 9, season: null, importedAt: "2026-01-09" },
       { turnNumber: 10, season: null, importedAt: "2026-01-10" },
       { turnNumber: 11, season: null, importedAt: "2026-01-11" },
@@ -215,10 +222,19 @@ function anEarlierTurnSource(): EarlierTurnSource {
       turnNumber === 11
         ? { turnNumber, parsed, ordersDocument: EARLIER_ORDERS }
         : turnNumber === 10
-          ? { turnNumber, parsed: aParsedReport({ header: aReportHeaderInfo({ turnNumber: 10 }) }), ordersDocument: null }
+          ? { turnNumber, parsed: aParsedReport({ header: aReportHeaderInfo({ turnNumber: 10 }), ordersTemplate: null }), ordersDocument: null }
           : turnNumber === 9
             ? { turnNumber, parsed: templated, ordersDocument: null }
-            : null
+            : turnNumber === 8
+              ? {
+                  turnNumber,
+                  parsed: aParsedReport({
+                    header: aReportHeaderInfo({ turnNumber: 8 }),
+                    ordersTemplate: { text: "  \n", factionId: "3", units: [] }
+                  }),
+                  ordersDocument: null
+                }
+              : null
   };
 }
 
@@ -1854,6 +1870,7 @@ describe("reading an earlier turn", () => {
     expect(answer).toEqual({
       openTurn: 12,
       turns: [
+        { turn: 8, season: null, importedAt: "2026-01-08", open: false },
         { turn: 9, season: null, importedAt: "2026-01-09", open: false },
         { turn: 10, season: null, importedAt: "2026-01-10", open: false },
         { turn: 11, season: null, importedAt: "2026-01-11", open: false },
@@ -1911,7 +1928,7 @@ describe("reading an earlier turn", () => {
     expect(one).toEqual({ turn: 11, earlier: true, unitId: "100", orders: "tax" });
   });
 
-  it("says when the HUD kept no orders for an earlier turn", async () => {
+  it("keeps saying the HUD kept no orders when the earlier report carried no template", async () => {
     const { host } = aHost(aTurn());
 
     const answer = json((await call(host, "get_orders", { turn: 10 })).text);
@@ -1928,6 +1945,22 @@ describe("reading an earlier turn", () => {
     const note = "The HUD kept no orders for turn 9; these are the orders template from that turn's report, not orders the player saved.";
     expect(whole).toEqual({ turn: 9, earlier: true, orders: TEMPLATE_ORDERS, fromTemplate: true, note });
     expect(one).toEqual({ turn: 9, earlier: true, unitId: "100", orders: "work", fromTemplate: true, note });
+  });
+
+  it("answers no orders for a unit the earlier report showed but its template has no block for", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "get_orders", { turn: 9, unitId: "102" })).text);
+
+    expect(answer).toMatchObject({ turn: 9, earlier: true, unitId: "102", orders: "", fromTemplate: true });
+  });
+
+  it("counts a blank orders template as none", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "get_orders", { turn: 8 })).text);
+
+    expect(answer).toEqual({ turn: 8, earlier: true, orders: null, note: "The HUD kept no orders for turn 8." });
   });
 
   it("refuses a unit's earlier orders when that turn's report did not show the unit", async () => {
