@@ -2,6 +2,8 @@ import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, 
 import { pastDragThreshold, type DialogPosition } from "./dialogDrag";
 import {
   PANEL_MIN_WIDTH_REM,
+  committedSize,
+  movesHeight,
   resizePanelFrame,
   resizeSheetHeight,
   type PanelFrame,
@@ -19,6 +21,12 @@ type Press = {
   minHeight: number;
   travelled: boolean;
 };
+
+/** The window margin the panel keeps at the right and bottom, as its home corner does. */
+const MARGIN_PX = 14;
+
+/** How far below the window's top a resized side stops: clear of the header, as the home corner's cap is. */
+const HEADER_CLEAR_PX = 46;
 
 /** Space below an entry's heading line: the entry's own padding and border. */
 const ENTRY_FOOT_PX = 9;
@@ -49,8 +57,10 @@ function minimumHeight(panel: HTMLElement): number {
 export type PanelResize = {
   /** The edge being held, which lights up. */
   activeEdge: ResizeEdge | null;
-  /** The frame (or, on a sheet, the height) while an edge is being dragged; null otherwise. */
-  live: PanelFrame | null;
+  /** The frame (on a sheet, only its height counts) and the held edge while dragging; null otherwise. */
+  live: { frame: PanelFrame; edge: ResizeEdge } | null;
+  /** Where a panel still at its home corner was moved to by its left edge; null while it was not. */
+  homeLeft: number | null;
   handlers: ResizeEdgeHandlers;
 };
 
@@ -59,12 +69,16 @@ export type PanelResize = {
  * `panelResize.ts`'s; this measures the browser for it and drives the press.
  *
  * While an edge is held the panel takes the dragged size exactly, so the edge follows the pointer;
- * let go and the size is handed to `onCommit`, where it becomes a limit the panel fits inside. A
- * press that never travels changes nothing, so a double-click alone neither moves nor pins it.
+ * let go and the size is handed to `onCommitFloating`, where it becomes a limit the panel fits
+ * inside. A press that never travels changes nothing, so a double-click alone neither moves nor
+ * pins it. Only a top or bottom side pins a panel at its home corner by its top: a left or right
+ * one leaves it anchored at the bottom, free to grow upward as entries arrive.
  */
 export function usePanelResize({
   panelRef,
   sheet,
+  moved,
+  previous,
   place,
   onCommitFloating,
   onCommitSheet,
@@ -72,6 +86,10 @@ export function usePanelResize({
 }: {
   panelRef: RefObject<HTMLDivElement | null>;
   sheet: boolean;
+  /** Whether the panel has left its home corner (it is then pinned by its top-left). */
+  moved: boolean;
+  /** The player's size before this drag. */
+  previous: PanelSize | null;
   place: (position: DialogPosition) => void;
   onCommitFloating: (size: PanelSize) => void;
   onCommitSheet: (height: number) => void;
@@ -79,12 +97,13 @@ export function usePanelResize({
 }): PanelResize {
   const press = useRef<Press | null>(null);
   const liveRef = useRef<PanelFrame | null>(null);
-  const [live, setLive] = useState<PanelFrame | null>(null);
+  const [live, setLive] = useState<PanelResize["live"]>(null);
   const [activeEdge, setActiveEdge] = useState<ResizeEdge | null>(null);
+  const [homeLeft, setHomeLeft] = useState<number | null>(null);
 
-  const show = useCallback((frame: PanelFrame | null) => {
+  const show = useCallback((frame: PanelFrame | null, edge: ResizeEdge) => {
     liveRef.current = frame;
-    setLive(frame);
+    setLive(frame === null ? null : { frame, edge });
   }, []);
 
   const onPointerDown = useCallback(
@@ -124,19 +143,31 @@ export function usePanelResize({
       current.travelled = true;
       if (sheet) {
         const height = resizeSheetHeight(current.start.height, dy, current.minHeight, window.innerHeight - 60);
-        show({ ...current.start, top: current.start.top + current.start.height - height, height });
+        show({ ...current.start, top: current.start.top + current.start.height - height, height }, current.edge);
         return;
       }
-      const frame = resizePanelFrame(current.start, current.edge, dx, dy, {
+      const start = current.start;
+      // The same margins the committed size keeps, so nothing jumps on release - unless the panel
+      // already sits past one (dragged there by its bar), when that side does not jump either.
+      const frame = resizePanelFrame(start, current.edge, dx, dy, {
         minWidth: PANEL_MIN_WIDTH_REM * remPx(),
         minHeight: current.minHeight,
-        viewport: { width: window.innerWidth, height: window.innerHeight }
+        bounds: {
+          left: Math.min(0, start.left),
+          top: Math.min(HEADER_CLEAR_PX, start.top),
+          right: Math.max(window.innerWidth - MARGIN_PX, start.left + start.width),
+          bottom: Math.max(window.innerHeight - MARGIN_PX, start.top + start.height)
+        }
       });
-      // Pinned by its top-left from here on, so the side opposite the dragged one holds still.
-      place({ left: frame.left, top: frame.top });
-      show(frame);
+      if (movesHeight(current.edge) || moved) {
+        // Pinned by its top-left from here on, so the side opposite the dragged one holds still.
+        place({ left: frame.left, top: frame.top });
+      } else if (frame.left !== start.left) {
+        setHomeLeft(frame.left);
+      }
+      show(frame, current.edge);
     },
-    [sheet, place, show]
+    [sheet, moved, place, show]
   );
 
   const endPress = useCallback(
@@ -152,17 +183,18 @@ export function usePanelResize({
         if (sheet) {
           onCommitSheet(frame.height);
         } else {
-          onCommitFloating({ width: frame.width, height: frame.height });
+          onCommitFloating(committedSize(current.edge, frame, previous));
         }
       }
-      show(null);
+      show(null, current.edge);
     },
-    [sheet, onCommitFloating, onCommitSheet, show]
+    [sheet, previous, onCommitFloating, onCommitSheet, show]
   );
 
   return {
     activeEdge,
     live,
+    homeLeft,
     handlers: { onPointerDown, onPointerMove, onPointerUp: endPress, onPointerCancel: endPress, onDoubleClick: onReset }
   };
 }

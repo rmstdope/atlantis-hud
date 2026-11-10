@@ -10,6 +10,7 @@ import {
   RESIZE_CURSOR,
   RESIZE_EDGES,
   floatingSizeStyle,
+  movesHeight,
   sheetSizeStyle,
   type ResizeEdge,
   type ResizeEdgeHandlers
@@ -367,6 +368,8 @@ export function AssistantChangesPanel({
   const resize = usePanelResize({
     panelRef: drag.dialogRef,
     sheet: narrow,
+    moved: drag.moved,
+    previous: size.floating,
     place: drag.place,
     onCommitFloating: setFloatingPanelSize,
     onCommitSheet: setSheetPanelHeight,
@@ -414,13 +417,22 @@ export function AssistantChangesPanel({
   // The player's size is a limit the panel fits inside (ah-hwkak.1); while an edge is held it is
   // exactly the dragged size instead, so the edge follows the pointer.
   const live = resize.live;
+  const homeStyle = dragStyle === undefined && resize.homeLeft !== null ? { left: resize.homeLeft } : undefined;
+  const at = {
+    left: dragStyle === undefined ? resize.homeLeft : Number(dragStyle.left),
+    top: dragStyle === undefined ? null : Number(dragStyle.top)
+  };
+  const heldHeight = (height: number) => ({ height, maxHeight: "none" });
   const sizeStyle = narrow
     ? live === null
       ? sheetSizeStyle(size.sheet)
-      : { height: live.height, maxHeight: "none" }
-    : live === null
-      ? floatingSizeStyle(size.floating, dragStyle === undefined ? null : Number(dragStyle.top))
-      : { width: live.width, height: live.height, maxHeight: "none" };
+      : heldHeight(live.frame.height)
+    : {
+        ...floatingSizeStyle(size.floating, at),
+        ...(live === null
+          ? {}
+          : { width: live.frame.width, ...(movesHeight(live.edge) ? heldHeight(live.frame.height) : {}) })
+      };
 
   return (
     <div
@@ -431,7 +443,7 @@ export function AssistantChangesPanel({
       aria-label="Assistant changes"
       tabIndex={-1}
       hidden={!open}
-      style={{ ...movedStyle, ...sizeStyle }}
+      style={{ ...(narrow ? undefined : homeStyle), ...movedStyle, ...sizeStyle }}
       onKeyDown={(event: KeyboardEvent) => {
         if (event.key === "Escape") {
           event.stopPropagation();

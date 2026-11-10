@@ -278,20 +278,28 @@ test(
     await expect(page.getByTestId("assistant-changes-resize-e")).not.toHaveAttribute("data-active", "");
     await expect.poll(async () => Math.round((await frame(page)).width)).toBe(Math.round(original.width + 100));
 
-    // The top edge follows the pointer while held; let go and one entry still fits with no space below.
+    // Only the width was set, so more units still grow it to fit them.
+    await write(page, key, units[1] as string, "work");
+    await write(page, key, units[2] as string, "work");
+    await expect(count(page)).toHaveText("3 units");
+    await expect.poll(async () => (await frame(page)).height).toBeGreaterThan(original.height + 40);
+    const three = await frame(page);
+    const list = page.getByTestId("assistant-changes-list");
+    expect(await list.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+
+    // The top edge follows the pointer while held; let go and the three entries fit with no space below.
     await dragEdge(page, "n", 0, -150, async () => {
-      await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(original.height + 150));
+      await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(three.height + 150));
     });
-    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(original.height));
-    const limit = original.height + 150;
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(three.height));
+    const limit = three.height + 150;
 
     // More units grow it to the size set, and from there the list scrolls.
-    for (const unitId of units.slice(1)) {
+    for (const unitId of units.slice(3)) {
       await write(page, key, unitId, "work");
     }
     await expect(count(page)).toHaveText(`${String(units.length)} units`);
     await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(limit));
-    const list = page.getByTestId("assistant-changes-list");
     expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 
     // The left edge moves the left side and keeps the right one.
@@ -319,6 +327,15 @@ test(
     }).toBeLessThanOrEqual(400);
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(limit));
+    await dragEdge(page, "e", 380, 0);
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(700);
+    await page.setViewportSize({ width: 770, height: 720 });
+    await expect.poll(async () => {
+      const box = await frame(page);
+      return box.x + box.width;
+    }).toBeLessThanOrEqual(770);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(700);
 
     // A double-click on an edge puts the size back and leaves the panel where it is.
     const placed = await frame(page);

@@ -39,13 +39,20 @@ export const PANEL_MIN_WIDTH_REM = 20;
 
 export type PanelFrame = { left: number; top: number; width: number; height: number };
 
-export type PanelSize = { width: number; height: number };
+/** The player's size: a width, and the most the panel may grow to (`null`: as far as the window allows). */
+export type PanelSize = { width: number; height: number | null };
 
 export type ResizeLimits = {
   minWidth: number;
   minHeight: number;
-  viewport: { width: number; height: number };
+  /** Where a dragged side may go: the window, less its margins. */
+  bounds: { left: number; top: number; right: number; bottom: number };
 };
+
+/** Whether dragging `edge` moves the panel's top or bottom side, and so sets a height. */
+export function movesHeight(edge: ResizeEdge): boolean {
+  return edge.includes("n") || edge.includes("s");
+}
 
 /**
  * The frame after dragging `edge` by (`dx`, `dy`) from `start`. Only the sides the edge names
@@ -63,18 +70,27 @@ export function resizePanelFrame(
   let top = start.top;
   let bottom = start.top + start.height;
   if (edge.includes("w")) {
-    left = Math.max(0, Math.min(right - limits.minWidth, left + dx));
+    left = Math.max(limits.bounds.left, Math.min(right - limits.minWidth, left + dx));
   }
   if (edge.includes("e")) {
-    right = Math.min(limits.viewport.width, Math.max(left + limits.minWidth, right + dx));
+    right = Math.min(limits.bounds.right, Math.max(left + limits.minWidth, right + dx));
   }
   if (edge.includes("n")) {
-    top = Math.max(0, Math.min(bottom - limits.minHeight, top + dy));
+    top = Math.max(limits.bounds.top, Math.min(bottom - limits.minHeight, top + dy));
   }
   if (edge.includes("s")) {
-    bottom = Math.min(limits.viewport.height, Math.max(top + limits.minHeight, bottom + dy));
+    bottom = Math.min(limits.bounds.bottom, Math.max(top + limits.minHeight, bottom + dy));
   }
   return { left, top, width: right - left, height: bottom - top };
+}
+
+/**
+ * What a finished drag leaves as the player's size. A drag of a left or right side alone sets the
+ * width and leaves the height limit as it was: the panel was only as tall as its entries, and
+ * taking that as a limit would stop it growing when more arrive.
+ */
+export function committedSize(edge: ResizeEdge, frame: PanelFrame, previous: PanelSize | null): PanelSize {
+  return { width: frame.width, height: movesHeight(edge) ? frame.height : (previous?.height ?? null) };
 }
 
 /** The bottom sheet's height after dragging its top edge by `dy` (down is positive). */
@@ -84,18 +100,24 @@ export function resizeSheetHeight(start: number, dy: number, minHeight: number, 
 
 /**
  * The floating panel's size as CSS: nothing while the default applies, otherwise the player's
- * width and height limit, each capped by today's margins - below the header when the panel sits at
- * its home corner, and below its own top once it has been moved there (`top`).
+ * width and height limit, each capped by today's margins from where the panel sits - its left
+ * (`null`: the home corner's 14px) and its top (`null`: pinned at the home corner by its bottom,
+ * below the header).
  */
-export function floatingSizeStyle(size: PanelSize | null, top: number | null): CSSProperties {
+export function floatingSizeStyle(
+  size: PanelSize | null,
+  at: { left: number | null; top: number | null }
+): CSSProperties {
   if (size === null) {
     return {};
   }
-  const cap = top === null ? "calc(100dvh - 60px)" : `calc(100dvh - ${String(top)}px - 14px)`;
-  return {
-    width: `min(${String(size.width)}px, calc(100vw - 28px))`,
-    maxHeight: `min(${String(size.height)}px, ${cap})`
-  };
+  const left = Math.max(0, at.left ?? 14);
+  const width = `min(${String(size.width)}px, calc(100vw - ${String(left)}px - 14px))`;
+  if (size.height === null) {
+    return { width };
+  }
+  const cap = at.top === null ? "calc(100dvh - 60px)" : `calc(100dvh - ${String(at.top)}px - 14px)`;
+  return { width, maxHeight: `min(${String(size.height)}px, ${cap})` };
 }
 
 /** The narrow window's bottom sheet: today's half window until the player sets a height. */
