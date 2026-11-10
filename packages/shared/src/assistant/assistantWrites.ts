@@ -68,7 +68,9 @@ function linesOf(value: unknown, name: string, unitId: string): readonly string[
   if (!Array.isArray(value) || value.some((line) => typeof line !== "string")) {
     throw new Error(`Unit ${unitId}: "${name}" must be a list of order lines.`);
   }
-  return value as string[];
+  // An entry holding a line break is several lines: split here, so each is checked as the line it
+  // will become - a "unit" header hidden after a break must not slip past the structure check.
+  return (value as string[]).flatMap((line) => line.split(/\r?\n/u));
 }
 
 /** The `units` of a write, read strictly: throws a sentence naming what is wrong. */

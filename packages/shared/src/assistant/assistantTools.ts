@@ -1102,8 +1102,10 @@ async function writeOrders(host: AssistantHost, turn: AssistantTurn, args: Recor
     refuse(error instanceof Error ? error.message : String(error));
   }
   const document = turn.ordersDocument;
+  // First every unit is found and its version compared, so the refusal names every unit the player
+  // changed - not only the first problem met - and a stale unit is never edited against old lines.
   const changed: { unitId: string; name: string; orders: string; version: string }[] = [];
-  const checked: CheckedWrite[] = [];
+  const current: { write: UnitWrite; region: ReportRegion; ids: ReadonlySet<string>; orders: string }[] = [];
   for (const write of writes) {
     const { unitId } = write;
     const lines = write.orders !== undefined ? write.orders.split(/\r?\n/u) : [...(write.add ?? [])];
@@ -1115,28 +1117,12 @@ async function writeOrders(host: AssistantHost, turn: AssistantTurn, args: Recor
       refuse(`Unit ${unitId} is not the faction's own; only own units can be given orders.`);
     }
     const ids = unitIdsOf(found.region);
-    const current = host.orders.readUnitOrders(document, unitId, ids) ?? "";
-    if (ordersVersion(current) !== write.version) {
-      changed.push({ unitId, name: found.unit.name, ...versioned(current) });
-      continue;
-    }
-    let orders: string;
-    if (write.orders !== undefined) {
-      orders = write.orders;
+    const orders = host.orders.readUnitOrders(document, unitId, ids) ?? "";
+    if (ordersVersion(orders) === write.version) {
+      current.push({ write, region: found.region, ids, orders });
     } else {
-      const edited = editedOrders(current, write);
-      if (typeof edited !== "string") {
-        refuse(`Nothing was written: unit ${unitId}'s orders hold no line ${edited.missing.map((line) => JSON.stringify(line)).join(", ")} to remove.`);
-      }
-      orders = edited;
+      changed.push({ unitId, name: found.unit.name, ...versioned(orders) });
     }
-    const banner = host.bannerFor(found.region.regionId);
-    const apply = (text: string) => host.orders.applyUnitOrders(text, unitId, orders, banner, ids);
-    const next = apply(document);
-    if (next === document && host.orders.readUnitOrders(next, unitId, ids) === null && orders !== "") {
-      refuse(`Unit ${unitId} has no block in the orders document and none could be made for it.`);
-    }
-    checked.push({ unitId, ids, apply });
   }
   if (changed.length > 0) {
     noteShown(host, turn, changed.map((unit) => [unit.unitId, unit.orders] as const));
@@ -1145,6 +1131,26 @@ async function writeOrders(host: AssistantHost, turn: AssistantTurn, args: Recor
         JSON.stringify({ changed })
     );
   }
+  const checked: CheckedWrite[] = current.map(({ write, region, ids, orders: now }) => {
+    const { unitId } = write;
+    let orders: string;
+    if (write.orders !== undefined) {
+      orders = write.orders;
+    } else {
+      const edited = editedOrders(now, write);
+      if (typeof edited !== "string") {
+        refuse(`Nothing was written: unit ${unitId}'s orders hold no line ${edited.missing.map((line) => JSON.stringify(line)).join(", ")} to remove.`);
+      }
+      orders = edited;
+    }
+    const banner = host.bannerFor(region.regionId);
+    const apply = (text: string) => host.orders.applyUnitOrders(text, unitId, orders, banner, ids);
+    const next = apply(document);
+    if (next === document && host.orders.readUnitOrders(next, unitId, ids) === null) {
+      refuse(`Unit ${unitId} has no block in the orders document and none could be made for it.`);
+    }
+    return { unitId, ids, apply };
+  });
   let next = document;
   for (const write of checked) {
     host.writeOrders(write.apply, write.unitId);

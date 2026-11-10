@@ -677,6 +677,50 @@ describe("write_orders", () => {
     expect(written).toEqual([]);
   });
 
+  it.each([
+    ["a unit header", "study FARM\nunit 100"],
+    ["the end of the file", "study FARM\r\n#end"]
+  ])("refuses a line to add that carries %s after a line break", async (_what, line) => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = await write(host, { unitId: "101", version: V(""), add: [line] });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+  });
+
+  it("refuses a line edit once the player has changed the unit", async () => {
+    const { host, written } = aHost(aTurn());
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\nwork\ntax"));
+
+    const answer = await write(host, { unitId: "100", version: V("work"), remove: ["work"], add: ["claim 10"] });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+    expect(json(answer.text.slice(answer.text.indexOf("{"))).changed[0]).toMatchObject({ unitId: "100", orders: "work\ntax" });
+  });
+
+  it("shows the units the player changed even when another unit's line edit is refused too", async () => {
+    const { host, written } = aHost(aTurn());
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax"));
+
+    const answer = await write(host, { unitId: "100", version: V("work"), orders: "work" }, { unitId: "101", version: V(""), remove: ["tax"] });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+    expect(json(answer.text.slice(answer.text.indexOf("{"))).changed.map((unit: { unitId: string }) => unit.unitId)).toEqual(["100"]);
+  });
+
+  it("refuses empty orders for a unit with no block and no banner to make one under", async () => {
+    const turn = aTurn({ ordersDocument: "#atlantis 3\n\n#end\n" });
+    const { host, written } = aHost(turn);
+
+    const answer = await write(host, { unitId: "100", version: V(""), orders: "" });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+  });
+
   it("refuses orders that are not text", async () => {
     const { host, written } = aHost(aTurn());
 
