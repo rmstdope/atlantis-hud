@@ -245,6 +245,107 @@ test(
   }
 );
 
+/** Drags one of the panel's resize edges by (dx, dy), from the middle of its grab band. */
+async function dragEdge(page: Page, edge: string, dx: number, dy: number, whileHeld?: () => Promise<void>) {
+  const handle = page.getByTestId(`assistant-changes-resize-${edge}`);
+  const box = (await handle.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx, y + dy, { steps: 5 });
+  await whileHeld?.();
+  await page.mouse.up();
+}
+
+const frame = async (page: Page) => (await panel(page).boundingBox())!;
+
+test(
+  "the panel resizes from its edges, fits its entries up to that size, and resets on a double-click",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const key = await openOnMage(page);
+    const units = await ownUnits(page, 13);
+    await write(page, key, units[0] as string, "work");
+    await expect(panel(page)).toBeVisible();
+    const original = await frame(page);
+
+    // The right edge widens it, and the held edge lights up while the button is down.
+    await dragEdge(page, "e", 100, 0, async () => {
+      await expect(page.getByTestId("assistant-changes-resize-e")).toHaveAttribute("data-active", "");
+    });
+    await expect(page.getByTestId("assistant-changes-resize-e")).not.toHaveAttribute("data-active", "");
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(Math.round(original.width + 100));
+
+    // The top edge follows the pointer while held; let go and one entry still fits with no space below.
+    await dragEdge(page, "n", 0, -150, async () => {
+      await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(original.height + 150));
+    });
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(original.height));
+    const limit = original.height + 150;
+
+    // More units grow it to the size set, and from there the list scrolls.
+    for (const unitId of units.slice(1)) {
+      await write(page, key, unitId, "work");
+    }
+    await expect(count(page)).toHaveText(`${String(units.length)} units`);
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(limit));
+    const list = page.getByTestId("assistant-changes-list");
+    expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+
+    // The left edge moves the left side and keeps the right one.
+    const right = (await frame(page)).x + (await frame(page)).width;
+    await dragEdge(page, "w", 50, 0);
+    await expect.poll(async () => Math.round((await frame(page)).x)).toBe(Math.round(original.x + 50));
+    expect(Math.round((await frame(page)).x + (await frame(page)).width)).toBe(Math.round(right));
+
+    // It will not go narrower than its smallest width.
+    await dragEdge(page, "e", -2000, 0);
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(320);
+
+    // Closed to the chip and reopened, it keeps the size.
+    await page.getByTestId("assistant-changes-close").click();
+    await chip(page).click();
+    await expect(panel(page)).toBeVisible();
+    expect(Math.round((await frame(page)).width)).toBe(320);
+    expect(Math.round((await frame(page)).height)).toBe(Math.round(limit));
+
+    // A window too short for it shrinks it, and the size comes back with the room.
+    await page.setViewportSize({ width: 1280, height: 400 });
+    await expect.poll(async () => {
+      const box = await frame(page);
+      return box.y + box.height;
+    }).toBeLessThanOrEqual(400);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(limit));
+
+    // A double-click on an edge puts the size back and leaves the panel where it is.
+    const placed = await frame(page);
+    await page.getByTestId("assistant-changes-resize-e").dblclick();
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(Math.round(original.width));
+    expect(Math.round((await frame(page)).x)).toBe(Math.round(placed.x));
+    expect(Math.round((await frame(page)).y)).toBe(Math.round(placed.y));
+
+    // The narrow sheet resizes from its top edge, and keeps its height apart from the window's size.
+    await dragEdge(page, "e", 60, 0);
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(Math.round(original.width + 60));
+    await page.setViewportSize({ width: 700, height: 720 });
+    await expect(panel(page)).toHaveAttribute("data-sheet", "");
+    await expect(page.locator("[data-testid^='assistant-changes-resize-']")).toHaveCount(1);
+    const sheet = await frame(page);
+    await dragEdge(page, "n", 0, 100);
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(sheet.height - 100));
+    expect(Math.round((await frame(page)).y + (await frame(page)).height)).toBe(720);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(Math.round(original.width + 60));
+    await page.setViewportSize({ width: 700, height: 720 });
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(sheet.height - 100));
+    await page.getByTestId("assistant-changes-resize-n").dblclick();
+    await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(sheet.height));
+  }
+);
+
 test(
   "the list empties for good when a new turn opens",
   { tag: DESKTOP_SHELL_TAG },
