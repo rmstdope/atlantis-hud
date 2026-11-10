@@ -15,7 +15,7 @@ import type { StudyPlansState } from "../studyPlansStore";
 import { cellLabel, scheduleRows, scheduleTurns, type ScheduleRow, type SkillPoints } from "../studySchedule";
 import { mageShelters, type ShelterSeats } from "../studyShelter";
 import type { StandingAfterOrders } from "../studyStanding";
-import { noticeSummary, plannerNotices } from "../studyTeaching";
+import { noticeSummary, plannerNotices, type PlannerNotice } from "../studyTeaching";
 import type { TeachingRule } from "../teachingPermission";
 
 /** What the study planner is drawn from, exactly as `AppShell` hands it to `StudyPlannerDialog`. */
@@ -131,7 +131,13 @@ function skillList(standing: SkillPoints | undefined): string[] {
     .map(([tag, held]) => `${tag} ${skillWords(held)}`);
 }
 
-function turnsOf(row: ScheduleRow, turns: readonly number[], nameOf: (key: string, fallback?: string) => string): StudyPlanTurn[] {
+/** How a mage is named in the answer: `Name (unit)`, by row key or by the bare unit id a teach goal stores. */
+interface Names {
+  ofKey(key: string): string;
+  ofUnit(unitId: string): string;
+}
+
+function turnsOf(row: ScheduleRow, turns: readonly number[], names: Names): StudyPlanTurn[] {
   const planned: StudyPlanTurn[] = [];
   turns.forEach((turn, index) => {
     const cell = row.cells[index];
@@ -146,7 +152,7 @@ function turnsOf(row: ScheduleRow, turns: readonly number[], nameOf: (key: strin
         points: Math.round(cell.points),
         gained: cell.gained,
         worth: cell.worth,
-        ...(cell.taughtBy === null ? {} : { taughtBy: nameOf(cell.taughtBy) }),
+        ...(cell.taughtBy === null ? {} : { taughtBy: names.ofKey(cell.taughtBy) }),
         ...(cell.blocked === null ? {} : { blocked: cell.blocked }),
         ...cast
       });
@@ -154,8 +160,8 @@ function turnsOf(row: ScheduleRow, turns: readonly number[], nameOf: (key: strin
       planned.push({
         turn,
         shows: cellLabel(cell),
-        teach: cell.live ? "everyone eligible" : cell.students.map((unitId) => nameOf(`${row.factionId}/${unitId}`, unitId)),
-        taught: cell.outcome.taught.map((key) => nameOf(key)),
+        teach: cell.live ? "everyone eligible" : cell.students.map((unitId) => names.ofUnit(unitId)),
+        taught: cell.outcome.taught.map((key) => names.ofKey(key)),
         ...cast
       });
     } else if (half?.kind === "planned") {
@@ -166,9 +172,47 @@ function turnsOf(row: ScheduleRow, turns: readonly number[], nameOf: (key: strin
 }
 
 /**
+ * The notices on a teacher's row that are about `student`: the refusal naming him, and the
+ * oversubscription he is one of.
+ *
+ * Matched structurally rather than by wording: `plannerNotices` adds exactly one notice per entry
+ * of `outcome.refused`, in that order, before anything else it says about that teacher's month.
+ */
+function aboutStudent(rows: readonly ScheduleRow[], notices: readonly PlannerNotice[], student: ScheduleRow): Set<PlannerNotice> {
+  const found = new Set<PlannerNotice>();
+  for (const teacher of rows) {
+    if (teacher.key === student.key) {
+      continue;
+    }
+    teacher.cells.forEach((cell, turnIndex) => {
+      if (cell.kind !== "teach") {
+        return;
+      }
+      const month = notices.filter((notice) => notice.rowKey === teacher.key && notice.turnIndex === turnIndex);
+      cell.outcome.refused.forEach((refusal, index) => {
+        const notice = month[index];
+        if (refusal.unitId === student.unitId && notice !== undefined) {
+          found.add(notice);
+        }
+      });
+      if (cell.outcome.taught.includes(student.key)) {
+        for (const notice of month) {
+          if (notice.code === "teaching-oversubscribed") {
+            found.add(notice);
+          }
+        }
+      }
+    });
+  }
+  return found;
+}
+
+/**
  * Every mage the planner shows, his planned months and the planner's warnings - or, with `unitId`,
- * that mage alone and the warnings on his row, or null when the planner shows no such mage. Warnings are worked out over every mage first: a
- * taught month and a contested seat are facts about other mages too.
+ * that mage alone (one per faction, should two carry that number), the warnings on his row and the
+ * teaching warnings about him on his teachers' rows; null when the planner shows no such mage.
+ * Warnings are worked out over every mage first: a taught month and a contested seat are facts
+ * about other mages too.
  */
 export function studyPlansAnswer(input: StudyPlannerInputs, unitId?: string): StudyPlansAnswer | null {
   const turns = scheduleTurns(input.viewedTurn);
@@ -178,9 +222,13 @@ export function studyPlansAnswer(input: StudyPlannerInputs, unitId?: string): St
   const notices = plannerNotices({ rows, turns, label: input.label, factionLabels, shelters });
 
   const byKey = new Map(rows.map((row) => [row.key, row] as const));
-  const nameOf = (key: string, fallback = key): string => {
-    const row = byKey.get(key);
-    return row === undefined ? fallback : `${row.name} (${row.unitId})`;
+  // By bare unit id across every faction, last one wins: how `projectAll` resolves a teach goal's
+  // student (`byUnitId`), so the name given is the mage the planner actually judged.
+  const byUnitId = new Map(rows.map((row) => [row.unitId, row] as const));
+  const named = (row: ScheduleRow | undefined, fallback: string) => (row === undefined ? fallback : `${row.name} (${row.unitId})`);
+  const names: Names = {
+    ofKey: (key) => named(byKey.get(key), key),
+    ofUnit: (id) => named(byUnitId.get(id), id)
   };
   const own = new Set(input.groups.filter((group) => group.source === "own").map((group) => group.factionId));
   const asked = unitId === undefined ? rows : rows.filter((row) => row.unitId === unitId);
@@ -192,9 +240,9 @@ export function studyPlansAnswer(input: StudyPlannerInputs, unitId?: string): St
   const mages: StudyPlanMage[] = [];
   const notPlanned: string[] = [];
   for (const row of asked) {
-    const planned = turnsOf(row, turns, nameOf);
+    const planned = turnsOf(row, turns, names);
     if (planned.length === 0 && row.note === "") {
-      notPlanned.push(nameOf(row.key));
+      notPlanned.push(names.ofKey(row.key));
       continue;
     }
     mages.push({
@@ -213,7 +261,9 @@ export function studyPlansAnswer(input: StudyPlannerInputs, unitId?: string): St
     });
   }
 
-  const shown = notices.filter((notice) => askedKeys.has(notice.rowKey));
+  const aboutAsked =
+    unitId === undefined ? new Set<PlannerNotice>() : new Set(asked.flatMap((row) => [...aboutStudent(rows, notices, row)]));
+  const shown = notices.filter((notice) => askedKeys.has(notice.rowKey) || aboutAsked.has(notice));
   return {
     turns,
     forecastAllSheltered: input.assumeSheltered,

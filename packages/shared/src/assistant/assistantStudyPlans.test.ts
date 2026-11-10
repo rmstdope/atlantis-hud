@@ -183,6 +183,61 @@ describe("a study plan as the assistant reads it", () => {
   });
 });
 
+describe("the review's cases (PR #1942)", () => {
+  /** An ally's mage, Kestrel, standing with Ereb; Vess plans to teach him from another hex. */
+  const ALLY = {
+    factionId: "21",
+    factionLabel: "Wardens (21)",
+    source: "sheet" as const,
+    heading: "Wardens (21) — turn 23",
+    stale: false,
+    mages: [{ ...mage("2688", "Kestrel", "1:7", [{ tag: "FORC", level: 1, points: 30 }]), key: "21/2688", factionId: "21", factionLabel: "Wardens (21)" }]
+  } as unknown as StudyPlannerInputs["groups"][number];
+
+  it("names an ally's mage that one of yours teaches", () => {
+    const answer = studyPlansAnswer(
+      inputs({
+        groups: [...GROUPS, ALLY],
+        plans: [plan("2500", { goals: [{ kind: "teach", turn: 24, students: ["2688"], live: false }] })]
+      })
+    )!;
+
+    expect(answer.mages.find((one) => one.unitId === "2500")!.turns[0].teach).toEqual(["Kestrel (2688)"]);
+  });
+
+  it("names the teacher and doubles the month when the teaching happens", () => {
+    // `rules/skills_teaching`: "A unit with a teacher can learn up to twice as fast as normal".
+    const together = [
+      { ...GROUPS[0], mages: GROUPS[0].mages.map((one) => (one.unitId === "2500" ? { ...one, regionId: "1:7" } : one)) }
+    ] as unknown as StudyPlannerInputs["groups"];
+    const ereb = studyPlansAnswer(inputs({ groups: together, assumeSheltered: true }))!.mages.find((one) => one.unitId === "2431")!;
+
+    expect(ereb.turns[0]).toMatchObject({ turn: 24, taughtBy: "Vess (2500)", worth: 2 });
+  });
+
+  it("gives the warning about a student on his teacher's row when the student is asked for", () => {
+    const answer = studyPlansAnswer(inputs(), "2431")!;
+
+    expect(answer.warnings.map((one) => one.text)).toContain(
+      "Ereb (2431) is in plain (7,1), not in Vess's hex, so Vess cannot teach him on turn 24."
+    );
+    expect(answer.warnings.some((one) => one.code === "taught-not-here" && one.unitId === "2500")).toBe(true);
+  });
+
+  it("lists a month with only a cast planned, and does not call that mage unplanned", () => {
+    // `data/FIRE`: a combat spell, so its half is planned once he knows it.
+    const caster = [
+      { ...GROUPS[0], mages: [mage("2800", "Ash", "1:7", [{ tag: "FIRE", level: 1, points: 30 }])] }
+    ] as unknown as StudyPlannerInputs["groups"];
+    const answer = studyPlansAnswer(
+      inputs({ groups: caster, plans: [plan("2800", { casts: [{ turn: 25, spell: "FIRE" }] })] })
+    )!;
+
+    expect(answer.notPlanned).toEqual([]);
+    expect(answer.mages[0].turns).toEqual([{ turn: 25, shows: "—", cast: "⚔ FIRE", castKnown: true }]);
+  });
+});
+
 describe("readyStudyPlans", () => {
   const rows = [plan("2431", {})];
 
