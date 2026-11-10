@@ -39,6 +39,7 @@ import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 import type { EarlierTurn, EarlierTurnSource } from "./earlierTurns";
 import { studyPlansAnswer, type StudyPlannerInputs } from "./assistantStudyPlans";
+import { rulesetById } from "../rulesets";
 import {
   dataEntriesFor,
   parseRulesReference,
@@ -1017,7 +1018,6 @@ function tradeRouteRow(turn: AssistantTurn, route: TradeRoute) {
   };
 }
 
-/** Names the turn on screen, so a write can say which turn it was worked out for. */
 /** The open world's rules snapshot, or a refusal naming why it cannot be read. */
 async function openReference(host: AssistantHost, turn: AssistantTurn): Promise<RulesReference> {
   const rulesetId =
@@ -1031,10 +1031,12 @@ async function openReference(host: AssistantHost, turn: AssistantTurn): Promise<
   try {
     return parseRulesReference(text);
   } catch (error: unknown) {
-    refuse(`The rules snapshot for ${rulesetId} could not be read: ${error instanceof Error ? error.message : String(error)}.`);
+    const world = rulesetById(rulesetId)?.label ?? rulesetId;
+    refuse(`The rules snapshot for ${world} could not be read: ${error instanceof Error ? error.message : String(error)}.`);
   }
 }
 
+/** Names the turn on screen, so a write can say which turn it was worked out for. */
 function turnKeyOf(turn: AssistantTurn): string {
   return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
 }

@@ -2032,6 +2032,36 @@ describe("reading the open world's rules and data", () => {
     expect(answer.text).toBe('The New Age: Trident rules have no section called "giv". Closest: give, giveall.');
   });
 
+  it("refuses an anchor with nothing close, pointing at the list", async () => {
+    const answer = await call(trident(), "read_rules_section", { anchor: "zzzzzz" });
+
+    expect(answer.text).toBe('The New Age: Trident rules have no section called "zzzzzz". list_rules_sections names them all.');
+  });
+
+  it("names the world when the snapshot served is not one", async () => {
+    const { host } = aHost({ ...aTurn(), rulesetId: "newage-trident" });
+    const broken = { ...host, rulesReference: async () => "<html>" };
+
+    const answer = await call(broken, "list_rules_sections");
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toBe("The rules snapshot for New Age: Trident could not be read: the file served is not a rules snapshot.");
+  });
+
+  it("quotes fifty sections at most, saying how many more match", async () => {
+    const many: RulesReference = {
+      ...TRIDENT_REFERENCE,
+      sections: Array.from({ length: 53 }, (_, index) => ({ anchor: `s${index}`, title: `S${index}`, text: "silver" }))
+    };
+    const { host } = aHost({ ...aTurn(), rulesetId: "newage-trident" });
+    const busy = { ...host, rulesReference: async () => JSON.stringify(many) };
+
+    const answer = json((await call(busy, "search_rules", { query: "silver" })).text);
+
+    expect(answer.matches).toHaveLength(50);
+    expect(answer.moreSections).toBe(3);
+  });
+
   it("searches the rules, quoting the lines that match", async () => {
     const answer = json((await call(trident(), "search_rules", { query: "silver" })).text);
 

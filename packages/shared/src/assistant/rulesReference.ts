@@ -115,23 +115,52 @@ export function rulesSectionText(
 
 const QUOTED_LINES = 3;
 
-/** Every section whose text contains `query`, case-insensitively, with up to three of its matching lines. */
+/** Whitespace, line breaks included, as one space: the page hard-wraps its prose at about 72 columns. */
+function collapsed(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Up to three places in `lines` that `query` (already collapsed) appears, each quoted as the run of
+ * lines it spans, joined into one: a phrase the page wrapped is quoted whole.
+ */
+function quotedLines(lines: readonly string[], query: string): string[] {
+  const quotes: string[] = [];
+  let from = 0;
+  while (from < lines.length && quotes.length < QUOTED_LINES) {
+    let to = from;
+    while (!collapsed(lines.slice(from, to + 1).join(" ")).includes(query) && to + 1 < lines.length) {
+      to++;
+    }
+    if (!collapsed(lines.slice(from, to + 1).join(" ")).includes(query)) {
+      break;
+    }
+    // Start the quote at the line the match starts on, not at the line the scan started from.
+    let start = from;
+    while (start < to && collapsed(lines.slice(start + 1, to + 1).join(" ")).includes(query)) {
+      start++;
+    }
+    quotes.push(lines.slice(start, to + 1).join(" ").replace(/\s+/g, " ").trim());
+    from = to + 1;
+  }
+  return quotes;
+}
+
+/**
+ * Every section whose text contains `query`, case-insensitively and across the page's line wraps,
+ * with up to three of the places it appears.
+ */
 export function searchRulesText(
   reference: RulesReference,
   query: string
 ): { anchor: string; title: string; lines: string[] }[] {
-  const lower = query.toLowerCase();
+  const wanted = collapsed(query);
+  if (wanted === "") {
+    return [];
+  }
   return reference.sections
-    .filter((section) => section.text.toLowerCase().includes(lower))
-    .map(({ anchor, title, text }) => ({
-      anchor,
-      title,
-      lines: text
-        .split("\n")
-        .filter((line) => line.toLowerCase().includes(lower))
-        .slice(0, QUOTED_LINES)
-        .map((line) => line.trim())
-    }));
+    .filter((section) => collapsed(section.text).includes(wanted))
+    .map(({ anchor, title, text }) => ({ anchor, title, lines: quotedLines(text.split("\n"), wanted) }));
 }
 
 /**
@@ -189,7 +218,9 @@ export function rulesReferenceLoader(fetchText: FetchText): (rulesetId: string) 
         if (!response.ok) {
           throw unreadable(`the shell answered ${response.status}`);
         }
-        return response.text();
+        return response.text().catch((error: unknown) => {
+          throw unreadable(messageOf(error));
+        });
       },
       (error: unknown) => {
         throw unreadable(messageOf(error));

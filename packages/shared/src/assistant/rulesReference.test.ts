@@ -80,6 +80,24 @@ describe("rules sections", () => {
     expect(searchRulesText(REFERENCE, "gold")).toEqual([]);
   });
 
+  it("finds a phrase the page wraps across two lines, quoting both", () => {
+    const wrapped: RulesReference = {
+      ...REFERENCE,
+      sections: [{ anchor: "give", title: "GIVE", text: "GIVE\n\nA unit may give all items\n  of a specific type." }]
+    };
+    expect(searchRulesText(wrapped, "all  items of a SPECIFIC type")).toEqual([
+      { anchor: "give", title: "GIVE", lines: ["A unit may give all items of a specific type."] }
+    ]);
+  });
+
+  it("finds a phrase wrapped across more lines than it quotes, quoting where it starts", () => {
+    const long: RulesReference = {
+      ...REFERENCE,
+      sections: [{ anchor: "a", title: "A", text: "one two\nthree\nfour five" }]
+    };
+    expect(searchRulesText(long, "two three four")).toEqual([{ anchor: "a", title: "A", lines: ["one two three four five"] }]);
+  });
+
   it("quotes at most three lines of one section", () => {
     const busy: RulesReference = {
       ...REFERENCE,
@@ -170,6 +188,20 @@ describe("rulesReferenceLoader", () => {
     );
     status = 200;
     expect(await load("newage-trident")).toBe("{}");
+  });
+
+  it("refuses naming the world when the body cannot be read", async () => {
+    const load = rulesReferenceLoader(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        throw new Error("connection reset");
+      }
+    }));
+
+    await expect(load("newage-trident")).rejects.toThrow(
+      "The rules snapshot for New Age: Trident could not be read: connection reset."
+    );
   });
 
   it("refuses naming the world when the fetch itself fails", async () => {
