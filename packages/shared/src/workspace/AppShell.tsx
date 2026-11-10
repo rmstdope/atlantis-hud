@@ -177,6 +177,7 @@ import { derivedSkillsFor, mergedDerived } from "../battleSkills";
 import { carriedMergedSkills, foreignRowsWithMerged, knownMapWithMerged } from "../mergedUnits";
 import { useMergedHistory } from "./mergedHistory";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
+import { previewOrdersRequest } from "../previewRequest";
 import { useAssistant, type AssistantTransport } from "../assistant/assistantTransport";
 import { revertAssistantChanges } from "../assistant/assistantChanges";
 import { AssistantChangesPanel } from "./AssistantChangesPanel";
@@ -4270,15 +4271,17 @@ export function AppShell({
     let cancelled = false;
     const timer = setTimeout(() => {
       void client
-        .previewOrders({
-          rulesetJson: ruleset.text,
-          rawReport,
-          rememberedJson,
-          ordersDocument,
-          mapJson,
-          passagesJson,
-          disabledCodes: disabledAdvisoryCodes(advisoryChecks)
-        })
+        .previewOrders(
+          previewOrdersRequest({
+            rulesetText: ruleset.text,
+            rawReport,
+            rememberedJson,
+            ordersDocument,
+            mapJson,
+            passagesJson,
+            advisoryChecks
+          })
+        )
         .then((answer) => {
           if (!cancelled) {
             setOrdersPreview(answer);
@@ -4546,6 +4549,21 @@ export function AppShell({
         knownPassagesJson: passagesJson,
         rememberedJson
       }),
+    // Asked exactly as the map's own preview is, through the one request builder (ah-a97xg.1).
+    preview: (document) =>
+      rulesetText === null
+        ? Promise.reject(new Error("The game data has not loaded yet."))
+        : client.previewOrders(
+            previewOrdersRequest({
+              rulesetText,
+              rawReport,
+              rememberedJson,
+              ordersDocument: document,
+              mapJson,
+              passagesJson,
+              advisoryChecks
+            })
+          ),
     // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
     // kept. Only the open unit's editor takes its block again: a write to another unit leaves
     // whatever the player is typing alone, and the autosave writes the draft either way.
