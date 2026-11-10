@@ -12,6 +12,7 @@ import {
   type OrderDiagnostic,
   type OrderValidationResult,
   type OrdersPreviewResponse,
+  type ProductionOverview,
   type ReportUnit,
   type RoutePlanResponse,
   type UnitPreview,
@@ -19,6 +20,7 @@ import {
 } from "@atlantis/core-client";
 import { battleFileOf, battleFileText } from "../armyExport";
 import { NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
+import { NO_PRODUCTION } from "../orderEditor";
 import { orderProcessingFor } from "../orderProcessing";
 import { newAssistantSeen } from "./assistantSeen";
 import type { EarlierTurnSource } from "./earlierTurns";
@@ -210,6 +212,7 @@ interface Forecast {
   readonly preview?: OrdersPreviewResponse;
   /** What the route planner answers; every question it is asked is recorded in `planned`. */
   readonly route?: RoutePlanResponse;
+  readonly production?: ProductionOverview;
 }
 
 /** What the host lends the army and study-plan tools, each part replaceable by a test. */
@@ -258,7 +261,8 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     orders: orderProcessingFor(null),
     earlierTurns: anEarlierTurnSource(),
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
-    validate: async () => ({ diagnostics, silver: forecast.silver ?? [] }) as unknown as OrderValidationResult,
+    validate: async () =>
+      ({ diagnostics, silver: forecast.silver ?? [], production: forecast.production ?? NO_PRODUCTION }) as unknown as OrderValidationResult,
     preview: async () => forecast.preview ?? { regions: [] },
     planRoute: async (unitId, destination, carryingJson) => {
       planned.push({ unitId, destination, carryingJson });
@@ -951,6 +955,204 @@ describe("where silver runs short", () => {
     const answer = json((await call(host, "get_silver_shortfalls")).text);
 
     expect(answer.regions).toEqual([]);
+  });
+});
+
+/** `aTurn` with products on both regions: iron and grain at home, wood in the forest. */
+function aProducingTurn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
+  const turn = aTurn(overrides);
+  const [home, away] = turn.parsed.regions;
+  return {
+    ...turn,
+    parsed: {
+      ...turn.parsed,
+      regions: [
+        {
+          ...home,
+          products: [
+            { amount: 15, name: "iron", tag: "IRON" },
+            { amount: 20, name: "grain", tag: "GRAI" }
+          ]
+        },
+        { ...away, products: [{ amount: 30, name: "wood", tag: "WOOD" }] }
+      ]
+    }
+  };
+}
+
+/** The core's overview of `aProducingTurn`: unit 100 mines 15 iron at home, capped by the region. */
+const MINING: ProductionOverview = {
+  limits: { pooled: 10, tax: null, trade: null },
+  used: { pooled: 1, tax: 0, trade: 1 },
+  regions: [
+    {
+      regionId: "1,1,1",
+      orders: [{ kind: "produce", crafted: null }],
+      usesTaxSlot: false,
+      usesTradeSlot: true,
+      tax: { base: null, taxed: false, collected: 0, pillaged: null, atMost: false },
+      resources: [
+        { name: "iron", tag: "IRON", produced: 15, available: 15, producers: [{ unitId: "100", regionId: "1,1,1" }] },
+        { name: "grain", tag: "GRAI", produced: 0, available: 20, producers: [] }
+      ]
+    }
+  ]
+};
+
+const MINER = aUnitSilver({
+  unitId: "100",
+  regionId: "1,1,1",
+  produced: 15,
+  producedName: "iron",
+  productionWanted: 24,
+  productionRequested: null,
+  productionCappedBy: "region"
+});
+
+describe("production against each region's cap", () => {
+  it("answers one region's products against what it offers, with the units producing them", async () => {
+    const { host } = aHost(aProducingTurn(), [], { silver: [MINER], production: MINING });
+
+    const answer = json((await call(host, "get_production", { regionId: "1,1,1" })).text);
+
+    expect(answer.regions).toHaveLength(1);
+    expect(answer.regions[0]).toMatchObject({ regionId: "1,1,1", region: "plain (1,1,1) in Coast", worked: true });
+    expect(answer.regions[0].resources).toEqual([
+      {
+        tag: "IRON",
+        name: "iron",
+        available: 15,
+        produced: 15,
+        spare: 0,
+        beyondCap: 9,
+        producers: [
+          { unitId: "100", name: "Farmers", produced: 15, couldMake: 24, asked: null, cappedBy: "region", sharedWithForeign: false }
+        ]
+      },
+      { tag: "GRAI", name: "grain", available: 20, produced: 0, spare: 20, beyondCap: 0, producers: [] }
+    ]);
+    expect(answer).not.toHaveProperty("totals");
+  });
+
+  it("lists every worked region and every idle own region faction-wide, with totals per product", async () => {
+    const turn = aProducingTurn();
+    const [home, away] = turn.parsed.regions;
+    const withOwnInForest = {
+      ...turn,
+      parsed: {
+        ...turn.parsed,
+        regions: [home, { ...away, units: [aReportUnit({ unitId: "102", regionId: "2,1,1", own: true, factionId: "3" })] }]
+      }
+    };
+    const { host } = aHost(withOwnInForest, [], { silver: [MINER], production: MINING });
+
+    const answer = json((await call(host, "get_production")).text);
+
+    expect(answer.regions.map((region: { regionId: string; worked: boolean }) => [region.regionId, region.worked])).toEqual([
+      ["1,1,1", true],
+      ["2,1,1", false]
+    ]);
+    expect(answer.regions[1].resources).toEqual([
+      { tag: "WOOD", name: "wood", available: 30, produced: 0, spare: 30, beyondCap: 0, producers: [] }
+    ]);
+    expect(answer.totals).toEqual([
+      { tag: "IRON", name: "iron", available: 15, produced: 15, spare: 0, beyondCap: 9 },
+      { tag: "GRAI", name: "grain", available: 20, produced: 0, spare: 20, beyondCap: 0 },
+      { tag: "WOOD", name: "wood", available: 30, produced: 0, spare: 30, beyondCap: 0 }
+    ]);
+    expect(answer.regionsUsed).toEqual({ pooled: 1, tax: 0, trade: 1 });
+    expect(answer.limits).toEqual({ pooled: 10, tax: null, trade: null });
+  });
+
+  it("counts as beyond the cap only what the region's amount stopped, not silver or materials", async () => {
+    const broke = aUnitSilver({
+      unitId: "101",
+      regionId: "1,1,1",
+      produced: 4,
+      producedName: "grain",
+      productionWanted: 10,
+      productionCappedBy: "silver"
+    });
+    const farming: ProductionOverview = {
+      ...MINING,
+      regions: [
+        {
+          ...MINING.regions[0],
+          resources: [
+            MINING.regions[0].resources[0],
+            { name: "grain", tag: "GRAI", produced: 4, available: 20, producers: [{ unitId: "101", regionId: "1,1,1" }] }
+          ]
+        }
+      ]
+    };
+    const { host } = aHost(aProducingTurn(), [], { silver: [MINER, broke], production: farming });
+
+    const answer = json((await call(host, "get_production", { regionId: "1,1,1" })).text);
+
+    expect(answer.regions[0].resources[1]).toMatchObject({ tag: "GRAI", produced: 4, spare: 16, beyondCap: 0 });
+    expect(answer.regions[0].resources[1].producers[0]).toMatchObject({ unitId: "101", couldMake: 10, cappedBy: "silver" });
+  });
+
+  it("totals a product's amount as unknown when one region's amount is", async () => {
+    const turn = aProducingTurn();
+    const [home, away] = turn.parsed.regions;
+    const ironBoth = {
+      ...turn,
+      parsed: {
+        ...turn.parsed,
+        regions: [home, { ...away, products: [{ amount: 8, name: "iron", tag: "IRON" }] }]
+      }
+    };
+    const unknownAmount: ProductionOverview = {
+      ...MINING,
+      regions: [
+        MINING.regions[0],
+        {
+          ...MINING.regions[0],
+          regionId: "2,1,1",
+          resources: [{ name: "iron", tag: "IRON", produced: 3, available: null, producers: [] }]
+        }
+      ]
+    };
+    const { host } = aHost(ironBoth, [], { silver: [MINER], production: unknownAmount });
+
+    const answer = json((await call(host, "get_production")).text);
+
+    expect(answer.totals[0]).toEqual({ tag: "IRON", name: "iron", available: null, produced: 18, spare: null, beyondCap: 9 });
+  });
+
+  it("answers a named region nothing is produced in from its products, unworked", async () => {
+    const { host } = aHost(aProducingTurn(), [], { silver: [MINER], production: MINING });
+
+    const answer = json((await call(host, "get_production", { x: 2, y: 1, z: 1 })).text);
+
+    expect(answer.regions).toEqual([
+      {
+        regionId: "2,1,1",
+        region: "forest (2,1,1) in Woods",
+        worked: false,
+        orders: [],
+        resources: [{ tag: "WOOD", name: "wood", available: 30, produced: 0, spare: 30, beyondCap: 0, producers: [] }]
+      }
+    ]);
+  });
+
+  it("refuses while the game data is still loading, rather than finding nothing produced", async () => {
+    const { host } = aHost(aProducingTurn({ rulesetText: null }), [], { production: MINING });
+
+    const answer = await call(host, "get_production");
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("game data has not loaded");
+  });
+
+  it("refuses a region this turn's report does not show", async () => {
+    const { host } = aHost(aProducingTurn(), [], { production: MINING });
+
+    const answer = await call(host, "get_production", { regionId: "9,9,1" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("shows no such region");
   });
 });
 

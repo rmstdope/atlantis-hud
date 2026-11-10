@@ -90,6 +90,7 @@ export type { ReportParseResult } from "./ReportParseResult";
 export type { ReportRegion } from "./ReportRegion";
 export type { ReportSourceRef } from "./ReportSourceRef";
 export type { ReportUnit } from "./ReportUnit";
+export type { ResourceProducer } from "./ResourceProducer";
 export type { RosterSkills } from "./RosterSkills";
 export type { SettlementInfo } from "./SettlementInfo";
 export type { SharedSilverCoverage } from "./SharedSilverCoverage";
