@@ -15,7 +15,8 @@ import {
 import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
- * The panel that shows what an assistant wrote (ah-bcdri). Tagged for `desktop-shell`: only the
+ * The panel that shows what an assistant wrote (ah-bcdri), and the assistant asking what the player
+ * edited since it last looked (ah-a97xg.10). Tagged for `desktop-shell`: only the
  * desktop bundle passes an assistant transport, and this walk installs a stand-in for it.
  *
  * Every rule and every word is pinned in `assistantChanges.test.ts` and
@@ -260,5 +261,21 @@ test(
 
     await expect(panel(page)).toHaveCount(0);
     await expect(chip(page)).toHaveCount(0);
+  }
+);
+
+test(
+  "the assistant can ask which units the player edited since it read them",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    await openOnMage(page);
+    const read = await call(page, "get_orders", { unitId: MAGE });
+    expect(read.isError, read.text).toBe(false);
+
+    await fillOrders(page, "study PATT");
+
+    await expect
+      .poll(async () => JSON.parse((await call(page, "list_order_edits")).text) as unknown)
+      .toEqual({ edits: [expect.objectContaining({ unitId: MAGE, before: read.text, now: "study PATT" })] });
   }
 );

@@ -8,6 +8,7 @@ import {
   type OrderValidationResult
 } from "@atlantis/core-client";
 import { orderProcessingFor } from "../orderProcessing";
+import { newAssistantSeen } from "./assistantSeen";
 import { ASSISTANT_TOOLS, answerToolCall, type AssistantHost, type AssistantTurn } from "./assistantTools";
 
 const DOCUMENT = [
@@ -98,8 +99,14 @@ function aDiagnostic(overrides: Partial<OrderDiagnostic> = {}): OrderDiagnostic 
 function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = []) {
   const written: string[] = [];
   let current = turn;
-  const host: AssistantHost = {
+  const host: AssistantHost & { typeByHand(document: string): void } = {
     turn: () => current,
+    seen: newAssistantSeen(),
+    typeByHand: (document) => {
+      if (current !== null) {
+        current = { ...current, ordersDocument: document };
+      }
+    },
     orders: orderProcessingFor(null),
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
     validate: async () => ({ diagnostics }) as unknown as OrderValidationResult,
@@ -421,5 +428,83 @@ describe("answering a call", () => {
     const read = (await call(host, "read_report", { fromLine: 2, lineCount: 2 })).text;
 
     expect(read).toBe("2: line two about silver\n3: line three");
+  });
+});
+
+describe("list_order_edits", () => {
+  const EDITED = DOCUMENT.replace("unit 100\nwork", "unit 100\ntax");
+
+  async function edits(host: AssistantHost) {
+    const answer = await call(host, "list_order_edits");
+    expect(answer.isError, answer.text).toBe(false);
+    return json(answer.text).edits;
+  }
+
+  it("lists a unit the player edited after the assistant read it, with its orders before and now", async () => {
+    const { host } = aHost(aTurn());
+    await call(host, "get_orders", { unitId: "100" });
+
+    host.typeByHand(EDITED);
+
+    expect(await edits(host)).toEqual([
+      { unitId: "100", name: "Farmers", regionId: "1,1,1", before: "work", now: "tax" }
+    ]);
+  });
+
+  it("lists nothing the assistant has not read", async () => {
+    const { host } = aHost(aTurn());
+
+    host.typeByHand(EDITED);
+
+    expect(await edits(host)).toEqual([]);
+  });
+
+  it.each([
+    ["get_orders for the whole document", "get_orders", {}],
+    ["get_unit", "get_unit", { unitId: "100" }],
+    ["list_units", "list_units", {}]
+  ])("counts %s as reading the unit", async (_label, tool, args) => {
+    const { host } = aHost(aTurn());
+    await call(host, tool, args);
+
+    host.typeByHand(EDITED);
+
+    expect((await edits(host)).map((edit: { unitId: string }) => edit.unitId)).toEqual(["100"]);
+  });
+
+  it("does not count a unit list_units left out as read", async () => {
+    const { host } = aHost(aTurn());
+    await call(host, "list_units", { regionId: "2,1,1" });
+
+    host.typeByHand(EDITED);
+
+    expect(await edits(host)).toEqual([]);
+  });
+
+  it("does not list the assistant's own write, but lists the player's edit after it", async () => {
+    const { host, written } = aHost(aTurn());
+    await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "study FARM" });
+
+    expect(await edits(host)).toEqual([]);
+
+    host.typeByHand((written[0] as string).replace("study FARM", "study COMB"));
+    expect(await edits(host)).toEqual([
+      { unitId: "101", name: "Scout", regionId: "1,1,1", before: "study FARM", now: "study COMB" }
+    ]);
+  });
+
+  it("is refused while no turn is open", async () => {
+    const answer = await call(aHost(null).host, "list_order_edits");
+
+    expect(answer.isError).toBe(true);
+  });
+
+  it("counts its own answer as a look, so an edit is listed once", async () => {
+    const { host } = aHost(aTurn());
+    await call(host, "get_orders", { unitId: "100" });
+    host.typeByHand(EDITED);
+    await edits(host);
+
+    expect(await edits(host)).toEqual([]);
   });
 });
