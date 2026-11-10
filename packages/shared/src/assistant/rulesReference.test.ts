@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   dataEntriesFor,
   parseRulesReference,
+  producersOf,
   provenance,
   rulesSectionText,
   rulesReferenceLoader,
@@ -134,6 +135,74 @@ describe("data entries", () => {
   });
 });
 
+describe("producersOf", () => {
+  const skill = (text: string, name = "weaponsmith", tag = "WEAP"): RulesReference => ({
+    ...REFERENCE,
+    data: [{ section: "skills", name, tag, text }]
+  });
+  const smith = (text: string) => skill(text);
+
+  it("reads the skill level that PRODUCEs an item, with its inputs and rate", () => {
+    const reference = smith(
+      "weaponsmith [WEAP] 1: A unit with this skill may PRODUCE picks\n  [PICK] from iron [IRON] at a rate of 1 per man-month.\n\n" +
+        "weaponsmith [WEAP] 2: A unit with this skill may PRODUCE swords [SWOR]\n  from 2 iron [IRON] at a rate of 1 per 2 man-months, pikes [PIKE] from 2 wood [WOOD] at a rate\n  of 1 per 2 man-months."
+    );
+    expect(producersOf(reference, "SWOR")).toEqual([
+      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }
+    ]);
+    // The tag matches regardless of case.
+    expect(producersOf(reference, "pike")).toEqual([
+      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 wood [WOOD]", rate: "1 per 2 man-months" }
+    ]);
+  });
+
+  it("reads a rate of more than one per month", () => {
+    const reference = smith("weaponsmith [WEAP] 1: A unit with this skill may PRODUCE picks [PICK] from iron [IRON] at a rate of 2 per man-month.");
+    expect(producersOf(reference, "PICK")).toEqual([
+      { skill: "weaponsmith", tag: "WEAP", level: 1, from: "iron [IRON]", rate: "2 per man-month" }
+    ]);
+  });
+
+  it("does not count an item that is only an input", () => {
+    const reference = smith(
+      "weaponsmith [WEAP] 3: A unit with this skill may PRODUCE mithril swords\n  [MSWO] from mithril [MITH] and sword [SWOR] at a rate of 1 per 2\n  man-months."
+    );
+    expect(producersOf(reference, "SWOR")).toEqual([]);
+  });
+
+  it("gives no inputs for an item made from nothing", () => {
+    const reference = skill(
+      "herb lore [HERB] 1: This skill deals with herbs. A unit with this skill may PRODUCE herbs [HERB] at a rate\n  of 1 per man-month, and bags [BAG] from herb [HERB] at a rate of 1 per\n  man-month.",
+      "herb lore",
+      "HERB"
+    );
+    expect(producersOf(reference, "HERB")).toEqual([
+      { skill: "herb lore", tag: "HERB", level: 1, from: null, rate: "1 per man-month" }
+    ]);
+  });
+});
+
+describe("producersOf, when words come between the product and its inputs", () => {
+  it("credits the product, not the last input", () => {
+    // `data/COOK` level 1 in New Age: Trident.
+    const reference: RulesReference = {
+      ...REFERENCE,
+      data: [
+        {
+          section: "skills",
+          name: "cooking",
+          tag: "COOK",
+          text: "cooking [COOK] 1: A unit with this skill may PRODUCE a number of meals [MEAL]\n  equal to their skill level from any of grain [GRAI], livestock [LIVE]\n  and fish [FISH] at a rate of 1 per man-month."
+        }
+      ]
+    };
+    expect(producersOf(reference, "FISH")).toEqual([]);
+    expect(producersOf(reference, "MEAL")).toEqual([
+      { skill: "cooking", tag: "COOK", level: 1, from: "any of grain [GRAI], livestock [LIVE] and fish [FISH]", rate: "1 per man-month" }
+    ]);
+  });
+});
+
 describe("the committed Trident reference", () => {
   const committed = parseRulesReference(
     readFileSync(fileURLToPath(new URL("../../../../config/public/reference-newage-trident.json", import.meta.url)), "utf8")
@@ -149,6 +218,13 @@ describe("the committed Trident reference", () => {
     expect("text" in give && give.text).toContain("GIVE [unit] [quantity] [item]");
     const sword = dataEntriesFor(committed, "SWOR");
     expect("entries" in sword && sword.entries[0]?.text).toContain("sword [SWOR], weight 1");
+  });
+
+  it("says weaponsmith 2 makes a sword from 2 iron", () => {
+    // `pnpm run atlantis newage trident data WEAP`, level 2.
+    expect(producersOf(committed, "SWOR")).toEqual([
+      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }
+    ]);
   });
 });
 

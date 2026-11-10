@@ -188,6 +188,65 @@ export function dataEntriesFor(
   return { names: containing.map(({ section, name, tag }) => ({ section, name, tag })) };
 }
 
+/** A skill level the data page says may PRODUCE an item: how the item is made. */
+export type ItemProducer = {
+  readonly skill: string;
+  readonly tag: string | null;
+  readonly level: number;
+  /** The inputs as the page writes them, e.g. "2 iron [IRON]"; null when it names none. */
+  readonly from: string | null;
+  /** E.g. "1 per 2 man-months". */
+  readonly rate: string;
+};
+
+/**
+ * One product clause, "<name> [TAG] <words> at a rate of <rate>", read left to right from the
+ * PRODUCE: the clause's first tag is the product, whatever words follow it (`data/COOK`: "meals
+ * [MEAL] equal to their skill level from any of grain [GRAI], ... at a rate of 1 per man-month").
+ */
+const PRODUCT_CLAUSE = /\[([A-Z0-9]+)\]((?:(?! at a rate of ).)*?) at a rate of (\d+ per (?:\d+ )?man-months?)/gu;
+
+/** The inputs a clause's words name, as the page writes them: everything after its first "from". */
+function inputsOf(words: string): string | null {
+  const found = /(?:^| )from (.+)$/u.exec(words);
+  return found?.[1]?.trim() ?? null;
+}
+
+/**
+ * Every skill level on the data page that may PRODUCE the item tagged `itemTag`, matched regardless
+ * of case. The page carries no recipe on an item; it is in the producing skill's level paragraph
+ * (`data/WEAP` level 2: "may PRODUCE swords [SWOR] from 2 iron [IRON] at a rate of 1 per 2
+ * man-months"). An item named only among another's inputs is not counted.
+ */
+export function producersOf(reference: RulesReference, itemTag: string): ItemProducer[] {
+  const wanted = itemTag.toUpperCase();
+  const producers: ItemProducer[] = [];
+  for (const entry of reference.data) {
+    if (entry.section !== "skills") {
+      continue;
+    }
+    for (const paragraph of entry.text.split(/\n\s*\n/u)) {
+      const text = paragraph.replace(/\s+/gu, " ").trim();
+      const level = /^[^[]*\[[A-Z0-9]+\] (\d+):/u.exec(text)?.[1];
+      if (level === undefined) {
+        continue;
+      }
+      for (const sentence of text.split(/(?<=man-months?)\.(?: |$)/u)) {
+        const at = sentence.indexOf("PRODUCE ");
+        if (at < 0) {
+          continue;
+        }
+        for (const [, tag, words, rate] of sentence.slice(at).matchAll(PRODUCT_CLAUSE)) {
+          if (tag === wanted && rate !== undefined) {
+            producers.push({ skill: entry.name, tag: entry.tag, level: Number(level), from: inputsOf(words ?? ""), rate });
+          }
+        }
+      }
+    }
+  }
+  return producers;
+}
+
 /** The part of `fetch` the loader uses. */
 export type FetchText = (url: string) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string> }>;
 
