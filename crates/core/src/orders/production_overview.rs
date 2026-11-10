@@ -113,4 +113,18 @@ pub struct WorkedResource {
     pub produced: i64,
     /// The amount the region offers. `None` means the amount is not known.
     pub available: Option<i64>,
+    /// The own units credited with `produced`, in unit-key order (`ah-a97xg.5`). Keys only: each
+    /// unit's figures stay on its `UnitSilver` row, which these name.
+    pub producers: Vec<ResourceProducer>,
+}
+
+/// The key of one producing unit's `UnitSilver` row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceProducer {
+    pub unit_id: String,
+    /// The hex the unit's `UnitSilver` row is filed under - its home hex, which for a sailing
+    /// producer is not the region it produces in.
+    pub region_id: String,
 }

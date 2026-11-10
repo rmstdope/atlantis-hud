@@ -12,7 +12,7 @@
 //! - `rules/produce`: `PRODUCE [item]` produces "as much as possible".
 
 use atlantis_hud_core::orders::production_overview::{
-    RegionLimits, RegionsUsed, SlotOrder, SlotOrderKind, WorkedResource,
+    RegionLimits, RegionsUsed, ResourceProducer, SlotOrder, SlotOrderKind, WorkedResource,
 };
 use atlantis_hud_core::orders::semantics::{review_turn, CheckOptions, TurnReview};
 use atlantis_hud_core::report::orders::extract_orders_template;
@@ -244,6 +244,7 @@ fn a_crafting_unit_names_its_item_and_still_reports_the_raw_resources() {
             tag: "IRON".to_string(),
             produced: 0,
             available: Some(20),
+            producers: vec![],
         }]
     );
 }
@@ -328,12 +329,17 @@ fn every_listed_product_is_reported_with_what_is_produced_of_it() {
                 tag: "GRAI".to_string(),
                 produced,
                 available: Some(24),
+                producers: vec![ResourceProducer {
+                    unit_id: "902".to_string(),
+                    region_id: review.production.regions[0].region_id.clone(),
+                }],
             },
             WorkedResource {
                 name: "horses".to_string(),
                 tag: "HORS".to_string(),
                 produced: 0,
                 available: Some(6),
+                producers: vec![],
             },
         ]
     );
@@ -439,4 +445,39 @@ fn only_the_production_that_runs_is_credited_to_a_raw_resource() {
         "grain runs"
     );
     assert!(resources[1].produced > 0);
+}
+
+/// `ah-a97xg.5`. Each resource names the own units credited with producing it - the key of each
+/// one's `UnitSilver` row - so a reader can see who makes what without re-deriving it; a unit
+/// that produces nothing here is named under no resource.
+#[test]
+fn each_resource_names_the_units_producing_it() {
+    const SECOND_FARMER: &str =
+        "* Farmhand (904), Foo (1), behind, 1 orc [ORC]. Weight: 10. Capacity: 0/0/15/0. \
+                      Skills: farming [FARM] 1 (30).";
+    const RANCHER: &str =
+        "* Rancher (905), Foo (1), behind, 1 orc [ORC]. Weight: 10. Capacity: 0/0/15/0. \
+                      Skills: ranching [RANC] 1 (30).";
+    let review = review_of(
+        &report(
+            &["Regions: 0 (40)"],
+            &[hex(
+                1,
+                600,
+                "24 grain [GRAI], 6 horses [HORS]",
+                &[FARMER, SECOND_FARMER, RANCHER, TAXER],
+            )],
+        ),
+        "unit 902\nPRODUCE grain\nunit 904\nPRODUCE grain\nunit 905\nPRODUCE horses\nunit 900\nTAX\n",
+    );
+    let producer = |unit_id: &str| ResourceProducer {
+        unit_id: unit_id.to_string(),
+        region_id: review.production.regions[0].region_id.clone(),
+    };
+    let resources = &review.production.regions[0].resources;
+    assert_eq!(
+        resources[0].producers,
+        vec![producer("902"), producer("904")]
+    );
+    assert_eq!(resources[1].producers, vec![producer("905")]);
 }

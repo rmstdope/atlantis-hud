@@ -52,8 +52,8 @@ use crate::orders::items::{is_unfinished_ship, item_named, unfinished_ship_named
 use crate::orders::magic;
 use crate::orders::new_students::NewStudents;
 use crate::orders::production_overview::{
-    ProductionOverview, RegionLimits, RegionsUsed, SlotOrder, SlotOrderKind, WorkedRegion,
-    WorkedResource, WorkedTax,
+    ProductionOverview, RegionLimits, RegionsUsed, ResourceProducer, SlotOrder, SlotOrderKind,
+    WorkedRegion, WorkedResource, WorkedTax,
 };
 use crate::orders::shelter;
 use crate::orders::silver::{
@@ -30532,15 +30532,25 @@ fn worked_region(
     let resources = region
         .products
         .iter()
-        .map(|product| WorkedResource {
-            name: product.name.clone(),
-            tag: product.tag.clone(),
-            produced: credited
-                .values()
-                .filter(|(tag, _)| tag.eq_ignore_ascii_case(&product.tag))
-                .map(|(_, produced)| produced)
-                .sum(),
-            available: Some(product.amount),
+        .map(|product| {
+            let producing: Vec<(&UnitKey, i64)> = credited
+                .iter()
+                .filter(|(_, (tag, _))| tag.eq_ignore_ascii_case(&product.tag))
+                .map(|(key, (_, produced))| (key, *produced))
+                .collect();
+            WorkedResource {
+                name: product.name.clone(),
+                tag: product.tag.clone(),
+                produced: producing.iter().map(|(_, produced)| produced).sum(),
+                available: Some(product.amount),
+                producers: producing
+                    .into_iter()
+                    .map(|(key, _)| ResourceProducer {
+                        unit_id: key.unit_id.clone(),
+                        region_id: key.region_id.clone(),
+                    })
+                    .collect(),
+            }
         })
         .collect();
 
