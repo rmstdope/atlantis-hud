@@ -8,12 +8,16 @@ function read(path: string): string {
   return readFileSync(join(REPO, path), "utf8");
 }
 
-/** The value `.cerebro/project.conf` declares for a key: the rest of its one uncommented line. */
+/**
+ * The value `.cerebro/project.conf` declares for a key, read as `project-conf` reads it: a `#` and
+ * everything after it is a comment, and leading whitespace before the key is allowed.
+ */
 function declared(key: string): string | undefined {
-  const line = read(".cerebro/project.conf")
-    .split("\n")
-    .find((l) => l.startsWith(`${key} `) || l.startsWith(`${key}\t`));
-  return line?.slice(key.length).trim();
+  for (const raw of read(".cerebro/project.conf").split("\n")) {
+    const [k, ...rest] = raw.replace(/#.*/, "").trim().split(/\s+/);
+    if (k === key) return rest.join(" ");
+  }
+  return undefined;
 }
 
 /** The port tauri dev loads the desktop window from. */
