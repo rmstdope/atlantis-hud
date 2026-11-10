@@ -912,6 +912,7 @@ pub mod commands {
         unit_id: &str,
         destination: &str,
         map_json: &str,
+        carrying_json: &str,
     ) -> Result<atlantis_hud_core::movement::request::RoutePlanResponse, String> {
         atlantis_hud_core::cache::with_global(|cache| {
             atlantis_hud_core::movement::request::plan_on_map(
@@ -922,6 +923,7 @@ pub mod commands {
                 unit_id,
                 destination,
                 map_json,
+                carrying_json,
             )
         })
     }
@@ -1334,7 +1336,7 @@ mod plan_route_command_tests {
             serde_json::to_string(&far_side.regions[0]).expect("serializes")
         );
 
-        let alone = command_plan_route(RULESET, &current, "[]", "900", "1:3,3", "")
+        let alone = command_plan_route(RULESET, &current, "[]", "900", "1:3,3", "", "")
             .expect("the ruleset loads");
         assert!(
             alone
@@ -1346,7 +1348,7 @@ mod plan_route_command_tests {
             "one report cannot describe that far, so part of the route is invented"
         );
 
-        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3", "")
+        let together = command_plan_route(RULESET, &current, &remembered, "900", "1:3,3", "", "")
             .expect("the ruleset loads");
         assert_eq!(
             together

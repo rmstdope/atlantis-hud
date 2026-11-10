@@ -81,6 +81,7 @@ pub fn plan_for_remembered_report(
         unit_id,
         destination,
         "",
+        "",
     )
 }
 
@@ -94,9 +95,17 @@ pub fn plan_for_remembered_report(
 /// shape is a fact only a shell with a game open can supply - every other caller, the tests
 /// included, genuinely has none, and would have nothing to say but "no map".
 ///
+/// `carrying_json` is empty, or a JSON object of item tag to how many the unit will hold when it
+/// moves - `{"HORS":40}` - for a caller planning for the unit as this month's GIVE and TAKE leave
+/// it, which run before movement (`rules/sequenceofevents`). A tag it names replaces the report's
+/// amount for that tag, zero dropping it; every other tag stays as the report shows it. The panel
+/// passes none; an assistant asking about a unit it is about to load passes one (`ah-a97xg.3`).
+///
 /// # Errors
 ///
-/// As [`plan_for_remembered_report`], plus an error when the map shape cannot be read.
+/// As [`plan_for_remembered_report`], plus an error when the map shape or the carried items
+/// cannot be read.
+#[allow(clippy::too_many_arguments)]
 pub fn plan_on_map(
     cache: &mut ReportCache,
     ruleset_json: &str,
@@ -105,6 +114,7 @@ pub fn plan_on_map(
     unit_id: &str,
     destination: &str,
     map_json: &str,
+    carrying_json: &str,
 ) -> Result<RoutePlanResponse, String> {
     use crate::movement::graph::MapKnowledge;
     use crate::movement::plan::{plan_route, RouteProblem};
@@ -122,6 +132,7 @@ pub fn plan_on_map(
         serde_json::from_str(remembered_json)
             .map_err(|error| format!("remembered regions could not be read: {error}"))?;
 
+    let carrying = parse_carrying(carrying_json)?;
     let geometry = crate::movement::graph::geometry_from_json(map_json)?;
     let report = cache.classified(raw_report, ruleset_json);
     let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
@@ -133,6 +144,10 @@ pub fn plan_on_map(
             risk: None,
             fully_modelled: ruleset.is_fully_modelled(),
         });
+    };
+    let unit = match &carrying {
+        Some(carrying) => loaded_with(unit, carrying, &ruleset),
+        None => unit,
     };
 
     Ok(match plan_route(&map, &ruleset, &unit, destination) {
@@ -399,6 +414,70 @@ pub fn parse_and_classify(
 }
 
 /// Reads `1:7,53`, the way the game writes a hex and the way a region id is stored.
+/// The carried items `plan_on_map` reads, by upper-cased tag, or `None` for none.
+fn parse_carrying(
+    carrying_json: &str,
+) -> Result<Option<std::collections::BTreeMap<String, i64>>, String> {
+    if carrying_json.trim().is_empty() {
+        return Ok(None);
+    }
+    let named: std::collections::BTreeMap<String, i64> = serde_json::from_str(carrying_json)
+        .map_err(|error| format!("carrying could not be read: {error}"))?;
+    Ok(Some(
+        named
+            .into_iter()
+            .map(|(tag, amount)| (tag.to_ascii_uppercase(), amount.max(0)))
+            .collect(),
+    ))
+}
+
+/// `unit` holding `carrying` in place of the report's amounts for the tags it names, weighed and
+/// classified by the one rule the overload check and the preview read
+/// (`movement::mode::carrying_after_transfers`). When the ruleset cannot weigh the holding the
+/// unit's movement is cleared rather than left at the report's load, so the planner says the
+/// movement is unstated instead of planning a load the unit will not carry.
+fn loaded_with(
+    unit: crate::report::model::ReportUnit,
+    carrying: &std::collections::BTreeMap<String, i64>,
+    ruleset: &crate::movement::rules::Ruleset,
+) -> crate::report::model::ReportUnit {
+    use crate::movement::mode::{carrying_after_transfers, movement_for_carrying};
+    use crate::report::model::{ItemAmount, SwimCapacity};
+
+    let mut items: Vec<ItemAmount> = unit
+        .items
+        .iter()
+        .filter(|item| !carrying.contains_key(&item.tag.to_ascii_uppercase()))
+        .cloned()
+        .collect();
+    for (tag, amount) in carrying {
+        if *amount > 0 {
+            let name = ruleset
+                .find_item(tag)
+                .map_or_else(|| tag.clone(), |item| item.name.clone());
+            items.push(ItemAmount::new(*amount, &name, tag));
+        }
+    }
+    let stepping_off: Vec<(&str, i64)> = items
+        .iter()
+        .map(|item| (item.tag.as_str(), item.amount))
+        .collect();
+    let load = carrying_after_transfers(unit.weight, &unit.items, &stepping_off, Some(ruleset));
+    let mut movement = movement_for_carrying(load);
+    if ruleset.swimming().is_none() {
+        if let Some(movement) = movement.as_mut() {
+            movement.swim = SwimCapacity::Absent;
+        }
+    }
+    crate::report::model::ReportUnit {
+        items,
+        weight: load.weight.filter(|_| movement.is_some()),
+        movement,
+        capacity: None,
+        ..unit
+    }
+}
+
 fn parse_hex_id(text: &str) -> Option<crate::report::model::Coordinate> {
     let (level, rest) = text.split_once(':')?;
     let (x, y) = rest.split_once(',')?;
@@ -900,6 +979,73 @@ mod reaches_the_planner_tests {
         let orders = "unit 900\nGIVE 901 40 HORS\nMOVE SE SE SE\n";
 
         assert_eq!(first_month_steps(&report, "900", orders), 1);
+    }
+
+    fn plan_carrying(raw_report: &str, carrying_json: &str) -> Result<RoutePlanResponse, String> {
+        plan_on_map(
+            &mut ReportCache::new(),
+            RULESET,
+            raw_report,
+            "[]",
+            "900",
+            "1:4,4",
+            "",
+            carrying_json,
+        )
+    }
+
+    /// An assistant asks for a route as the unit will be loaded once this month's GIVE has run
+    /// (`rules/sequenceofevents`: GIVE before movement). Forty horses carry the archers ridden
+    /// (`data/HORS`), and a rider spends two of its four points on a tundra hex
+    /// (`rules/movement_normal`): two hexes in the first month, where on foot it is one.
+    #[test]
+    fn a_route_is_planned_for_the_unit_as_loaded_by_what_it_will_carry() {
+        let report = tundra_corridor(ARCHERS_AND_STABLE);
+
+        let walking = plan_carrying(&report, "").expect("the ruleset loads").plan.expect("a route");
+        assert_eq!(walking.mode, crate::movement::rules::MovementMode::Walk);
+        assert_eq!(walking.months[0].steps, 1);
+
+        let riding = plan_carrying(&report, r#"{"HORS":40}"#)
+            .expect("the ruleset loads")
+            .plan
+            .expect("a route");
+        assert_eq!(riding.mode, crate::movement::rules::MovementMode::Ride);
+        assert_eq!(riding.months[0].steps, 2);
+        assert!(riding.months.len() < walking.months.len());
+    }
+
+    /// Naming a tag replaces the report's amount for it; zero gives it all away.
+    #[test]
+    fn carrying_none_of_an_item_plans_as_though_it_were_given_away() {
+        let riders = "* Archers (900), Foo (1), behind, 60 high elves [HELF], 60 longbows [LBOW], 40 horses [HORS]. Weight: 2660. Capacity: 0/2800/3700/0.\n";
+        let report = tundra_corridor(riders);
+
+        let as_reported = plan_carrying(&report, "").expect("loads").plan.expect("a route");
+        assert_eq!(as_reported.mode, crate::movement::rules::MovementMode::Ride);
+
+        let without = plan_carrying(&report, r#"{"hors":0}"#).expect("loads").plan.expect("a route");
+        assert_eq!(without.mode, crate::movement::rules::MovementMode::Walk);
+    }
+
+    /// A holding the game data cannot weigh is not planned at the report's old load.
+    #[test]
+    fn carrying_an_item_the_ruleset_cannot_weigh_says_so() {
+        let report = tundra_corridor(ARCHERS_AND_STABLE);
+        let response = plan_carrying(&report, r#"{"ZZZZ":1}"#).expect("loads");
+
+        assert!(response.plan.is_none());
+        assert_eq!(
+            response.problem,
+            Some(crate::movement::plan::RouteProblem::MobilityUnstated)
+        );
+    }
+
+    #[test]
+    fn carrying_that_cannot_be_read_is_refused_rather_than_ignored() {
+        let report = tundra_corridor(ARCHERS_AND_STABLE);
+        let error = plan_carrying(&report, "[1,2]").expect_err("not an object of amounts");
+        assert!(error.contains("carrying"), "{error}");
     }
 
     /// The units-in-hex preview says where a unit ends the month by the same trace, so the gift

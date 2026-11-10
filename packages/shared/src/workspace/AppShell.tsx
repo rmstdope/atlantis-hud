@@ -3816,7 +3816,7 @@ export function AppShell({
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination, mapJson)
+      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination, mapJson, "")
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);

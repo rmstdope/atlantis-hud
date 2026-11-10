@@ -608,6 +608,12 @@ export interface CoreAdapter extends CoreQueries {
    * the empty string for a game that never recorded one. It is what lets a route into unexplored
    * country cross the wrap seam correctly rather than walking off the map; empty leaves the
    * arithmetic exactly as it was, because a guessed width would put a seam where there is none.
+   *
+   * `carryingJson` is the empty string, or a JSON object of item tag to how many the unit will
+   * hold when it moves (`{"HORS":40}`): the route is planned for the unit as this month's GIVE and
+   * TAKE leave it. Each tag named replaces the report's amount; the rest stay as reported. The
+   * Movement panel passes none; an assistant planning a unit it is about to load passes one
+   * (ah-a97xg.3).
    */
   planRoute(
     rulesetJson: string,
@@ -615,7 +621,8 @@ export interface CoreAdapter extends CoreQueries {
     rememberedJson: string,
     unitId: string,
     destination: string,
-    mapJson: string
+    mapJson: string,
+    carryingJson: string
   ): Promise<RoutePlanResponse>;
   /**
    * Where a unit's written movement order takes it, for the map's route overlay.

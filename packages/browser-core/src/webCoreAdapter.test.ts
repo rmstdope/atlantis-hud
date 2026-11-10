@@ -107,13 +107,14 @@ function fakeWasm(overrides: Partial<CoreWasmModule> = {}): CoreWasmModule {
       rememberedJson: string,
       unitId: string,
       destination: string,
-      mapJson: string
+      mapJson: string,
+      carryingJson: string
     ) => ({
       plan: null,
       problem: { kind: "noKnownRoute" },
       risk: null,
       fullyModelled: false,
-      echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination, mapJson }
+      echoed: { rulesetJson, rawReport, rememberedJson, unitId, destination, mapJson, carryingJson }
     }),
     trace_move_orders_state: (request: TraceMoveOrdersRequest) => ({ path: null, echoed: request }),
     trade_routes_state: () => FAKE_TRADE_ROUTES,
@@ -1621,7 +1622,8 @@ describe("planning a route", () => {
       "[remembered]",
       "18642",
       "1:7,51",
-      '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
+      '{"width":72,"height":96,"wrapX":true,"wrapY":false}',
+      '{"HORS":4}'
     )) as unknown as { echoed: Record<string, string> };
 
     expect(answer.echoed).toEqual({
@@ -1630,7 +1632,8 @@ describe("planning a route", () => {
       rememberedJson: "[remembered]",
       unitId: "18642",
       destination: "1:7,51",
-      mapJson: '{"width":72,"height":96,"wrapX":true,"wrapY":false}'
+      mapJson: '{"width":72,"height":96,"wrapX":true,"wrapY":false}',
+      carryingJson: '{"HORS":4}'
     });
   });
 });

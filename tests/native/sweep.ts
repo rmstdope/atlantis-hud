@@ -136,7 +136,8 @@ export const SWEEP: SweepEntry[] = [
       remembered_json: "[]",
       unit_id: "18642",
       destination: "1:9,53",
-      map_json: MAP
+      map_json: MAP,
+      carrying_json: ""
     })
   },
   {

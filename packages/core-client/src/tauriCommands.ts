@@ -70,7 +70,8 @@ export const TAURI_COMMANDS = {
     "remembered_json",
     "unit_id",
     "destination",
-    "map_json"
+    "map_json",
+    "carrying_json"
   ],
   traceMoveOrders: ["trace_move_orders", "request"],
   knownMap: ["known_map", "raw_report", "ruleset_json", "remembered_json"],
