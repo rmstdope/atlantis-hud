@@ -174,6 +174,13 @@ pub fn assistant_answer(
     state.relay.answer(id, answer)
 }
 
+/// Writes the battle file an assistant asked for (`export_battle_file`), held to the paths
+/// `write_assistant_file` allows.
+#[tauri::command(rename_all = "snake_case")]
+pub fn assistant_write_file(path: String, text: String) -> Result<(), String> {
+    atlantis_hud_assistant_mcp::write_assistant_file(Path::new(&path), &text)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn assistant_connection(state: tauri::State<'_, AssistantState>) -> AssistantConnection {
     state

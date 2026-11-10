@@ -179,6 +179,7 @@ import { useMergedHistory } from "./mergedHistory";
 import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
 import { previewOrdersRequest } from "../previewRequest";
 import { useAssistant, type AssistantTransport } from "../assistant/assistantTransport";
+import { readyArmies } from "../assistant/assistantTools";
 import { revertAssistantChanges } from "../assistant/assistantChanges";
 import { AssistantChangesPanel } from "./AssistantChangesPanel";
 import { useAssistantChanges } from "./useAssistantChanges";
@@ -4541,6 +4542,15 @@ export function AppShell({
           },
     orders,
     bannerFor: regionBanner,
+    // Read through `getState()` on each call, like the Export button, so a call answers from the
+    // Armies and scan as they stand when it arrives (ah-a97xg.11).
+    armies: () => (game === null ? "loading" : readyArmies(useArmiesStore.getState(), game.manifest.metadata.gameId)),
+    battleSkills: () => {
+      const { skills, status, unreadTurns } = useBattleSkillsStore.getState();
+      return { skills, scanning: status === "scanning", unreadTurns };
+    },
+    writeFile: (path, text) =>
+      assistant ? assistant.writeFile(path, text) : Promise.reject(new Error("this HUD has no assistant connection.")),
     validate: (document) =>
       client.validateOrders({
         rawOrders: document,

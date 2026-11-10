@@ -11,6 +11,8 @@
  */
 
 import type {
+  ArmyMemberRecord,
+  ArmyRecord,
   Coordinate,
   KnownMap,
   KnownMapHex,
@@ -24,6 +26,10 @@ import type {
   UnitSilver
 } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
+import type { ArmiesState } from "../armiesStore";
+import { memberIsStale } from "../armies";
+import { battleFileOf, battleFileText, exportReadiness } from "../armyExport";
+import type { DerivedSkills } from "../battleSkills";
 import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 import { silverShown } from "../unitTable";
@@ -66,6 +72,33 @@ export interface AssistantHost {
   writeOrders(update: (document: string) => string, unitId: string): void;
   /** What the assistant last read or wrote of each unit's orders, kept between calls. */
   readonly seen: AssistantSeen;
+  /** The open game's Armies; `loading` until they are read, `failed` when they could not be. */
+  armies(): readonly ArmyRecord[] | "loading" | "failed";
+  /** What the battle-roster scan has recovered so far, as the Army export dialog reads it. */
+  battleSkills(): { readonly skills: DerivedSkills; readonly scanning: boolean; readonly unreadTurns: number };
+  /**
+   * Writes `text` to `path`, replacing a battle file already there but no other file; rejects with
+   * a sentence saying why it could not.
+   */
+  writeFile(path: string, text: string): Promise<void>;
+}
+
+/**
+ * The Armies the tools may answer from: the store's list once it has loaded for the open game.
+ * A list still loading, or one left over from another game, is `loading` - the open game's load is
+ * on its way - and only a failed load of the open game's own is `failed`, since retrying will not help.
+ */
+export function readyArmies(
+  state: Pick<ArmiesState, "gameId" | "status" | "armies">,
+  gameId: string
+): readonly ArmyRecord[] | "loading" | "failed" {
+  if (state.gameId !== gameId) {
+    return "loading";
+  }
+  if (state.status === "error") {
+    return "failed";
+  }
+  return state.status === "ready" ? state.armies : "loading";
 }
 
 /** One tool as MCP lists it. */
@@ -220,6 +253,29 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
       type: "object",
       properties: { query: { type: "string", description: "A tag or a name." } },
       required: ["query"]
+    }
+  },
+  {
+    name: "list_armies",
+    description:
+      "The Armies the player has saved in the HUD, each with its members as last seen: unit, faction, men, items, skills, whether it fights from behind, its combat spell, and whether it was missing from this turn's report. An Army is what export_battle_file writes out for a battle simulator.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "export_battle_file",
+    description:
+      "Write the battle file the HUD's Export button writes for an Army - one JSON file that both the atlantis.pekle.lv and the New Age battle simulators load - to a path you choose. Name the attacking and the defending Army by id or by name (from list_armies); one side may be left out. Answers with the path written, the number of units, and the caveats the Export dialog would show (units not seen this turn, foreign units without known skills, an empty side).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        attackers: { type: "string", description: "The attacking Army's id or name." },
+        defenders: { type: "string", description: "The defending Army's id or name." },
+        path: {
+          type: "string",
+          description: "Where to write the file: an absolute path ending in .json, in a folder that exists. A battle file already there is replaced; any other file there is kept and the write refused."
+        }
+      },
+      required: ["path"]
     }
   },
   {
@@ -504,6 +560,61 @@ function runsShort(silver: UnitSilver): boolean {
     silver.refused.length > 0 ||
     silver.doubt !== null
   );
+}
+
+/** Whose a member is, as a model reads it: `own`, `Name (id)`, or `unknown` for a hidden faction. */
+function factionOf(member: ArmyMemberRecord): string {
+  if (member.own) {
+    return "own";
+  }
+  if (member.factionName !== null && member.factionId !== null) {
+    return `${member.factionName} (${member.factionId})`;
+  }
+  return member.factionName ?? member.factionId ?? "unknown";
+}
+
+function armyMemberRow(member: ArmyMemberRecord, currentTurn: number | null) {
+  return {
+    unitId: member.unitId,
+    name: member.name,
+    faction: factionOf(member),
+    men: member.men,
+    regionId: member.regionId,
+    seenTurn: member.seenTurn,
+    notInThisTurn: currentTurn !== null && memberIsStale(member, currentTurn),
+    items: member.items.map((item) => `${item.amount} ${item.tag}`).join(", "),
+    skills: member.skills.map((skill) => `${skill.tag} ${skill.level}`).join(", "),
+    behind: member.flags.includes("behind"),
+    combatSpell: member.combatSpell?.tag ?? null
+  };
+}
+
+function savedArmies(host: AssistantHost): readonly ArmyRecord[] {
+  const armies = host.armies();
+  if (armies === "loading") {
+    refuse("The HUD is still loading this game's Armies; try again in a moment.");
+  }
+  if (armies === "failed") {
+    refuse("The HUD could not read this game's Armies. Ask the player to open the game again.");
+  }
+  return armies;
+}
+
+/** The Army an argument names, by id or else by name ignoring case; `null` when it names none. */
+function namedArmy(armies: readonly ArmyRecord[], args: Record<string, unknown>, side: string): ArmyRecord | null {
+  const wanted = stringArg(args, side)?.trim();
+  if (wanted === undefined || wanted === "") {
+    return null;
+  }
+  const byId = armies.find((army) => army.id === wanted);
+  if (byId) {
+    return byId;
+  }
+  const byName = armies.filter((army) => army.name.toLowerCase() === wanted.toLowerCase());
+  if (byName.length > 1) {
+    refuse(`Several Armies are called "${wanted}"; name one by id: ${byName.map((army) => army.id).join(", ")}.`);
+  }
+  return byName[0] ?? refuse(`No Army is called "${wanted}". list_armies names every one the player has saved.`);
 }
 
 /** Names the turn on screen, so a write can say which turn it was worked out for. */
@@ -836,6 +947,43 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       const rulesetText = turn.rulesetText ?? refuse("The game data has not loaded yet; try again in a moment.");
       const found = lookupGameData(rulesetText, query);
       return ok(found.length > 0 ? found : refuse(`Nothing in the game data is called "${query}".`));
+    }
+
+    case "list_armies": {
+      const currentTurn = parsed.header.turnNumber;
+      return ok(
+        savedArmies(host).map((army) => ({
+          armyId: army.id,
+          name: army.name,
+          members: army.members.map((member) => armyMemberRow(member, currentTurn))
+        }))
+      );
+    }
+
+    case "export_battle_file": {
+      const path = requiredString(args, "path");
+      const armies = savedArmies(host);
+      // With nothing saved, the dialog's own refusal says so better than "no Army is called ...".
+      const attackers = armies.length === 0 ? null : namedArmy(armies, args, "attackers");
+      const defenders = armies.length === 0 ? null : namedArmy(armies, args, "defenders");
+      const currentTurn =
+        parsed.header.turnNumber ?? refuse("This turn's report has no turn number, so its Armies cannot be exported.");
+      const { skills, scanning, unreadTurns } = host.battleSkills();
+      // The Export dialog's own decision, so the assistant is refused exactly when the player would be.
+      const readiness = exportReadiness({ armies, attackers, defenders, currentTurn, derived: skills, scanning, unreadTurns });
+      if (readiness.refusal !== null) {
+        refuse(readiness.refusal);
+      }
+      if (readiness.waiting) {
+        const scan = readiness.notices.find((notice) => notice.kind === "scanning");
+        refuse(`${scan?.text ?? "Still reading this game's battle reports."} Try again in a moment.`);
+      }
+      try {
+        await host.writeFile(path, battleFileText(battleFileOf(attackers, defenders, skills)));
+      } catch (error: unknown) {
+        refuse(`The file was not written: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return ok({ written: path, units: readiness.count, notices: readiness.notices.map((notice) => notice.text) });
     }
 
     case "search_report": {

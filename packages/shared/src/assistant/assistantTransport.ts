@@ -37,6 +37,11 @@ export interface AssistantTransport {
   ): Promise<() => void>;
   /** Where the assistant connects. */
   connection(): Promise<AssistantConnection>;
+  /**
+   * Writes a file the assistant asked for (`export_battle_file`) to the path it named. The shell
+   * does it, since only the shell can reach the disk; rejects with a sentence saying why it could not.
+   */
+  writeFile(path: string, text: string): Promise<void>;
 }
 
 /**

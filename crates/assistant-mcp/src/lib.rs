@@ -38,6 +38,9 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
+mod file;
+
+pub use file::write_assistant_file;
 pub use tokio_util::sync::CancellationToken;
 
 /// One call a client made, as the frontend is handed it.

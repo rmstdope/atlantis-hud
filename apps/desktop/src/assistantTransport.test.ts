@@ -43,6 +43,17 @@ describe("desktopAssistantTransport", () => {
     );
   });
 
+  it("writes a file the assistant asked for through the shell, which says why when it cannot", async () => {
+    await desktopAssistantTransport()!.writeFile("/tmp/battle.json", "{}");
+
+    expect(invoke).toHaveBeenCalledWith("assistant_write_file", { path: "/tmp/battle.json", text: "{}" });
+
+    invoke.mockRejectedValue("the folder /nowhere does not exist");
+    await expect(desktopAssistantTransport()!.writeFile("/nowhere/x.json", "{}")).rejects.toThrow(
+      "the folder /nowhere does not exist"
+    );
+  });
+
   it("prefers a stand-in a smoke test installed, with no Tauri runtime present", () => {
     const standIn = { connect: vi.fn(), connection: vi.fn() };
     vi.stubGlobal("window", { __ATLANTIS_DESKTOP_ASSISTANT__: standIn });
