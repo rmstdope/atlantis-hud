@@ -182,6 +182,9 @@ function aDiagnostic(overrides: Partial<OrderDiagnostic> = {}): OrderDiagnostic 
 /** Turn 11, stored: the home region then had fewer people, and Farmers fewer men. */
 const EARLIER_ORDERS = ["#atlantis 3", "", ";*** plain (1,1) in Coast ***", "", "unit 100", "tax", "", "#end", ""].join("\n");
 
+/** Turn 9, stored but never edited in the HUD: only its report's orders template is there. */
+const TEMPLATE_ORDERS = ["#atlantis 3", "", ";*** plain (1,1) in Coast ***", "", "unit 100", "work", "", "#end", ""].join("\n");
+
 function anEarlierTurnSource(): EarlierTurnSource {
   const parsed = aParsedReport({
     header: aReportHeaderInfo({ factionId: "3", turnNumber: 11, events: ["Farmers (100) collects 40 silver."] }),
@@ -196,8 +199,14 @@ function anEarlierTurnSource(): EarlierTurnSource {
       })
     ]
   });
+  const templated = aParsedReport({
+    header: aReportHeaderInfo({ factionId: "3", turnNumber: 9 }),
+    regions: parsed.regions,
+    ordersTemplate: { text: TEMPLATE_ORDERS, factionId: "3", units: [] }
+  });
   return {
     list: async () => [
+      { turnNumber: 9, season: null, importedAt: "2026-01-09" },
       { turnNumber: 10, season: null, importedAt: "2026-01-10" },
       { turnNumber: 11, season: null, importedAt: "2026-01-11" },
       { turnNumber: 12, season: null, importedAt: "2026-01-12" }
@@ -207,7 +216,9 @@ function anEarlierTurnSource(): EarlierTurnSource {
         ? { turnNumber, parsed, ordersDocument: EARLIER_ORDERS }
         : turnNumber === 10
           ? { turnNumber, parsed: aParsedReport({ header: aReportHeaderInfo({ turnNumber: 10 }) }), ordersDocument: null }
-          : null
+          : turnNumber === 9
+            ? { turnNumber, parsed: templated, ordersDocument: null }
+            : null
   };
 }
 
@@ -1843,6 +1854,7 @@ describe("reading an earlier turn", () => {
     expect(answer).toEqual({
       openTurn: 12,
       turns: [
+        { turn: 9, season: null, importedAt: "2026-01-09", open: false },
         { turn: 10, season: null, importedAt: "2026-01-10", open: false },
         { turn: 11, season: null, importedAt: "2026-01-11", open: false },
         { turn: 12, season: null, importedAt: "2026-01-12", open: true }
@@ -1905,6 +1917,17 @@ describe("reading an earlier turn", () => {
     const answer = json((await call(host, "get_orders", { turn: 10 })).text);
 
     expect(answer).toEqual({ turn: 10, earlier: true, orders: null, note: "The HUD kept no orders for turn 10." });
+  });
+
+  it("answers an earlier turn's report orders template, marked as such, when the HUD kept no orders", async () => {
+    const { host } = aHost(aTurn());
+
+    const whole = json((await call(host, "get_orders", { turn: 9 })).text);
+    const one = json((await call(host, "get_orders", { turn: 9, unitId: "100" })).text);
+
+    const note = "The HUD kept no orders for turn 9; these are the orders template from that turn's report, not orders the player saved.";
+    expect(whole).toEqual({ turn: 9, earlier: true, orders: TEMPLATE_ORDERS, fromTemplate: true, note });
+    expect(one).toEqual({ turn: 9, earlier: true, unitId: "100", orders: "work", fromTemplate: true, note });
   });
 
   it("refuses a unit's earlier orders when that turn's report did not show the unit", async () => {
