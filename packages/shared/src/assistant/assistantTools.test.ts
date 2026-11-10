@@ -13,6 +13,7 @@ import {
   type OrderValidationResult,
   type OrdersPreviewResponse,
   type ReportUnit,
+  type RoutePlanResponse,
   type UnitPreview,
   type UnitSilver
 } from "@atlantis/core-client";
@@ -169,6 +170,8 @@ function aDiagnostic(overrides: Partial<OrderDiagnostic> = {}): OrderDiagnostic 
 interface Forecast {
   readonly silver?: UnitSilver[];
   readonly preview?: OrdersPreviewResponse;
+  /** What the route planner answers; every question it is asked is recorded in `planned`. */
+  readonly route?: RoutePlanResponse;
 }
 
 /** What the host lends the army tools, each part replaceable by a test. */
@@ -193,6 +196,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     writeFails: null,
     ...world
   };
+  const planned: { unitId: string; destination: string; carryingJson: string }[] = [];
   let current = turn;
   const host: AssistantHost & { typeByHand(document: string): void } = {
     armies: () => armyWorld.armies,
@@ -214,6 +218,10 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
     validate: async () => ({ diagnostics, silver: forecast.silver ?? [] }) as unknown as OrderValidationResult,
     preview: async () => forecast.preview ?? { regions: [] },
+    planRoute: async (unitId, destination, carryingJson) => {
+      planned.push({ unitId, destination, carryingJson });
+      return forecast.route ?? { plan: null, problem: { kind: "noKnownRoute" }, risk: null, fullyModelled: true };
+    },
     writeOrders: (update) => {
       if (current !== null) {
         const document = update(current.ordersDocument);
@@ -222,7 +230,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     }
   };
-  return { host, written, files };
+  return { host, written, files, planned };
 }
 
 async function call(host: AssistantHost, name: string, args: Record<string, unknown> = {}) {
@@ -1267,5 +1275,130 @@ describe("export_battle_file", () => {
     const answer = await call(host, "export_battle_file", { attackers: "army-1" });
 
     expect(answer).toEqual({ text: '"path" is required.', isError: true });
+  });
+});
+
+describe("planning a route", () => {
+  /** Scout (101) walks from the plain at (1,1) east into the forest at (2,1), then on to (3,1). */
+  const WALK: RoutePlanResponse = {
+    plan: {
+      from: { x: 1, y: 1, z: 1 },
+      to: { x: 3, y: 1, z: 1 },
+      mode: "walk",
+      steps: [
+        { direction: "southeast", to: { x: 2, y: 1, z: 1 }, terrain: "forest", cost: 2, road: false, estimated: false, overWater: false, canal: null },
+        { direction: "southeast", to: { x: 3, y: 1, z: 1 }, terrain: "plain", cost: 1, road: true, estimated: true, overWater: false, canal: null }
+      ],
+      totalCost: 3,
+      months: [
+        { month: 1, steps: 1, endsAt: { x: 2, y: 1, z: 1 } },
+        { month: 2, steps: 1, endsAt: { x: 3, y: 1, z: 1 } }
+      ],
+      order: "MOVE SE SE",
+      loadUnchecked: false
+    },
+    problem: null,
+    risk: { level: "low", worst: null, hexes: [] },
+    fullyModelled: false
+  } as unknown as RoutePlanResponse;
+
+  it("answers the order, the movement points, the months and the steps the planner draws", async () => {
+    const { host, planned } = aHost(aTurn(), [], { route: WALK });
+
+    const answer = await call(host, "plan_route", { unitId: "101", x: 3, y: 1 });
+    const route = json(answer.text);
+
+    expect(answer.isError).toBe(false);
+    expect(planned).toEqual([{ unitId: "101", destination: "1:3,1", carryingJson: "" }]);
+    expect(route).toMatchObject({
+      unitId: "101",
+      from: "1:1,1",
+      to: "1:3,1",
+      mode: "walk",
+      order: "MOVE SE SE",
+      movementPoints: 3,
+      months: 2,
+      monthLegs: [
+        { month: 1, steps: 1, endsAt: "1:2,1" },
+        { month: 2, steps: 1, endsAt: "1:3,1" }
+      ],
+      risk: { level: "low", worst: null }
+    });
+    expect(route.steps[0]).toEqual({ direction: "southeast", regionId: "1:2,1", terrain: "forest", cost: 2 });
+    expect(route.steps[1]).toMatchObject({ road: true, estimated: true });
+    expect(route.notes.join(" ")).toContain("1 of these hexes is unexplored");
+    expect(route.notes.join(" ")).toContain("lower bound");
+  });
+
+  it("answers why there is no route in the words the Movement panel uses, as an answer rather than an error", async () => {
+    const { host } = aHost(aTurn(), [], {
+      route: { plan: null, problem: { kind: "noKnownRoute" }, risk: null, fullyModelled: true } as RoutePlanResponse
+    });
+
+    const answer = await call(host, "plan_route", { unitId: "101", regionId: "1:19,5" });
+
+    expect(answer.isError).toBe(false);
+    expect(json(answer.text)).toEqual({
+      unitId: "101",
+      to: "1:19,5",
+      problem: { kind: "noKnownRoute" },
+      reason: "Nothing the faction has seen joins those two hexes up."
+    });
+  });
+
+  it("names a destination by a region this report shows, or one the map remembers", async () => {
+    const { host, planned } = aHost(aTurn(), [], { route: WALK });
+
+    await call(host, "plan_route", { unitId: "101", regionId: "2,1,1" });
+    await call(host, "plan_route", { unitId: "101", x: 19, y: 5, z: 1 });
+
+    expect(planned.map((ask) => ask.destination)).toEqual(["1:2,1", "1:19,5"]);
+  });
+
+  it("plans for the unit as loaded by the items it will carry, tags upper-cased", async () => {
+    const turn = aTurn({
+      rulesetText: JSON.stringify({ items: { HUMN: { name: "human" }, HORS: { name: "horse" } }, skills: {}, buildings: {} })
+    });
+    const { host, planned } = aHost(turn, [], { route: WALK });
+
+    await call(host, "plan_route", { unitId: "101", x: 3, y: 1, carrying: { hors: 4, HUMN: 1 } });
+
+    expect(JSON.parse(planned[0].carryingJson)).toEqual({ HORS: 4, HUMN: 1 });
+  });
+
+  it("says a fleet is weighed as the report shows it when items are carried", async () => {
+    const sail = { ...WALK, plan: { ...WALK.plan!, mode: "sail", order: "SAIL SE SE" } } as RoutePlanResponse;
+    const { host } = aHost(aTurn(), [], { route: sail });
+
+    const route = json((await call(host, "plan_route", { unitId: "101", x: 3, y: 1, carrying: { HUMN: 1 } })).text);
+
+    expect(route.notes.join(" ")).toContain("fleet");
+  });
+
+  it.each([
+    [{ x: 3, y: 1 }, '"unitId" is required.'],
+    [{ unitId: "101" }, "Name the destination"],
+    [{ unitId: "555", x: 3, y: 1 }, "no unit 555"],
+    [{ unitId: "900", x: 3, y: 1 }, "not the faction's own"],
+    [{ unitId: "101", regionId: "nowhere" }, "No region nowhere is known"],
+    [{ unitId: "101", x: 3, y: 1, carrying: { ZZZZ: 1 } }, "ZZZZ"],
+    [{ unitId: "101", x: 3, y: 1, carrying: { HUMN: -1 } }, "HUMN"],
+    [{ unitId: "101", x: 3, y: 1, carrying: ["HUMN"] }, "carrying"]
+  ])("refuses %j", async (args, message) => {
+    const { host, planned } = aHost(aTurn(), [], { route: WALK });
+
+    const answer = await call(host, "plan_route", args);
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain(message);
+    expect(planned).toEqual([]);
+  });
+
+  it("refuses while the game data has not loaded", async () => {
+    const { host } = aHost(aTurn({ rulesetText: null }), [], { route: WALK });
+
+    const answer = await call(host, "plan_route", { unitId: "101", x: 3, y: 1 });
+
+    expect(answer).toEqual({ isError: true, text: "The game data has not loaded yet; try again in a moment." });
   });
 });
