@@ -120,7 +120,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_region",
     description:
-      "One region in full: products, market (wanted and for sale), exits, structures, gate, and every unit in it. Name it by regionId or by x, y and z coordinates. A region this report does not show is answered from the HUD's map of earlier reports, marked remembered: true, with the turn it was last seen (lastSeenTurn), what it held then, and the units last seen there - who may since have moved.",
+      "One region in full: products, market (wanted and for sale), exits, structures, gate, and every unit in it. Name it by regionId or by x, y and z coordinates. A region this report does not show is answered from the HUD's map of earlier reports, marked remembered: true (false only for a hex seen this turn by someone else, e.g. an ally), with how it is known (knowledge), the turn it was last seen (lastSeenTurn), what it held then, and the units last seen there - who may since have moved.",
     inputSchema: {
       type: "object",
       properties: {
@@ -149,7 +149,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "list_known_regions",
     description:
-      "Every region the HUD's map knows - this report's and those remembered from earlier reports - one line each: id, terrain, coordinates, province, how it is known (current: this turn; stale: an earlier report; named: only an exit has named it), the turn it was last seen, settlement, structures and how many units were seen there. Narrow it to an area with z and xMin/xMax/yMin/yMax, or to one terrain. get_region gives one in full.",
+      "Every region the HUD's map knows - this report's and those remembered from earlier reports - one line each: id, terrain, coordinates, province, how it is known (current: this turn; stale: an earlier report; named: only an exit has named it), the turn it was last seen, settlement, structures and how many units were seen there. Narrow it to an area with z and xMin/xMax/yMin/yMax, or to one terrain. At most 500 lines; leftOut says how many more matched, so narrow the area. get_region gives one in full.",
     inputSchema: {
       type: "object",
       properties: {
@@ -288,7 +288,7 @@ function hexIdOf(hex: KnownMapHex): string {
 /** A hex the report does not describe, as the map remembers it. */
 function rememberedRegion(hex: KnownMapHex, currentTurn: number | null) {
   const known = {
-    remembered: true,
+    remembered: hex.knowledge !== "current",
     knowledge: hex.knowledge,
     lastSeenTurn: hex.lastSeenTurn,
     currentTurn,
@@ -711,13 +711,12 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
         return ok(region);
       }
       const hex = hexes.find((candidate) => (regionId !== undefined ? hexIdOf(candidate) === regionId : at(candidate.coordinate)));
-      return ok(
-        hex
-          ? rememberedRegion(hex, turn.knownMap?.currentTurn ?? null)
-          : refuse(
-              "Neither this turn's report nor the HUD's map knows such a region. list_known_regions names every one the map knows."
-            )
-      );
+      if (hex) {
+        return ok(rememberedRegion(hex, turn.knownMap?.currentTurn ?? null));
+      }
+      return turn.knownMap === null
+        ? refuse("This turn's report shows no such region, and the HUD has no map of this game yet to remember it from; try again in a moment.")
+        : refuse("Neither this turn's report nor the HUD's map knows such a region. list_known_regions names every one the map knows.");
     }
 
     case "list_known_regions": {

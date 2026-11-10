@@ -978,8 +978,31 @@ describe("regions the HUD remembers from earlier reports", () => {
   it("says so while the HUD has no map", async () => {
     const { host } = aHost(aTurn({ knownMap: null }));
 
-    const answer = await call(host, "list_known_regions");
+    const listed = await call(host, "list_known_regions");
+    const region = await call(host, "get_region", { x: 19, y: 5 });
 
-    expect(answer.isError).toBe(true);
+    expect(listed.isError).toBe(true);
+    expect(listed.text).toContain("no map");
+    expect(region.isError).toBe(true);
+    expect(region.text).toContain("no map");
+  });
+
+  it("does not call a hex seen this very turn remembered", async () => {
+    const turn = aTurn();
+    const map = aMap();
+    const allySighting = aKnownMapHex({
+      coordinate: { x: 30, y: 2, z: 1 },
+      terrain: "hill",
+      province: "Ally",
+      knowledge: "current",
+      lastSeenTurn: 12,
+      region: aReportRegion({ regionId: "1:30,2", coordinate: { x: 30, y: 2, z: 1 }, terrain: "hill", units: [] })
+    });
+    const { host } = aHost({ ...turn, knownMap: { ...map, hexes: [...map.hexes, allySighting] } });
+
+    const region = json((await call(host, "get_region", { regionId: "1:30,2" })).text);
+
+    expect(region.remembered).toBe(false);
+    expect(region.knowledge).toBe("current");
   });
 });
