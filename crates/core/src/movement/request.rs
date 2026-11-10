@@ -413,7 +413,6 @@ pub fn parse_and_classify(
     cache.classified(raw_report, ruleset_json)
 }
 
-/// Reads `1:7,53`, the way the game writes a hex and the way a region id is stored.
 /// The carried items `plan_on_map` reads, by upper-cased tag, or `None` for none.
 fn parse_carrying(
     carrying_json: &str,
@@ -434,8 +433,9 @@ fn parse_carrying(
 /// `unit` holding `carrying` in place of the report's amounts for the tags it names, weighed and
 /// classified by the one rule the overload check and the preview read
 /// (`movement::mode::carrying_after_transfers`). When the ruleset cannot weigh the holding the
-/// unit's movement is cleared rather than left at the report's load, so the planner says the
-/// movement is unstated instead of planning a load the unit will not carry.
+/// unit's movement is cleared rather than left at the report's load, and so it is when nobody is
+/// left in the unit, so the planner says the movement is unstated instead of planning a load the
+/// unit will not carry.
 fn loaded_with(
     unit: crate::report::model::ReportUnit,
     carrying: &std::collections::BTreeMap<String, i64>,
@@ -463,7 +463,14 @@ fn loaded_with(
         .map(|item| (item.tag.as_str(), item.amount))
         .collect();
     let load = carrying_after_transfers(unit.weight, &unit.items, &stepping_off, Some(ruleset));
-    let mut movement = movement_for_carrying(load);
+    // Nobody left in the unit means no movement, as the preview's re-load says (`orders::effects`).
+    let people = items.iter().any(|item| {
+        item.amount > 0
+            && ruleset
+                .find_item(&item.tag)
+                .is_some_and(|item| item.kind == crate::movement::rules::ItemKind::Man)
+    });
+    let mut movement = movement_for_carrying(load).filter(|_| people);
     if ruleset.swimming().is_none() {
         if let Some(movement) = movement.as_mut() {
             movement.swim = SwimCapacity::Absent;
@@ -478,6 +485,7 @@ fn loaded_with(
     }
 }
 
+/// Reads `1:7,53`, the way the game writes a hex and the way a region id is stored.
 fn parse_hex_id(text: &str) -> Option<crate::report::model::Coordinate> {
     let (level, rest) = text.split_once(':')?;
     let (x, y) = rest.split_once(',')?;
@@ -1042,6 +1050,20 @@ mod reaches_the_planner_tests {
     fn carrying_an_item_the_ruleset_cannot_weigh_says_so() {
         let report = tundra_corridor(ARCHERS_AND_STABLE);
         let response = plan_carrying(&report, r#"{"ZZZZ":1}"#).expect("loads");
+
+        assert!(response.plan.is_none());
+        assert_eq!(
+            response.problem,
+            Some(crate::movement::plan::RouteProblem::MobilityUnstated)
+        );
+    }
+
+    /// A unit left with nobody in it has no movement to plan with, as the preview's own re-load
+    /// says (`orders::effects`), rather than a route for an empty unit.
+    #[test]
+    fn carrying_no_people_says_the_movement_is_unstated() {
+        let report = tundra_corridor(ARCHERS_AND_STABLE);
+        let response = plan_carrying(&report, r#"{"HELF":0}"#).expect("loads");
 
         assert!(response.plan.is_none());
         assert_eq!(
