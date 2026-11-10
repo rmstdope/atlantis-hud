@@ -40,6 +40,8 @@ export type DialogDrag = {
   /** Fixed at its top-left corner once moved, so contents that grow or shrink never move it. */
   dialogStyle: CSSProperties | undefined;
   barProps: DialogBarProps;
+  /** Puts the dialog at `position`, as a drag would: the panel's resize edges move its left or top. */
+  place: (position: DialogPosition) => void;
 };
 
 /**
@@ -114,6 +116,7 @@ export function useDialogDrag(ref?: RefObject<HTMLDivElement | null>): DialogDra
   }, []);
 
   const moved = position !== null;
+  const place = useCallback((next: DialogPosition) => setPosition(next), []);
 
   // Once moved, a shrinking window or a dialog whose contents change size only ever nudges it
   // inward as far as keeps the top bar grabbable - never back to the centre.
@@ -152,6 +155,7 @@ export function useDialogDrag(ref?: RefObject<HTMLDivElement | null>): DialogDra
 
   return {
     moved,
+    place,
     dialogRef,
     dialogStyle:
       position === null ? undefined : { position: "fixed", left: position.left, top: position.top, margin: 0 },

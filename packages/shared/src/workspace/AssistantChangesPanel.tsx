@@ -6,6 +6,23 @@ import {
   type AlignedOrderLine,
   type AssistantChangeView
 } from "../assistant/assistantChanges";
+import {
+  RESIZE_CURSOR,
+  RESIZE_EDGES,
+  floatingSizeStyle,
+  movesHeight,
+  sheetSizeStyle,
+  type ResizeEdge,
+  type ResizeEdgeHandlers
+} from "./panelResize";
+import {
+  resetFloatingPanelSize,
+  resetSheetPanelHeight,
+  setFloatingPanelSize,
+  setSheetPanelHeight,
+  useAssistantPanelSize
+} from "./assistantPanelSize";
+import { usePanelResize } from "./usePanelResize";
 import { ProblemMessage } from "./primitives";
 import { useDialogDrag, type DialogBarProps } from "./useDialogDrag";
 
@@ -81,7 +98,7 @@ function Entry({
 }) {
   return (
     <article data-testid={`assistant-change-${view.unitId}`} data-unit={view.unitId} className="border-b border-edge p-2 last:border-b-0">
-      <div className="mb-1 flex flex-wrap items-baseline gap-2">
+      <div data-entry-heading="" className="mb-1 flex flex-wrap items-baseline gap-2">
         <button
           type="button"
           data-testid={`assistant-change-select-${view.unitId}`}
@@ -122,6 +139,55 @@ function Entry({
         ))
       )}
     </article>
+  );
+}
+
+/** Where each edge's grab band sits: 8px straddling the border, 12px at the corners (the mockup's). */
+const EDGE_PLACE: Record<ResizeEdge, string> = {
+  n: "-top-1 left-1.5 right-1.5 h-2",
+  s: "-bottom-1 left-1.5 right-1.5 h-2",
+  e: "-right-1 top-1.5 bottom-1.5 w-2",
+  w: "-left-1 top-1.5 bottom-1.5 w-2",
+  ne: "-right-[5px] -top-[5px] size-3",
+  nw: "-left-[5px] -top-[5px] size-3",
+  se: "-bottom-[5px] -right-[5px] size-3",
+  sw: "-bottom-[5px] -left-[5px] size-3"
+};
+
+/**
+ * The panel's resize edges (ah-hwkak.1): every edge and corner of the floating window, the top edge
+ * alone of the bottom sheet. Pointer only - no tab stop, no words - and the held one lights brass.
+ */
+export function ResizeEdges({
+  sheet,
+  activeEdge,
+  handlers
+}: {
+  sheet: boolean;
+  activeEdge: ResizeEdge | null;
+  handlers: ResizeEdgeHandlers;
+}) {
+  const edges: readonly ResizeEdge[] = sheet ? ["n"] : RESIZE_EDGES;
+  return (
+    <>
+      {edges.map((edge) => (
+        <div
+          key={edge}
+          aria-hidden="true"
+          data-testid={`assistant-changes-resize-${edge}`}
+          data-active={activeEdge === edge ? "" : undefined}
+          style={{ cursor: RESIZE_CURSOR[edge], touchAction: "none" }}
+          onPointerDown={(event) => handlers.onPointerDown(edge, event)}
+          onPointerMove={handlers.onPointerMove}
+          onPointerUp={handlers.onPointerUp}
+          onPointerCancel={handlers.onPointerCancel}
+          onDoubleClick={handlers.onDoubleClick}
+          className={`absolute z-10 rounded-sm ${sheet && edge === "n" ? "-top-1 inset-x-0 h-2" : EDGE_PLACE[edge]} ${
+            activeEdge === edge ? "bg-brass/40" : ""
+          }`}
+        />
+      ))}
+    </>
   );
 }
 
@@ -307,6 +373,17 @@ export function AssistantChangesPanel({
   const [asking, setAsking] = useState(false);
   const narrow = useNarrowWindow();
   const drag = useDialogDrag();
+  const size = useAssistantPanelSize();
+  const resize = usePanelResize({
+    panelRef: drag.dialogRef,
+    sheet: narrow,
+    moved: drag.moved,
+    previous: size.floating,
+    place: drag.place,
+    onCommitFloating: setFloatingPanelSize,
+    onCommitSheet: setSheetPanelHeight,
+    onReset: narrow ? resetSheetPanelHeight : resetFloatingPanelSize
+  });
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const revertAllRef = useRef<HTMLButtonElement | null>(null);
   const { listRef, onListScroll } = useHeldScroll(views.map((view) => view.unitId).join(" "));
@@ -346,6 +423,21 @@ export function AssistantChangesPanel({
     dragStyle === undefined
       ? undefined
       : { ...dragStyle, bottom: "auto", maxHeight: `calc(100dvh - ${String(dragStyle.top)}px - 14px)` };
+  // The player's size is a limit the panel fits inside (ah-hwkak.1); while an edge is held it is
+  // exactly the dragged size instead, so the edge follows the pointer.
+  const live = resize.live;
+  const homeStyle = dragStyle === undefined && resize.homeLeft !== null ? { left: resize.homeLeft } : undefined;
+  const heldHeight = (height: number) => ({ height, maxHeight: "none" });
+  const sizeStyle = narrow
+    ? live === null
+      ? sheetSizeStyle(size.sheet)
+      : heldHeight(live.frame.height)
+    : {
+        ...floatingSizeStyle(size.floating, dragStyle === undefined ? null : Number(dragStyle.top)),
+        ...(live === null
+          ? {}
+          : { width: live.frame.width, ...(movesHeight(live.edge) ? heldHeight(live.frame.height) : {}) })
+      };
 
   return (
     <div
@@ -356,7 +448,7 @@ export function AssistantChangesPanel({
       aria-label="Assistant changes"
       tabIndex={-1}
       hidden={!open}
-      style={movedStyle}
+      style={{ ...(narrow ? undefined : homeStyle), ...movedStyle, ...sizeStyle }}
       onKeyDown={(event: KeyboardEvent) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -366,10 +458,11 @@ export function AssistantChangesPanel({
       }}
       className={`z-20 flex-col border border-edge bg-panel-raised text-pane text-ink shadow-[0_10px_30px_#0009] outline-none ${open ? "flex" : "hidden"} ${
         narrow
-          ? "fixed inset-x-0 bottom-0 h-[50vh] border-x-0 border-b-0"
+          ? "fixed inset-x-0 bottom-0 border-x-0 border-b-0"
           : "fixed bottom-3.5 left-3.5 max-h-[calc(100dvh-60px)] w-[min(45rem,calc(100vw-20rem))] rounded"
       }`}
     >
+      <ResizeEdges sheet={narrow} activeEdge={resize.activeEdge} handlers={resize.handlers} />
       <AssistantChangesContent
         views={views}
         asking={stillAsking}

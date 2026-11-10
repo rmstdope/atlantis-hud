@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { alignOrderLines, type AssistantChangeView } from "../assistant/assistantChanges";
-import { AssistantChangesContent } from "./AssistantChangesPanel";
+import { AssistantChangesContent, ResizeEdges } from "./AssistantChangesPanel";
 
 function view(overrides: Partial<AssistantChangeView> = {}): AssistantChangeView {
   return {
@@ -115,5 +115,51 @@ describe("AssistantChangesContent", () => {
     expect(render([view({ problems: ["this hex does not sell silk"] })])).not.toMatch(
       /data-testid="assistant-change-keep-1234"[^>]*disabled=""/u
     );
+  });
+});
+
+describe("ResizeEdges", () => {
+  const handlers = { onPointerDown: vi.fn(), onPointerMove: vi.fn(), onPointerUp: vi.fn(), onPointerCancel: vi.fn(), onDoubleClick: vi.fn() };
+
+  function edges(sheet: boolean, activeEdge: "n" | "e" | null = null): string {
+    return renderToStaticMarkup(<ResizeEdges sheet={sheet} activeEdge={activeEdge} handlers={handlers} />);
+  }
+
+  it("gives the floating window all four edges and four corners, each with its resize pointer", () => {
+    const html = edges(false);
+
+    for (const edge of ["n", "s", "e", "w", "ne", "nw", "se", "sw"]) {
+      expect(html).toContain(`data-testid="assistant-changes-resize-${edge}"`);
+    }
+    expect(html).toMatch(/assistant-changes-resize-n"[^>]*cursor:ns-resize/u);
+    expect(html).toMatch(/assistant-changes-resize-sw"[^>]*cursor:nesw-resize/u);
+  });
+
+  it("gives the bottom sheet only its top edge", () => {
+    const html = edges(true);
+
+    expect(html).toContain('data-testid="assistant-changes-resize-n"');
+    expect(html.match(/assistant-changes-resize-/gu)).toHaveLength(1);
+  });
+
+  it("keeps the edges out of the keyboard's way and wordless", () => {
+    const html = edges(false);
+
+    expect(html).not.toContain("tabindex");
+    expect(html).not.toContain("title=");
+    expect(html.match(/aria-hidden="true"/gu)).toHaveLength(8);
+  });
+
+  it("lights only the held edge in brass", () => {
+    const html = edges(false, "e");
+
+    expect(html).toMatch(/assistant-changes-resize-e"[^>]*data-active=""/u);
+    expect(html.match(/data-active/gu)).toHaveLength(1);
+  });
+});
+
+describe("an entry's heading line", () => {
+  it("is marked, so the panel's smallest height can be measured from it", () => {
+    expect(render([view()])).toContain("data-entry-heading");
   });
 });
