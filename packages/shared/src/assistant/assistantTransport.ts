@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { newAssistantSeen } from "./assistantSeen";
 import { ASSISTANT_TOOLS, answerToolCall, type AssistantAnswer, type AssistantHost } from "./assistantTools";
 import type { AssistantToolDefinition } from "./assistantTools";
 
@@ -52,11 +53,13 @@ export function claudeAddCommand(connection: AssistantConnection): string {
  * Keeps the assistant connected for as long as the shell is mounted.
  *
  * `host` is read through a ref, so a call is always answered from the turn on screen when it
- * arrives rather than the one there was when the transport connected.
+ * arrives rather than the one there was when the transport connected. What the assistant has seen of
+ * each unit's orders is kept here, between calls, for `list_order_edits` (ah-a97xg.10).
  */
-export function useAssistant(transport: AssistantTransport | undefined, host: AssistantHost): void {
+export function useAssistant(transport: AssistantTransport | undefined, host: Omit<AssistantHost, "seen">): void {
   const latest = useRef(host);
   latest.current = host;
+  const seen = useRef(newAssistantSeen());
 
   useEffect(() => {
     if (!transport) {
@@ -65,7 +68,7 @@ export function useAssistant(transport: AssistantTransport | undefined, host: As
     let stop: (() => void) | null = null;
     let unmounted = false;
     void transport
-      .connect(ASSISTANT_TOOLS, (call) => answerToolCall(latest.current, call.name, call.arguments))
+      .connect(ASSISTANT_TOOLS, (call) => answerToolCall({ ...latest.current, seen: seen.current }, call.name, call.arguments))
       .then((stopListening) => {
         if (unmounted) {
           stopListening();

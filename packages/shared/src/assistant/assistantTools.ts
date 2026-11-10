@@ -12,6 +12,7 @@
 
 import type { OrderDiagnostic, OrderValidationResult, ParsedReport, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import type { OrderProcessing } from "../orderProcessing";
+import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 
 /** The turn on screen, as the tools read it. */
 export interface AssistantTurn {
@@ -39,6 +40,8 @@ export interface AssistantHost {
    * lands - which may hold something typed since the tool read it - and saves the result.
    */
   writeOrders(update: (document: string) => string, unitId: string): void;
+  /** What the assistant last read or wrote of each unit's orders, kept between calls. */
+  readonly seen: AssistantSeen;
 }
 
 /** One tool as MCP lists it. */
@@ -135,6 +138,12 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
       },
       required: ["turnKey", "unitId", "orders"]
     }
+  },
+  {
+    name: "list_order_edits",
+    description:
+      "The own units whose orders changed since you last read them (get_orders, get_unit, list_units) or wrote them (set_unit_orders) - usually the player editing them - each with the orders as you last saw them (before) and as they stand now. Call it before advising on or writing orders you read earlier. Units you have not read this turn are not listed. This answer counts as reading the units it lists.",
+    inputSchema: { type: "object", properties: {} }
   },
   {
     name: "validate_orders",
@@ -279,6 +288,22 @@ function turnKeyOf(turn: AssistantTurn): string {
   return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
 }
 
+/** Remembers that the assistant has been shown, or has written, these units' orders. */
+function noteShown(host: AssistantHost, turn: AssistantTurn, orders: Iterable<readonly [string, string]>): void {
+  noteSeen(host.seen, turnKeyOf(turn), orders);
+}
+
+/** Every own unit's orders as they stand, in report order. */
+function ownUnitOrders(host: AssistantHost, turn: AssistantTurn): Map<string, string> {
+  return new Map(
+    turn.parsed.regions.flatMap((region) =>
+      region.units
+        .filter((unit) => unit.own)
+        .map((unit) => [unit.unitId, unitOrders(host, turn, unit.unitId, region) ?? ""] as const)
+    )
+  );
+}
+
 async function answer(host: AssistantHost, turn: AssistantTurn, name: string, args: Record<string, unknown>) {
   const { parsed } = turn;
   const ownUnits = parsed.regions.flatMap((region) => region.units.filter((unit) => unit.own));
@@ -331,6 +356,7 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
               ...(unit.own ? { orders: unitOrders(host, turn, unit.unitId, region) ?? "" } : {})
             }))
         );
+      noteShown(host, turn, rows.flatMap((row) => (row.orders === undefined ? [] : [[row.unitId, row.orders] as const])));
       return ok(rows);
     }
 
@@ -344,6 +370,9 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
             .diagnosticsForUnit(turn.ordersDocument, unitId, validation.diagnostics, unitIdsOf(found.region))
             .map((diagnostic) => problemLine(diagnostic, "unit"))
         : [];
+      if (found.unit.own) {
+        noteShown(host, turn, [[unitId, orders ?? ""]]);
+      }
       return ok({ unit: found.unit, region: regionLabel(found.region), orders, problems });
     }
 
@@ -398,10 +427,15 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     case "get_orders": {
       const unitId = stringArg(args, "unitId");
       if (unitId === undefined) {
+        noteShown(host, turn, ownUnitOrders(host, turn));
         return ok(turn.ordersDocument);
       }
       const found = findUnit(parsed, unitId) ?? refuse(`This turn's report shows no unit ${unitId}.`);
-      return ok(unitOrders(host, turn, unitId, found.region) ?? "");
+      const orders = unitOrders(host, turn, unitId, found.region) ?? "";
+      if (found.unit.own) {
+        noteShown(host, turn, [[unitId, orders]]);
+      }
+      return ok(orders);
     }
 
     case "set_unit_orders": {
@@ -425,11 +459,29 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
         refuse(`Unit ${unitId} has no block in the orders document and none could be made for it.`);
       }
       host.writeOrders(apply, unitId);
+      noteShown(host, turn, [[unitId, host.orders.readUnitOrders(next, unitId, ids) ?? ""]]);
       const validation = await host.validate(next);
       const problems = host.orders
         .diagnosticsForUnit(next, unitId, validation.diagnostics, ids)
         .map((diagnostic) => problemLine(diagnostic, "unit"));
       return ok({ written: true, problems });
+    }
+
+    case "list_order_edits": {
+      const edits = editsSinceSeen(host.seen, turnKeyOf(turn), ownUnitOrders(host, turn));
+      noteShown(host, turn, edits.map((edit) => [edit.unitId, edit.now] as const));
+      return ok({
+        edits: edits.map((edit) => {
+          const found = findUnit(parsed, edit.unitId);
+          return {
+            unitId: edit.unitId,
+            name: found?.unit.name ?? "",
+            regionId: found?.region.regionId ?? "",
+            before: edit.before,
+            now: edit.now
+          };
+        })
+      });
     }
 
     case "validate_orders": {
