@@ -20,11 +20,13 @@ import type {
   OrdersPreviewResponse,
   OrderValidationResult,
   ParsedReport,
+  ProductionOverview,
   ReportRegion,
   ReportUnit,
   RoutePlanResponse,
   UnitPreview,
-  UnitSilver
+  UnitSilver,
+  WorkedRegion
 } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
 import type { ArmiesState } from "../armiesStore";
@@ -222,6 +224,20 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
         }
       },
       required: ["unitId"]
+    }
+  },
+  {
+    name: "get_production",
+    description:
+      "What this month's orders produce against what each region offers, as the HUD's production overview forecasts it. For each product a region's Products line lists (advanced resources included when the region shows them): available (the region's amount), produced (the forecast output), spare (available - produced: idle capacity), beyondCap (what producers could have made but the region's amount stopped: wasted effort), and each own unit producing it with what it makes, couldMake (what its men alone would make), asked (a numbered PRODUCE's count) and cappedBy. Name one region by regionId or x, y and z; with none, every region worked this month (worked: true) plus every region with own units where nothing is produced, taxed or pillaged (worked: false), with totals per product, the region limits and how many regions the orders use.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        regionId: { type: "string", description: "As list_regions names it, e.g. \"1:12,4\"." },
+        x: { type: "number" },
+        y: { type: "number" },
+        z: { type: "number", description: "The level. Needed when x and y exist on more than one." }
+      }
     }
   },
   {
@@ -581,6 +597,80 @@ function unitForecast(
 }
 
 /** Whether the HUD's forecast says this unit's silver runs short, or cannot say it does not. */
+/** One product's figures, shared by a region's line and the faction-wide totals. */
+function productFigures(tag: string, name: string, available: number | null, produced: number, beyondCap: number) {
+  return { tag, name, available, produced, spare: available === null ? null : available - produced, beyondCap };
+}
+
+/**
+ * `get_production`'s answer: `region` alone, or faction-wide every region the overview lists plus
+ * every own region it does not (worked: false), with totals per product.
+ */
+function productionAnswer(
+  parsed: ParsedReport,
+  overview: ProductionOverview,
+  silver: readonly UnitSilver[],
+  region: ReportRegion | null
+) {
+  const worked = new Map(overview.regions.map((row) => [row.regionId, row] as const));
+  const silverOf = (regionId: string, unitId: string) =>
+    silver.find((row) => row.regionId === regionId && row.unitId === unitId);
+  const nameOf = (regionId: string, unitId: string) =>
+    parsed.regions.find((candidate) => candidate.regionId === regionId)?.units.find((unit) => unit.unitId === unitId)?.name ??
+    silverOf(regionId, unitId)?.formed?.alias ??
+    null;
+  const regionAnswer = (report: ReportRegion, row: WorkedRegion | undefined) => ({
+    regionId: report.regionId,
+    region: regionLabel(report),
+    worked: row !== undefined,
+    orders: (row?.orders ?? []).map((order) => (order.crafted === null ? order.kind : `${order.kind} ${order.crafted}`)),
+    resources: row
+      ? row.resources.map((resource) => {
+          const producers = resource.producers.map(({ regionId, unitId }) => {
+            const unit = silverOf(regionId, unitId);
+            return {
+              unitId,
+              name: nameOf(regionId, unitId),
+              produced: unit?.produced ?? null,
+              couldMake: unit?.productionWanted ?? null,
+              asked: unit?.productionRequested ?? null,
+              cappedBy: unit?.productionCappedBy ?? null,
+              sharedWithForeign: unit?.productionForeignSharer ?? false
+            };
+          });
+          const beyondCap = producers
+            .filter((producer) => producer.cappedBy === "region")
+            .reduce((sum, producer) => sum + Math.max(0, (producer.couldMake ?? 0) - (producer.produced ?? 0)), 0);
+          return { ...productFigures(resource.tag, resource.name, resource.available, resource.produced, beyondCap), producers };
+        })
+      : report.products.map((product) => ({ ...productFigures(product.tag, product.name, product.amount, 0, 0), producers: [] }))
+  });
+
+  if (region !== null) {
+    return { regions: [regionAnswer(region, worked.get(region.regionId))] };
+  }
+  const regions = parsed.regions
+    .filter((report) => worked.has(report.regionId) || report.units.some((unit) => unit.own))
+    .map((report) => regionAnswer(report, worked.get(report.regionId)));
+  const totals = new Map<string, ReturnType<typeof productFigures>>();
+  for (const resource of regions.flatMap((row) => row.resources)) {
+    const before = totals.get(resource.tag);
+    const available =
+      before === undefined ? resource.available : before.available === null || resource.available === null ? null : before.available + resource.available;
+    totals.set(
+      resource.tag,
+      productFigures(
+        resource.tag,
+        before?.name ?? resource.name,
+        available,
+        (before?.produced ?? 0) + resource.produced,
+        (before?.beyondCap ?? 0) + resource.beyondCap
+      )
+    );
+  }
+  return { limits: overview.limits, regionsUsed: overview.used, regions, totals: [...totals.values()] };
+}
+
 function runsShort(silver: UnitSilver): boolean {
   const afterUpkeep = silverShown(silver, true);
   return (
@@ -905,6 +995,17 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       const carryingJson = carryingJsonOf(rulesetText, args.carrying);
       const response = await host.planRoute(unitId, destination, carryingJson);
       return ok(routeAnswer(unitId, destination, response, carryingJson !== ""));
+    }
+
+    case "get_production": {
+      const named = stringArg(args, "regionId") !== undefined || numberArg(args, "x") !== undefined;
+      const region = named ? findRegion(parsed, args) : null;
+      if (turn.rulesetText === null) {
+        // Without the game data nothing is priced, and every product would read as idle.
+        refuse("The game data has not loaded yet; try again in a moment.");
+      }
+      const validation = await host.validate(turn.ordersDocument);
+      return ok(productionAnswer(parsed, validation.production, validation.silver, region));
     }
 
     case "get_silver_shortfalls": {
