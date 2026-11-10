@@ -125,7 +125,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_forecast",
     description:
-      "What the HUD forecasts this month's orders leave a unit, or every own unit in a hex, with: status (present, departing, arriving, or unchanged when its orders change nothing), men, items and skills at month end, the item changes in the month's order, what is produced, built and created, casts the game refuses, transports sent and received, where its study lands, and its silver - held, in, out, upkeep, at month end before and after upkeep, how much its orders are short and on what, and orders refused for want of silver. The same figures the HUD's preview shows. Name a unit by unitId, or a hex by regionId or x, y and z.",
+      "What the HUD forecasts this month's orders leave a unit, or every own unit in a hex, with: status (present, departing, arriving, or unchanged when its orders change nothing), men, items and skills at month end, the item changes in the month's order, what is produced, built and created, casts the game refuses, transports sent and received, where its study lands, and its silver - held, in, out, upkeep, at month end before and after upkeep, how much its orders are short and on what, and orders refused for want of silver. The same figures the HUD's preview shows; silver is in the silver figures, never in the items. A unit that moves this month is listed twice, departing where it stands and arriving where it ends, both rows carrying the same month - count it once. Name a unit by unitId, or a hex by regionId or x, y and z.",
     inputSchema: {
       type: "object",
       properties: {
@@ -395,7 +395,9 @@ function unitForecast(
       aboard: preview?.aboard
     }),
     men: unit.men,
-    itemsAtMonthEnd: itemsLine(unit),
+    // Silver is the `silver` figures' to say: the preview's SILV item is settled by a different pass
+    // and is not the Silver column's figure, so a model handed both would be handed two answers.
+    itemsAtMonthEnd: itemsLine({ ...unit, items: unit.items.filter((item) => item.tag !== "SILV") }),
     skillsAtMonthEnd: skillsLine(unit),
     ...(preview
       ? present({
@@ -593,6 +595,10 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     }
 
     case "get_silver_shortfalls": {
+      if (turn.rulesetText === null) {
+        // Without the game data nothing can be priced, and an empty answer would read as nobody short.
+        refuse("The game data has not loaded yet; try again in a moment.");
+      }
       const validation = await host.validate(turn.ordersDocument);
       const short = validation.silver.filter(runsShort);
       const regions = parsed.regions
@@ -603,7 +609,7 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
             .filter((silver) => silver.regionId === region.regionId)
             .map((silver) => ({
               unitId: silver.unitId,
-              name: region.units.find((unit) => unit.unitId === silver.unitId)?.name ?? null,
+              name: region.units.find((unit) => unit.unitId === silver.unitId)?.name ?? silver.formed?.alias ?? null,
               // The ledger behind each figure is get_forecast's to give; a summary stays a summary.
               ...silverForecast(silver, false)
             }))

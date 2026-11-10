@@ -675,13 +675,68 @@ describe("the forecast", () => {
     expect(neither.isError).toBe(true);
   });
 
-  it("refuses while the game data is still loading", async () => {
+  it("refuses while the game data is still loading, for a unit or a hex", async () => {
     const { host } = aHost(aTurn({ rulesetText: null }));
 
-    const answer = await call(host, "get_forecast", { unitId: "100" });
+    const unit = await call(host, "get_forecast", { unitId: "100" });
+    const hex = await call(host, "get_forecast", { regionId: "1,1,1" });
+
+    expect(unit.isError).toBe(true);
+    expect(unit.text).toContain("game data has not loaded");
+    expect(hex.isError).toBe(true);
+    expect(hex.text).toContain("game data has not loaded");
+  });
+
+  it("refuses another faction's unit", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = await call(host, "get_forecast", { unitId: "900" });
 
     expect(answer.isError).toBe(true);
-    expect(answer.text).toContain("game data has not loaded");
+    expect(answer.text).toContain("only own units are forecast");
+  });
+
+  it("says where a departing unit goes and what carries it", async () => {
+    const departing = aUnitPreview(
+      aReportUnit({ unitId: "101", name: "Scout", regionId: "1,1,1", own: true, factionId: "3", men: 1 }),
+      { status: "departing", departingTo: "forest (2,1,1)", aboard: "Swift [5]" }
+    );
+    const { host } = aHost(aTurn(), [], { preview: { regions: [{ regionId: "1,1,1", units: [departing] }] } });
+
+    const forecast = json((await call(host, "get_forecast", { regionId: "1,1,1" })).text);
+
+    expect(forecast.units[0]).toMatchObject({
+      unitId: "101",
+      status: "departing",
+      departingTo: "forest (2,1,1)",
+      aboard: "Swift [5]"
+    });
+  });
+
+  it("leaves silver out of the items, since the silver figures say it", async () => {
+    const holding = aUnitPreview(
+      aReportUnit({
+        unitId: "100",
+        name: "Farmers",
+        regionId: "1,1,1",
+        own: true,
+        factionId: "3",
+        men: 10,
+        items: [
+          { amount: 10, name: "humans", tag: "HUMN" },
+          { amount: 380, name: "silver", tag: "SILV" }
+        ]
+      })
+    );
+    const { host } = aHost(aTurn(), [], {
+      silver: [FARMERS_SILVER],
+      preview: { regions: [{ regionId: "1,1,1", units: [holding] }] }
+    });
+
+    const forecast = json((await call(host, "get_forecast", { unitId: "100" })).text);
+
+    expect(forecast.units[0].itemsAtMonthEnd).toBe("10 HUMN");
+    expect(forecast.units[0].silver.atMonthEnd).toBe(380);
   });
 });
 
@@ -720,6 +775,29 @@ describe("where silver runs short", () => {
     expect(answer.regions[0].units.map((unit: { unitId: string }) => unit.unitId)).toEqual(["100", "101"]);
     expect(answer.regions[0].units[0].doubt).toBe("unknown-tax-base");
     expect(answer.regions[0].units[1].refused).toHaveLength(1);
+  });
+
+  it("refuses while the game data is still loading, rather than finding nobody short", async () => {
+    const { host } = aHost(aTurn({ rulesetText: null }));
+
+    const answer = await call(host, "get_silver_shortfalls");
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("game data has not loaded");
+  });
+
+  it("names a unit this month's orders form by its alias", async () => {
+    const formed = aUnitSilver({
+      unitId: "new-1",
+      regionId: "1,1,1",
+      shortForOrders: 40,
+      formed: { alias: "new 1", formedBy: "100" }
+    });
+    const { host } = aHost(aTurn(), [], { silver: [formed] });
+
+    const answer = json((await call(host, "get_silver_shortfalls")).text);
+
+    expect(answer.regions[0].units[0]).toMatchObject({ unitId: "new-1", name: "new 1" });
   });
 
   it("is empty when nobody is short", async () => {
