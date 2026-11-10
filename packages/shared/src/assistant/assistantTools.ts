@@ -72,23 +72,33 @@ export interface AssistantHost {
   writeOrders(update: (document: string) => string, unitId: string): void;
   /** What the assistant last read or wrote of each unit's orders, kept between calls. */
   readonly seen: AssistantSeen;
-  /** The open game's Armies, or `null` while they are loading or belong to another game. */
-  armies(): readonly ArmyRecord[] | null;
+  /** The open game's Armies; `loading` until they are read, `failed` when they could not be. */
+  armies(): readonly ArmyRecord[] | "loading" | "failed";
   /** What the battle-roster scan has recovered so far, as the Army export dialog reads it. */
   battleSkills(): { readonly skills: DerivedSkills; readonly scanning: boolean; readonly unreadTurns: number };
-  /** Writes `text` to `path`, overwriting what is there; rejects with a sentence saying why it could not. */
+  /**
+   * Writes `text` to `path`, replacing a battle file already there but no other file; rejects with
+   * a sentence saying why it could not.
+   */
   writeFile(path: string, text: string): Promise<void>;
 }
 
 /**
- * The Armies the tools may answer from: the store's list once it has loaded for the open game, and
- * `null` otherwise - a list still loading, one that failed, or one left over from another game.
+ * The Armies the tools may answer from: the store's list once it has loaded for the open game.
+ * A list still loading, or one left over from another game, is `loading` - the open game's load is
+ * on its way - and only a failed load of the open game's own is `failed`, since retrying will not help.
  */
 export function readyArmies(
   state: Pick<ArmiesState, "gameId" | "status" | "armies">,
   gameId: string
-): readonly ArmyRecord[] | null {
-  return state.status === "ready" && state.gameId === gameId ? state.armies : null;
+): readonly ArmyRecord[] | "loading" | "failed" {
+  if (state.gameId !== gameId) {
+    return "loading";
+  }
+  if (state.status === "error") {
+    return "failed";
+  }
+  return state.status === "ready" ? state.armies : "loading";
 }
 
 /** One tool as MCP lists it. */
@@ -262,7 +272,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
         defenders: { type: "string", description: "The defending Army's id or name." },
         path: {
           type: "string",
-          description: "Where to write the file: an absolute path ending in .json, in a folder that exists. A file already there is replaced."
+          description: "Where to write the file: an absolute path ending in .json, in a folder that exists. A battle file already there is replaced; any other file there is kept and the write refused."
         }
       },
       required: ["path"]
@@ -580,7 +590,14 @@ function armyMemberRow(member: ArmyMemberRecord, currentTurn: number | null) {
 }
 
 function savedArmies(host: AssistantHost): readonly ArmyRecord[] {
-  return host.armies() ?? refuse("The HUD is still loading this game's Armies; try again in a moment.");
+  const armies = host.armies();
+  if (armies === "loading") {
+    refuse("The HUD is still loading this game's Armies; try again in a moment.");
+  }
+  if (armies === "failed") {
+    refuse("The HUD could not read this game's Armies. Ask the player to open the game again.");
+  }
+  return armies;
 }
 
 /** The Army an argument names, by id or else by name ignoring case; `null` when it names none. */
@@ -946,8 +963,9 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     case "export_battle_file": {
       const path = requiredString(args, "path");
       const armies = savedArmies(host);
-      const attackers = namedArmy(armies, args, "attackers");
-      const defenders = namedArmy(armies, args, "defenders");
+      // With nothing saved, the dialog's own refusal says so better than "no Army is called ...".
+      const attackers = armies.length === 0 ? null : namedArmy(armies, args, "attackers");
+      const defenders = armies.length === 0 ? null : namedArmy(armies, args, "defenders");
       const currentTurn =
         parsed.header.turnNumber ?? refuse("This turn's report has no turn number, so its Armies cannot be exported.");
       const { skills, scanning, unreadTurns } = host.battleSkills();

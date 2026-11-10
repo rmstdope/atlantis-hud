@@ -173,7 +173,7 @@ interface Forecast {
 
 /** What the host lends the army tools, each part replaceable by a test. */
 interface ArmyWorld {
-  armies: readonly ArmyRecord[] | null;
+  armies: readonly ArmyRecord[] | "loading" | "failed";
   skills: DerivedSkills;
   scanning: boolean;
   unreadTurns: number;
@@ -1085,10 +1085,13 @@ describe("readyArmies", () => {
     expect(readyArmies({ gameId: "game-1", status: "ready", armies: [HOST_ARMY] }, "game-1")).toEqual([HOST_ARMY]);
   });
 
-  it("answers null while they load, after a failed load, and for another game's list", () => {
-    expect(readyArmies({ gameId: "game-1", status: "loading", armies: [] }, "game-1")).toBeNull();
-    expect(readyArmies({ gameId: "game-1", status: "error", armies: [] }, "game-1")).toBeNull();
-    expect(readyArmies({ gameId: "game-2", status: "ready", armies: [HOST_ARMY] }, "game-1")).toBeNull();
+  it("answers loading while they load and while the list is still another game's", () => {
+    expect(readyArmies({ gameId: "game-1", status: "loading", armies: [] }, "game-1")).toBe("loading");
+    expect(readyArmies({ gameId: "game-2", status: "ready", armies: [HOST_ARMY] }, "game-1")).toBe("loading");
+  });
+
+  it("answers failed when the open game's Armies could not be read", () => {
+    expect(readyArmies({ gameId: "game-1", status: "error", armies: [] }, "game-1")).toBe("failed");
   });
 });
 
@@ -1141,12 +1144,23 @@ describe("list_armies", () => {
   });
 
   it("refuses while the game's Armies are still loading", async () => {
-    const { host } = aHost(aTurn(), [], {}, { armies: null });
+    const { host } = aHost(aTurn(), [], {}, { armies: "loading" });
 
     const answer = await call(host, "list_armies");
 
     expect(answer.isError).toBe(true);
     expect(answer.text).toContain("still loading");
+  });
+
+  it("says the Armies could not be read, rather than to wait, when their load failed", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: "failed" });
+
+    const answer = await call(host, "list_armies");
+
+    expect(answer).toEqual({
+      text: "The HUD could not read this game's Armies. Ask the player to open the game again.",
+      isError: true
+    });
   });
 });
 
@@ -1190,6 +1204,14 @@ describe("export_battle_file", () => {
 
     expect(answer).toEqual({ text: "Empty has no units in it.", isError: true });
     expect(files).toEqual([]);
+  });
+
+  it("refuses with the dialog's own sentence when the player has saved no Armies, even with one named", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: [] });
+
+    const answer = await call(host, "export_battle_file", { attackers: "Northern Host", path: "/tmp/x.json" });
+
+    expect(answer).toEqual({ text: "No Armies to export. Make an Army first, then come back.", isError: true });
   });
 
   it("refuses when no Army is named for either side", async () => {

@@ -4544,7 +4544,7 @@ export function AppShell({
     bannerFor: regionBanner,
     // Read through `getState()` on each call, like the Export button, so a call answers from the
     // Armies and scan as they stand when it arrives (ah-a97xg.11).
-    armies: () => (game === null ? null : readyArmies(useArmiesStore.getState(), game.manifest.metadata.gameId)),
+    armies: () => (game === null ? "loading" : readyArmies(useArmiesStore.getState(), game.manifest.metadata.gameId)),
     battleSkills: () => {
       const { skills, status, unreadTurns } = useBattleSkillsStore.getState();
       return { skills, scanning: status === "scanning", unreadTurns };
