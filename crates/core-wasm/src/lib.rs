@@ -530,6 +530,7 @@ pub fn plan_route_state(
     unit_id: String,
     destination: String,
     map_json: String,
+    carrying_json: String,
 ) -> Result<JsValue, JsValue> {
     let response = atlantis_hud_core::cache::with_global(|cache| {
         atlantis_hud_core::movement::request::plan_on_map(
@@ -540,6 +541,7 @@ pub fn plan_route_state(
             &unit_id,
             &destination,
             &map_json,
+            &carrying_json,
         )
     })
     .map_err(|error| JsValue::from_str(&error))?;

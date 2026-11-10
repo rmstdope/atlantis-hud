@@ -22,6 +22,7 @@ import type {
   ParsedReport,
   ReportRegion,
   ReportUnit,
+  RoutePlanResponse,
   UnitPreview,
   UnitSilver
 } from "@atlantis/core-client";
@@ -33,6 +34,7 @@ import type { DerivedSkills } from "../battleSkills";
 import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 import { silverShown } from "../unitTable";
+import { describeEstimate, describeLoadCheck, describeProblem } from "../workspace/PlannerPanel";
 
 /** The turn on screen, as the tools read it. */
 export interface AssistantTurn {
@@ -65,6 +67,12 @@ export interface AssistantHost {
    * month - against everything else on screen. Rejects while the game data has not loaded.
    */
   preview(document: string): Promise<OrdersPreviewResponse>;
+  /**
+   * The HUD's own route planner - the one the Movement panel asks - for `unitId` to `destination`
+   * (`z:x,y`), over the map the HUD remembers. `carryingJson` is empty, or a JSON object of item
+   * tag to how many the unit will hold when it moves. Rejects while the game data has not loaded.
+   */
+  planRoute(unitId: string, destination: string, carryingJson: string): Promise<RoutePlanResponse>;
   /**
    * Applies `update`, which rewrites `unitId`'s block, to the document as it stands when the write
    * lands - which may hold something typed since the tool read it - and saves the result.
@@ -193,6 +201,27 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
         yMax: { type: "number" },
         terrain: { type: "string", description: "Only this terrain, e.g. \"plain\"." }
       }
+    }
+  },
+  {
+    name: "plan_route",
+    description:
+      "The route the HUD's route planner - the one its Movement panel uses - finds for an own unit to a hex, over the map the HUD remembers: the order it becomes (MOVE ..., or SAIL ... for a fleet), exactly as the panel would write it; whether it walks, rides, flies or sails; movementPoints, the total cost; months, how many months it takes, with where each month ends; each step's terrain and cost, a road, an unexplored (estimated) hex; and the risk along it. When there is no route, problem and reason say why - not an error, a fact to plan around. Name the destination by regionId or x, y and z (z left out is the unit's own level). Pass carrying to plan for the unit as it will be loaded when it moves, after this month's GIVE and TAKE: item tag to how many it will hold, e.g. {\"HORS\": 4, \"LIVE\": 2}; each tag named replaces what the report shows, 0 drops it, the rest stay as reported. Writes nothing: give the order with set_unit_orders.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        unitId: UNIT_ID,
+        regionId: { type: "string", description: "The destination, as list_known_regions names it, e.g. \"1:12,4\"." },
+        x: { type: "number" },
+        y: { type: "number" },
+        z: { type: "number", description: "The level. The unit's own when left out." },
+        carrying: {
+          type: "object",
+          description: "Item tag to how many the unit will hold when it moves, e.g. {\"HORS\": 4}.",
+          additionalProperties: { type: "number" }
+        }
+      },
+      required: ["unitId"]
     }
   },
   {
@@ -617,6 +646,97 @@ function namedArmy(armies: readonly ArmyRecord[], args: Record<string, unknown>,
   return byName[0] ?? refuse(`No Army is called "${wanted}". list_armies names every one the player has saved.`);
 }
 
+/**
+ * The hex `args` names as a route's destination, `z:x,y` as the planner reads it: a region this
+ * report shows or the map remembers by `regionId`, an identifier already in that form, or `x`, `y`
+ * and `z` - `z` the unit's own level when left out.
+ */
+function routeDestination(turn: AssistantTurn, args: Record<string, unknown>, unitRegion: ReportRegion): string {
+  const regionId = stringArg(args, "regionId");
+  if (regionId !== undefined) {
+    const shown = turn.parsed.regions.find((region) => region.regionId === regionId);
+    const remembered = turn.knownMap?.hexes.find((hex) => hexIdOf(hex) === regionId);
+    const coordinate = shown?.coordinate ?? remembered?.coordinate;
+    if (coordinate) {
+      return regionIdOf(coordinate);
+    }
+    if (/^-?\d+:-?\d+,-?\d+$/u.test(regionId.trim())) {
+      return regionId.trim();
+    }
+    refuse(`No region ${regionId} is known to this turn's report or the HUD's map. list_known_regions names every one the map knows.`);
+  }
+  const x = numberArg(args, "x");
+  const y = numberArg(args, "y");
+  if (x === undefined || y === undefined) {
+    refuse("Name the destination by regionId, or by x and y (and z).");
+  }
+  return regionIdOf({ x, y, z: numberArg(args, "z") ?? unitRegion.coordinate.z });
+}
+
+/** `carrying` as the planner reads it, every tag checked against the game data, or a refusal. */
+function carryingJsonOf(rulesetText: string, carrying: unknown): string {
+  if (carrying === undefined || carrying === null) {
+    return "";
+  }
+  if (typeof carrying !== "object" || Array.isArray(carrying)) {
+    refuse('"carrying" must be an object of item tag to amount, e.g. {"HORS": 4}.');
+  }
+  const items = (JSON.parse(rulesetText) as { items?: Record<string, unknown> }).items ?? {};
+  const known = new Set(Object.keys(items).map((tag) => tag.toUpperCase()));
+  const held: Record<string, number> = {};
+  for (const [tag, amount] of Object.entries(carrying as Record<string, unknown>)) {
+    const upper = tag.trim().toUpperCase();
+    if (!known.has(upper)) {
+      refuse(`The game data has no item tagged ${tag}; get_game_data looks one up by name.`);
+    }
+    if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 0) {
+      refuse(`How many ${upper} the unit will hold must be a whole number, 0 or more.`);
+    }
+    held[upper] = amount;
+  }
+  return JSON.stringify(held);
+}
+
+/** A planner's answer for the model: the route, or why there is none. */
+function routeAnswer(unitId: string, destination: string, response: RoutePlanResponse, carried: boolean) {
+  const { plan } = response;
+  if (plan === null) {
+    return {
+      unitId,
+      to: destination,
+      problem: response.problem,
+      reason: response.problem ? describeProblem(response.problem) : "The planner found no route and gave no reason."
+    };
+  }
+  const notes = [
+    describeEstimate(plan.steps),
+    describeLoadCheck(plan),
+    response.fullyModelled ? null : "Not everything about movement is modelled (weather, today), so the cost is a lower bound.",
+    carried && plan.mode === "sail"
+      ? "A fleet is weighed as the report shows the units aboard; what this unit was given to carry does not change it."
+      : null
+  ].filter((note): note is string => note !== null);
+  return {
+    unitId,
+    from: regionIdOf(plan.from),
+    to: regionIdOf(plan.to),
+    mode: plan.mode,
+    order: plan.order,
+    movementPoints: plan.totalCost,
+    months: plan.months.length,
+    monthLegs: plan.months.map((leg) => ({ month: leg.month, steps: leg.steps, endsAt: regionIdOf(leg.endsAt) })),
+    steps: plan.steps.map((step) => ({
+      direction: step.direction,
+      regionId: regionIdOf(step.to),
+      terrain: step.terrain,
+      cost: step.cost,
+      ...present({ road: step.road, canal: step.canal ?? null, estimated: step.estimated, overWater: step.overWater })
+    })),
+    ...(response.risk ? { risk: { level: response.risk.level, worst: response.risk.worst } } : {}),
+    ...(notes.length > 0 ? { notes } : {})
+  };
+}
+
 /** Names the turn on screen, so a write can say which turn it was worked out for. */
 function turnKeyOf(turn: AssistantTurn): string {
   return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
@@ -772,6 +892,19 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
           ...unchanged.map((unit) => unitForecast(hex.regionId, { status: "unchanged", unit }, silverOf(unit.unitId)))
         ]
       });
+    }
+
+    case "plan_route": {
+      const unitId = requiredString(args, "unitId");
+      const found = findUnit(parsed, unitId) ?? refuse(`This turn's report shows no unit ${unitId}.`);
+      if (!found.unit.own) {
+        refuse(`Unit ${unitId} is not the faction's own; only own units can be given orders, so only they are planned for.`);
+      }
+      const rulesetText = turn.rulesetText ?? refuse("The game data has not loaded yet; try again in a moment.");
+      const destination = routeDestination(turn, args, found.region);
+      const carryingJson = carryingJsonOf(rulesetText, args.carrying);
+      const response = await host.planRoute(unitId, destination, carryingJson);
+      return ok(routeAnswer(unitId, destination, response, carryingJson !== ""));
     }
 
     case "get_silver_shortfalls": {

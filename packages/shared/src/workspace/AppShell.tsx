@@ -3816,7 +3816,7 @@ export function AppShell({
     let cancelled = false;
     setPlanning(true);
     void client
-      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination, mapJson)
+      .planRoute(ruleset.text, rawReport, rememberedJson, unit.unitId, destination, mapJson, "")
       .then((answer) => {
         if (!cancelled) {
           setRoute(answer);
@@ -4576,6 +4576,11 @@ export function AppShell({
               advisoryChecks
             })
           ),
+    // The Movement panel's own planner over the same remembered map and map shape (ah-a97xg.3).
+    planRoute: (unitId, destination, carryingJson) =>
+      rulesetText === null
+        ? Promise.reject(new Error("The game data has not loaded yet."))
+        : client.planRoute(rulesetText, rawReport, rememberedJson, unitId, destination, mapJson, carryingJson),
     // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
     // kept. Only the open unit's editor takes its block again: a write to another unit leaves
     // whatever the player is typing alone, and the autosave writes the draft either way.

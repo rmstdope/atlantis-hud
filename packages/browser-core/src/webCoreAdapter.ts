@@ -68,7 +68,8 @@ export type CoreWasmModule = {
     rememberedJson: string,
     unitId: string,
     destination: string,
-    mapJson: string
+    mapJson: string,
+    carryingJson: string
   ): RoutePlanResponse;
   trace_move_orders_state(request: TraceMoveOrdersRequest): MoveOrderTraceResponse;
   known_map_state(
@@ -561,7 +562,8 @@ export function createWebCoreAdapter(
       rememberedJson: string,
       unitId: string,
       destination: string,
-      mapJson: string
+      mapJson: string,
+      carryingJson: string
     ) {
       // Straight through to the core: unlike the persistence entry points there is no browser
       // storage to stand in for a database. The report goes as text, which is what the core keys
@@ -572,7 +574,8 @@ export function createWebCoreAdapter(
         rememberedJson,
         unitId,
         destination,
-        mapJson
+        mapJson,
+        carryingJson
       );
     },
     async traceMoveOrders(request: TraceMoveOrdersRequest) {
