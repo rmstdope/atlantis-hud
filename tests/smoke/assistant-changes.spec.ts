@@ -70,9 +70,17 @@ async function turnKey(page: Page): Promise<string> {
   return (JSON.parse((await call(page, "get_turn_overview")).text) as { turnKey: string }).turnKey;
 }
 
-/** Writes `orders` for `unitId`, the way the assistant's `set_unit_orders` does. */
+/** One unit's orders and their version, as the assistant reads them. */
+async function readOrders(page: Page, unitId: string): Promise<{ orders: string; version: string }> {
+  const answer = await call(page, "get_orders", { unitId });
+  expect(answer.isError, answer.text).toBe(false);
+  return JSON.parse(answer.text) as { orders: string; version: string };
+}
+
+/** Writes `orders` for `unitId`, the way the assistant's `write_orders` does: read first, then write. */
 async function write(page: Page, key: string, unitId: string, orders: string) {
-  const answer = await call(page, "set_unit_orders", { turnKey: key, unitId, orders });
+  const { version } = await readOrders(page, unitId);
+  const answer = await call(page, "write_orders", { turnKey: key, units: [{ unitId, version, orders }] });
   expect(answer.isError, answer.text).toBe(false);
 }
 
@@ -174,7 +182,7 @@ test(
     await expect(question).toContainText("Revert 1 unit? The assistant's orders for it will be gone.");
     await page.getByTestId("assistant-changes-cancel").click();
     await expect(question).toHaveCount(0);
-    expect((await call(page, "get_orders", { unitId: second as string })).text).toContain("work");
+    expect((await readOrders(page, second as string)).orders).toContain("work");
 
     // A kept unit stays off the list after a reload.
     await page.reload();
@@ -445,13 +453,12 @@ test(
   { tag: DESKTOP_SHELL_TAG },
   async ({ page }) => {
     await openOnMage(page);
-    const read = await call(page, "get_orders", { unitId: MAGE });
-    expect(read.isError, read.text).toBe(false);
+    const read = await readOrders(page, MAGE);
 
     await fillOrders(page, "study PATT");
 
     await expect
       .poll(async () => JSON.parse((await call(page, "list_order_edits")).text) as unknown)
-      .toEqual({ edits: [expect.objectContaining({ unitId: MAGE, before: read.text, now: "study PATT" })] });
+      .toEqual({ edits: [expect.objectContaining({ unitId: MAGE, before: read.orders, now: "study PATT" })] });
   }
 );

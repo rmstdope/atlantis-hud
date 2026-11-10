@@ -26,6 +26,7 @@ import { NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { NO_PRODUCTION } from "../orderEditor";
 import { orderProcessingFor } from "../orderProcessing";
 import { newAssistantSeen } from "./assistantSeen";
+import { ordersVersion as V } from "./assistantWrites";
 import type { EarlierTurnSource } from "./earlierTurns";
 import { readRuleset } from "@atlantis/fixtures";
 import { parseGameData, type GameDataIndex } from "../gameData";
@@ -398,7 +399,8 @@ describe("answering a call", () => {
       region: "plain (1,1,1) in Coast",
       men: 10,
       skills: "FARM 1 (30)",
-      orders: "work"
+      orders: "work",
+      version: V("work")
     });
   });
 
@@ -417,6 +419,7 @@ describe("answering a call", () => {
 
     expect(unit.unit.name).toBe("Farmers");
     expect(unit.orders).toBe("work");
+    expect(unit.version).toBe(V("work"));
     expect(unit.problems).toEqual(["its line 1 error unknown-order: Unknown order FLY."]);
   });
 
@@ -484,38 +487,138 @@ describe("answering a call", () => {
     expect(events.events).toEqual(["Farmers (100) earns 50 silver."]);
   });
 
-  it("gives the whole orders document, or one unit's block of it", async () => {
+  it("gives the whole orders document with every own unit's version, or one unit's block and version", async () => {
     const { host } = aHost(aTurn());
 
-    expect((await call(host, "get_orders")).text).toBe(DOCUMENT);
-    expect((await call(host, "get_orders", { unitId: "100" })).text).toBe("work");
+    expect(json((await call(host, "get_orders")).text)).toEqual({
+      document: DOCUMENT,
+      versions: { "100": V("work"), "101": V("") }
+    });
+    expect(json((await call(host, "get_orders", { unitId: "100" })).text)).toEqual({ orders: "work", version: V("work") });
   });
+});
+
+describe("write_orders", () => {
+  /** Writes `units` for the open turn. */
+  async function write(host: AssistantHost, ...units: Record<string, unknown>[]) {
+    return call(host, "write_orders", { turnKey: KEY, units });
+  }
 
   it("writes one unit's orders into the document, leaving the rest as it was", async () => {
     const { host, written } = aHost(aTurn());
 
-    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "study FARM\n" });
+    const answer = await write(host, { unitId: "101", version: V(""), orders: "study FARM\n" });
 
-    expect(answer.isError).toBe(false);
+    expect(answer.isError, answer.text).toBe(false);
     expect(written).toHaveLength(1);
     expect(written[0]).toBe(DOCUMENT.replace("unit 101\n", "unit 101\nstudy FARM\n"));
-    expect((await call(host, "get_orders", { unitId: "101" })).text).toBe("study FARM");
+    expect(json((await call(host, "get_orders", { unitId: "101" })).text).orders).toBe("study FARM");
   });
 
-  it("reports what the validator makes of a unit's orders once they are written", async () => {
+  it("answers each unit's new version and what the validator makes of its orders", async () => {
     const { host } = aHost(aTurn(), [aDiagnostic({ lineStart: 9, lineEnd: 9, unitId: "101" })]);
 
-    const answer = json((await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "fly" })).text);
+    const answer = json((await write(host, { unitId: "101", version: V(""), orders: "fly" })).text);
 
-    expect(answer.written).toBe(true);
-    expect(answer.problems).toEqual(["its line 1 error unknown-order: Unknown order FLY."]);
+    expect(answer).toEqual({
+      written: [{ unitId: "101", version: V("fly"), problems: ["its line 1 error unknown-order: Unknown order FLY."] }]
+    });
+  });
+
+  it("refuses a write once the player has changed the unit, writing nothing and showing the orders as they now stand", async () => {
+    const { host, written } = aHost(aTurn());
+    const read = json((await call(host, "get_orders", { unitId: "100" })).text);
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax\nclaim 10"));
+
+    const answer = await write(host, { unitId: "100", version: read.version, orders: "work\nbuy 1 HORS" });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+    expect(answer.text).toContain("Nothing was written");
+    const shown = json(answer.text.slice(answer.text.indexOf("{")));
+    expect(shown).toEqual({
+      changed: [{ unitId: "100", name: "Farmers", orders: "tax\nclaim 10", version: V("tax\nclaim 10") }]
+    });
+  });
+
+  it("writes once the refusal's version is handed back", async () => {
+    const { host, written } = aHost(aTurn());
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax"));
+    await write(host, { unitId: "100", version: V("work"), orders: "work" });
+
+    const answer = await write(host, { unitId: "100", version: V("tax"), orders: "tax\nbuy 1 HORS" });
+
+    expect(answer.isError, answer.text).toBe(false);
+    expect(written[0]).toContain("unit 100\ntax\nbuy 1 HORS");
+  });
+
+  it("does not list a refused unit again as an edit, since the refusal showed it", async () => {
+    const { host } = aHost(aTurn());
+    await call(host, "get_orders", { unitId: "100" });
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax"));
+
+    await write(host, { unitId: "100", version: V("work"), orders: "work" });
+
+    expect(json((await call(host, "list_order_edits")).text).edits).toEqual([]);
+  });
+
+  it("adds and removes single lines without the rest of the block", async () => {
+    const turn = aTurn({ ordersDocument: DOCUMENT.replace("unit 100\nwork", "unit 100\nwork\nclaim 10") });
+    const { host, written } = aHost(turn);
+
+    const answer = await write(host, { unitId: "100", version: V("work\nclaim 10"), remove: ["claim 10"], add: ["buy 1 HORS"] });
+
+    expect(answer.isError, answer.text).toBe(false);
+    expect(written[0]).toContain("unit 100\nwork\nbuy 1 HORS\n\nunit 101");
+  });
+
+  it("refuses a line to remove that the unit's orders do not hold", async () => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = await write(host, { unitId: "100", version: V("work"), remove: ["tax"] });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("tax");
+    expect(written).toEqual([]);
+  });
+
+  it("writes several units in one call", async () => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = json(
+      (await write(host, { unitId: "100", version: V("work"), orders: "tax" }, { unitId: "101", version: V(""), add: ["study FARM"] })).text
+    );
+
+    expect(answer.written.map((unit: { unitId: string }) => unit.unitId)).toEqual(["100", "101"]);
+    expect(written.at(-1)).toBe(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax").replace("unit 101\n", "unit 101\nstudy FARM\n"));
+  });
+
+  it("writes none of several units when one of them has changed", async () => {
+    const { host, written } = aHost(aTurn());
+    host.typeByHand(DOCUMENT.replace("unit 101\n", "unit 101\nstudy COMB\n"));
+
+    const answer = await write(host, { unitId: "100", version: V("work"), orders: "tax" }, { unitId: "101", version: V(""), orders: "study FARM" });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+    expect(json(answer.text.slice(answer.text.indexOf("{"))).changed.map((unit: { unitId: string }) => unit.unitId)).toEqual(["101"]);
+  });
+
+  it("refuses a write without the version the orders were read with", async () => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = await write(host, { unitId: "100", orders: "tax" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("version");
+    expect(written).toEqual([]);
   });
 
   it("creates the block of an own unit the document has none for, under its region's banner", async () => {
     const turn = aTurn({ ordersDocument: "#atlantis 3\n\n;*** plain (1,1) in Coast ***\n\n#end\n" });
     const { host, written } = aHost(turn);
 
-    await call(host, "set_unit_orders", { turnKey: KEY, unitId: "100", orders: "work" });
+    await write(host, { unitId: "100", version: V(""), orders: "work" });
 
     expect(written[0]).toContain("unit 100\nwork");
   });
@@ -523,7 +626,7 @@ describe("answering a call", () => {
   it("refuses to write orders for a unit that is not the faction's own", async () => {
     const { host, written } = aHost(aTurn());
 
-    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "900", orders: "work" });
+    const answer = await write(host, { unitId: "900", version: V(""), orders: "work" });
 
     expect(answer.isError).toBe(true);
     expect(written).toEqual([]);
@@ -533,7 +636,7 @@ describe("answering a call", () => {
     const { host, written } = aHost(aTurn());
 
     const overview = json((await call(host, "get_turn_overview")).text);
-    const stale = await call(host, "set_unit_orders", { turnKey: "game-1/3/11", unitId: "101", orders: "work" });
+    const stale = await call(host, "write_orders", { turnKey: "game-1/3/11", units: [{ unitId: "101", version: V(""), orders: "work" }] });
 
     expect(overview.turnKey).toBe(KEY);
     expect(stale.isError).toBe(true);
@@ -550,7 +653,7 @@ describe("answering a call", () => {
       touched = unitId;
     };
 
-    await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "study FARM" });
+    await write(host, { unitId: "101", version: V(""), orders: "study FARM" });
 
     expect(landed).toContain("unit 100\ntax");
     expect(landed).toContain("unit 101\nstudy FARM");
@@ -566,7 +669,53 @@ describe("answering a call", () => {
   ])("refuses orders that carry %s, which would reshape the document", async (_what, orders) => {
     const { host, written } = aHost(aTurn());
 
-    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders });
+    const replaced = await write(host, { unitId: "101", version: V(""), orders });
+    const added = await write(host, { unitId: "101", version: V(""), add: orders.split("\n") });
+
+    expect(replaced.isError).toBe(true);
+    expect(added.isError).toBe(true);
+    expect(written).toEqual([]);
+  });
+
+  it.each([
+    ["a unit header", "study FARM\nunit 100"],
+    ["the end of the file", "study FARM\r\n#end"]
+  ])("refuses a line to add that carries %s after a line break", async (_what, line) => {
+    const { host, written } = aHost(aTurn());
+
+    const answer = await write(host, { unitId: "101", version: V(""), add: [line] });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+  });
+
+  it("refuses a line edit once the player has changed the unit", async () => {
+    const { host, written } = aHost(aTurn());
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\nwork\ntax"));
+
+    const answer = await write(host, { unitId: "100", version: V("work"), remove: ["work"], add: ["claim 10"] });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+    expect(json(answer.text.slice(answer.text.indexOf("{"))).changed[0]).toMatchObject({ unitId: "100", orders: "work\ntax" });
+  });
+
+  it("shows the units the player changed even when another unit's line edit is refused too", async () => {
+    const { host, written } = aHost(aTurn());
+    host.typeByHand(DOCUMENT.replace("unit 100\nwork", "unit 100\ntax"));
+
+    const answer = await write(host, { unitId: "100", version: V("work"), orders: "work" }, { unitId: "101", version: V(""), remove: ["tax"] });
+
+    expect(answer.isError).toBe(true);
+    expect(written).toEqual([]);
+    expect(json(answer.text.slice(answer.text.indexOf("{"))).changed.map((unit: { unitId: string }) => unit.unitId)).toEqual(["100"]);
+  });
+
+  it("refuses empty orders for a unit with no block and no banner to make one under", async () => {
+    const turn = aTurn({ ordersDocument: "#atlantis 3\n\n#end\n" });
+    const { host, written } = aHost(turn);
+
+    const answer = await write(host, { unitId: "100", version: V(""), orders: "" });
 
     expect(answer.isError).toBe(true);
     expect(written).toEqual([]);
@@ -575,12 +724,14 @@ describe("answering a call", () => {
   it("refuses orders that are not text", async () => {
     const { host, written } = aHost(aTurn());
 
-    const answer = await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: { order: "work" } });
+    const answer = await write(host, { unitId: "101", version: V(""), orders: { order: "work" } });
 
     expect(answer.isError).toBe(true);
     expect(written).toEqual([]);
   });
+});
 
+describe("the rest of the turn's tools", () => {
   it("lists every problem in the document with the unit it belongs to", async () => {
     const { host } = aHost(aTurn(), [
       aDiagnostic(),
@@ -642,7 +793,7 @@ describe("list_order_edits", () => {
     host.typeByHand(EDITED);
 
     expect(await edits(host)).toEqual([
-      { unitId: "100", name: "Farmers", regionId: "1,1,1", before: "work", now: "tax" }
+      { unitId: "100", name: "Farmers", regionId: "1,1,1", before: "work", now: "tax", version: V("tax") }
     ]);
   });
 
@@ -678,13 +829,13 @@ describe("list_order_edits", () => {
 
   it("does not list the assistant's own write, but lists the player's edit after it", async () => {
     const { host, written } = aHost(aTurn());
-    await call(host, "set_unit_orders", { turnKey: KEY, unitId: "101", orders: "study FARM" });
+    await call(host, "write_orders", { turnKey: KEY, units: [{ unitId: "101", version: V(""), orders: "study FARM" }] });
 
     expect(await edits(host)).toEqual([]);
 
     host.typeByHand((written[0] as string).replace("study FARM", "study COMB"));
     expect(await edits(host)).toEqual([
-      { unitId: "101", name: "Scout", regionId: "1,1,1", before: "study FARM", now: "study COMB" }
+      { unitId: "101", name: "Scout", regionId: "1,1,1", before: "study FARM", now: "study COMB", version: V("study COMB") }
     ]);
   });
 
