@@ -184,9 +184,9 @@ describe("productionView", () => {
     const row = rowOf({
       tax: fullTax,
       resources: [
-        { name: "grain", tag: "GRAI", produced: 24, available: 24 },
-        { name: "furs", tag: "FUR", produced: 4, available: 10 },
-        { name: "iron", tag: "IRON", produced: 5, available: null }
+        { name: "grain", tag: "GRAI", produced: 24, available: 24, producers: [] },
+        { name: "furs", tag: "FUR", produced: 4, available: 10, producers: [] },
+        { name: "iron", tag: "IRON", produced: 5, available: null, producers: [] }
       ]
     });
     expect(row.resources).toEqual([
@@ -200,7 +200,7 @@ describe("productionView", () => {
   it("an estimate never makes a gap", () => {
     const row = rowOf({
       tax: { base: 600, taxed: true, collected: 100, pillaged: null, atMost: true },
-      resources: [{ name: "iron", tag: "IRON", produced: 0, available: null }]
+      resources: [{ name: "iron", tag: "IRON", produced: 0, available: null, producers: [] }]
     });
     expect(row.gap).toBe(false);
   });
@@ -210,7 +210,7 @@ describe("productionView", () => {
       orders: [{ kind: "produce", crafted: null }],
       usesTradeSlot: true,
       tax: { base: 400, taxed: false, collected: 0, pillaged: null, atMost: false },
-      resources: [{ name: "grain", tag: "GRAI", produced: 10, available: 10 }]
+      resources: [{ name: "grain", tag: "GRAI", produced: 10, available: 10, producers: [] }]
     });
     expect(row.gap).toBe(true);
   });
