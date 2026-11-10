@@ -48,6 +48,12 @@ describe("parseUnitWrites", () => {
     ]);
   });
 
+  it("reads a line edit ending in a line break as the line itself, and a break inside it as two lines", () => {
+    expect(parseUnitWrites([{ unitId: "100", version: "a", remove: ["work\n"], add: ["tax\r\n", "claim 10\nbuy 1 HORS", ""] }])).toEqual([
+      { unitId: "100", version: "a", remove: ["work"], add: ["tax", "claim 10", "buy 1 HORS", ""] }
+    ]);
+  });
+
   it.each([
     ["no units", [], /at least one unit/u],
     ["not a list", "100", /at least one unit/u],

@@ -69,8 +69,13 @@ function linesOf(value: unknown, name: string, unitId: string): readonly string[
     throw new Error(`Unit ${unitId}: "${name}" must be a list of order lines.`);
   }
   // An entry holding a line break is several lines: split here, so each is checked as the line it
-  // will become - a "unit" header hidden after a break must not slip past the structure check.
-  return (value as string[]).flatMap((line) => line.split(/\r?\n/u));
+  // will become - a "unit" header hidden after a break must not slip past the structure check. The
+  // blank pieces a break leaves (a trailing newline, as model output often has) are not lines meant;
+  // an entry that is blank on its own still is one.
+  return (value as string[]).flatMap((line) => {
+    const pieces = line.split(/\r?\n/u);
+    return pieces.length === 1 ? pieces : pieces.filter((piece) => piece.trim() !== "");
+  });
 }
 
 /** The `units` of a write, read strictly: throws a sentence naming what is wrong. */
