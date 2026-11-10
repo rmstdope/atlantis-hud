@@ -10,9 +10,19 @@
  * a person, so they say exactly what the HUD knows and nothing it would have to guess.
  */
 
-import type { OrderDiagnostic, OrderValidationResult, ParsedReport, ReportRegion, ReportUnit } from "@atlantis/core-client";
+import type {
+  OrderDiagnostic,
+  OrdersPreviewResponse,
+  OrderValidationResult,
+  ParsedReport,
+  ReportRegion,
+  ReportUnit,
+  UnitPreview,
+  UnitSilver
+} from "@atlantis/core-client";
 import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
+import { silverShown } from "../unitTable";
 
 /** The turn on screen, as the tools read it. */
 export interface AssistantTurn {
@@ -35,6 +45,11 @@ export interface AssistantHost {
   bannerFor(regionId: string): string | null;
   /** The HUD's own validation of `document`, against everything else on screen. */
   validate(document: string): Promise<OrderValidationResult>;
+  /**
+   * The HUD's own preview of `document` - what the map and the unit table show for the coming
+   * month - against everything else on screen. Rejects while the game data has not loaded.
+   */
+  preview(document: string): Promise<OrdersPreviewResponse>;
   /**
    * Applies `update`, which rewrites `unitId`'s block, to the document as it stands when the write
    * lands - which may hold something typed since the tool read it - and saves the result.
@@ -106,6 +121,27 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
         z: { type: "number", description: "The level. Needed when x and y exist on more than one." }
       }
     }
+  },
+  {
+    name: "get_forecast",
+    description:
+      "What the HUD forecasts this month's orders leave a unit, or every own unit in a hex, with: status (present, departing, arriving, or unchanged when its orders change nothing), men, items and skills at month end, the item changes in the month's order, what is produced, built and created, casts the game refuses, transports sent and received, where its study lands, and its silver - held, in, out, upkeep, at month end before and after upkeep, how much its orders are short and on what, and orders refused for want of silver. The same figures the HUD's preview shows; silver is in the silver figures, never in the items. A unit that moves this month is listed twice, departing where it stands and arriving where it ends, both rows carrying the same month - count it once. Name a unit by unitId, or a hex by regionId or x, y and z.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        unitId: UNIT_ID,
+        regionId: { type: "string", description: "As list_regions names it, e.g. \"1:12,4\"." },
+        x: { type: "number" },
+        y: { type: "number" },
+        z: { type: "number", description: "The level. Needed when x and y exist on more than one." }
+      }
+    }
+  },
+  {
+    name: "get_silver_shortfalls",
+    description:
+      "Where the faction's silver runs short this month, hex by hex, as the HUD forecasts it: every own unit whose orders are short of silver, that ends the month below zero once upkeep is paid, that has an order the game refuses for want of silver, or whose month could not be priced at all. Empty regions mean nobody is short. Also how much of the unclaimed fund the orders use.",
+    inputSchema: { type: "object", properties: {} }
   },
   {
     name: "get_turn_events",
@@ -283,6 +319,121 @@ function numberedLines(lines: readonly string[], from: number): string {
   return lines.map((line, index) => `${from + index}: ${line}`).join("\n");
 }
 
+/**
+ * The region `args` names by `regionId` or by `x`, `y` and `z`, or a refusal saying why there is
+ * none. `get_region` and `get_forecast` read regions the same way.
+ */
+function findRegion(parsed: ParsedReport, args: Record<string, unknown>): ReportRegion {
+  const regionId = stringArg(args, "regionId");
+  const x = numberArg(args, "x");
+  const y = numberArg(args, "y");
+  const z = numberArg(args, "z");
+  if (regionId === undefined && z === undefined) {
+    const levels = parsed.regions.filter((candidate) => candidate.coordinate.x === x && candidate.coordinate.y === y);
+    if (levels.length > 1) {
+      refuse(`(${x},${y}) is on several levels; say which with z: ${levels.map((level) => level.coordinate.z).join(", ")}.`);
+    }
+  }
+  const region = parsed.regions.find((candidate) =>
+    regionId !== undefined
+      ? candidate.regionId === regionId
+      : candidate.coordinate.x === x &&
+        candidate.coordinate.y === y &&
+        (z === undefined || candidate.coordinate.z === z)
+  );
+  return region ?? refuse("This turn's report shows no such region. list_regions names every one it does.");
+}
+
+/**
+ * A unit's silver as the HUD forecasts it: the Silver column's figures and, unless `ledger` is
+ * false, the working behind them.
+ */
+function silverForecast(silver: UnitSilver, ledger = true) {
+  return {
+    held: silver.held,
+    income: silver.income,
+    lateIncome: silver.lateIncome,
+    expense: silver.expense,
+    upkeep: silver.upkeep,
+    atMonthEnd: silver.atMonthEnd,
+    atMonthEndAfterUpkeep: silverShown(silver, true),
+    shortForOrders: silver.shortForOrders,
+    shortOn: silver.shortOn,
+    doubt: silver.doubt,
+    doubtSubject: silver.doubtSubject,
+    refused: silver.refused,
+    ...(ledger ? { changes: silver.changes } : {})
+  };
+}
+
+/** Whether a value says anything: an empty list, `false` and `null` are left out of an answer. */
+function says(value: unknown): boolean {
+  return Array.isArray(value) ? value.length > 0 : value !== false && value !== null && value !== undefined;
+}
+
+/** Only the entries of `fields` that say something, so the model is not handed a page of empties. */
+function present(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => says(value)));
+}
+
+/** One unit's forecast: its preview row, or the report's unit where the orders change nothing. */
+function unitForecast(
+  regionId: string,
+  row: UnitPreview | { status: "unchanged"; unit: ReportUnit },
+  silver: UnitSilver | undefined
+) {
+  const { unit } = row;
+  const preview = row.status === "unchanged" ? null : (row as UnitPreview);
+  return {
+    unitId: unit.unitId,
+    name: unit.name,
+    regionId,
+    status: row.status,
+    ...present({
+      arrivingFrom: preview?.arrivingFrom,
+      departingTo: preview?.departingTo,
+      aboard: preview?.aboard
+    }),
+    men: unit.men,
+    // Silver is the `silver` figures' to say: the preview's SILV item is settled by a different pass
+    // and is not the Silver column's figure, so a model handed both would be handed two answers.
+    itemsAtMonthEnd: itemsLine({ ...unit, items: unit.items.filter((item) => item.tag !== "SILV") }),
+    skillsAtMonthEnd: skillsLine(unit),
+    ...(preview
+      ? present({
+          formed: preview.formed,
+          dissolving: preview.dissolving,
+          dissolvesInto: preview.dissolvesInto,
+          itemChanges: preview.itemChanges,
+          produced: preview.produced,
+          built: preview.built,
+          created: preview.created,
+          refusedCasts: preview.refusedCasts,
+          transportSent: preview.transportSent,
+          transportReceived: preview.transportReceived,
+          transportTargetIssues: preview.transportTargetIssues,
+          shipmentUnmeasured: preview.shipmentUnmeasured,
+          uncounted: preview.uncounted,
+          recruitsUnmerged: preview.recruitsUnmerged,
+          study: preview.study,
+          newShip: preview.newShip
+        })
+      : {}),
+    ...(silver ? { silver: silverForecast(silver) } : {})
+  };
+}
+
+/** Whether the HUD's forecast says this unit's silver runs short, or cannot say it does not. */
+function runsShort(silver: UnitSilver): boolean {
+  const afterUpkeep = silverShown(silver, true);
+  return (
+    (silver.shortForOrders ?? 0) > 0 ||
+    (afterUpkeep !== null && afterUpkeep < 0) ||
+    silver.refused.length > 0 ||
+    silver.doubt !== null
+  );
+}
+
 /** Names the turn on screen, so a write can say which turn it was worked out for. */
 function turnKeyOf(turn: AssistantTurn): string {
   return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
@@ -395,25 +546,76 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       );
     }
 
-    case "get_region": {
-      const regionId = stringArg(args, "regionId");
-      const x = numberArg(args, "x");
-      const y = numberArg(args, "y");
-      const z = numberArg(args, "z");
-      if (regionId === undefined && z === undefined) {
-        const levels = parsed.regions.filter((candidate) => candidate.coordinate.x === x && candidate.coordinate.y === y);
-        if (levels.length > 1) {
-          refuse(`(${x},${y}) is on several levels; say which with z: ${levels.map((level) => level.coordinate.z).join(", ")}.`);
-        }
+    case "get_region":
+      return ok(findRegion(parsed, args));
+
+    case "get_forecast": {
+      const unitId = stringArg(args, "unitId");
+      if (unitId === undefined && stringArg(args, "regionId") === undefined && numberArg(args, "x") === undefined) {
+        refuse("Name a unit by unitId, or a hex by regionId or by x and y.");
       }
-      const region = parsed.regions.find((candidate) =>
-        regionId !== undefined
-          ? candidate.regionId === regionId
-          : candidate.coordinate.x === x &&
-            candidate.coordinate.y === y &&
-            (z === undefined || candidate.coordinate.z === z)
-      );
-      return ok(region ?? refuse("This turn's report shows no such region. list_regions names every one it does."));
+      if (turn.rulesetText === null) {
+        refuse("The game data has not loaded yet; try again in a moment.");
+      }
+      const region = unitId === undefined ? findRegion(parsed, args) : null;
+      const found = unitId === undefined ? null : findUnit(parsed, unitId);
+      if (found !== null && !found.unit.own) {
+        refuse(`Unit ${unitId} is not the faction's own; only own units are forecast.`);
+      }
+      const [preview, validation] = await Promise.all([
+        host.preview(turn.ordersDocument),
+        host.validate(turn.ordersDocument)
+      ]);
+      const silverOf = (id: string) => validation.silver.find((silver) => silver.unitId === id);
+      if (unitId !== undefined) {
+        const rows = preview.regions.flatMap((previewed) =>
+          previewed.units
+            .filter((row) => row.unit.unitId === unitId)
+            .map((row) => unitForecast(previewed.regionId, row, silverOf(unitId)))
+        );
+        if (rows.length > 0) {
+          return ok({ units: rows });
+        }
+        const standing = found ?? refuse(`This turn's report shows no unit ${unitId}, and this month's orders form none.`);
+        return ok({
+          units: [unitForecast(standing.region.regionId, { status: "unchanged", unit: standing.unit }, silverOf(unitId))]
+        });
+      }
+      const hex = region as ReportRegion;
+      const rows = preview.regions.find((previewed) => previewed.regionId === hex.regionId)?.units ?? [];
+      const previewed = new Set(rows.map((row) => row.unit.unitId));
+      const unchanged = hex.units.filter((unit) => unit.own && !previewed.has(unit.unitId));
+      return ok({
+        region: regionLabel(hex),
+        units: [
+          ...rows.map((row) => unitForecast(hex.regionId, row, silverOf(row.unit.unitId))),
+          ...unchanged.map((unit) => unitForecast(hex.regionId, { status: "unchanged", unit }, silverOf(unit.unitId)))
+        ]
+      });
+    }
+
+    case "get_silver_shortfalls": {
+      if (turn.rulesetText === null) {
+        // Without the game data nothing can be priced, and an empty answer would read as nobody short.
+        refuse("The game data has not loaded yet; try again in a moment.");
+      }
+      const validation = await host.validate(turn.ordersDocument);
+      const short = validation.silver.filter(runsShort);
+      const regions = parsed.regions
+        .map((region) => ({
+          regionId: region.regionId,
+          region: regionLabel(region),
+          units: short
+            .filter((silver) => silver.regionId === region.regionId)
+            .map((silver) => ({
+              unitId: silver.unitId,
+              name: region.units.find((unit) => unit.unitId === silver.unitId)?.name ?? silver.formed?.alias ?? null,
+              // The ledger behind each figure is get_forecast's to give; a summary stays a summary.
+              ...silverForecast(silver, false)
+            }))
+        }))
+        .filter((region) => region.units.length > 0);
+      return ok({ regions, unclaimedSilver: validation.unclaimed_silver ?? null });
     }
 
     case "get_turn_events":

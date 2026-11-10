@@ -4,8 +4,13 @@ import {
   aReportHeaderInfo,
   aReportRegion,
   aReportUnit,
+  aUnitSilver,
   type OrderDiagnostic,
-  type OrderValidationResult
+  type OrderValidationResult,
+  type OrdersPreviewResponse,
+  type ReportUnit,
+  type UnitPreview,
+  type UnitSilver
 } from "@atlantis/core-client";
 import { orderProcessingFor } from "../orderProcessing";
 import { newAssistantSeen } from "./assistantSeen";
@@ -95,8 +100,14 @@ function aDiagnostic(overrides: Partial<OrderDiagnostic> = {}): OrderDiagnostic 
   } as OrderDiagnostic;
 }
 
+/** What the fake host's preview and validation forecast, beside its diagnostics. */
+interface Forecast {
+  readonly silver?: UnitSilver[];
+  readonly preview?: OrdersPreviewResponse;
+}
+
 /** A host over one turn, recording what it was asked to write and answering with `diagnostics`. */
-function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = []) {
+function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], forecast: Forecast = {}) {
   const written: string[] = [];
   let current = turn;
   const host: AssistantHost & { typeByHand(document: string): void } = {
@@ -109,7 +120,8 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = []) 
     },
     orders: orderProcessingFor(null),
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
-    validate: async () => ({ diagnostics }) as unknown as OrderValidationResult,
+    validate: async () => ({ diagnostics, silver: forecast.silver ?? [] }) as unknown as OrderValidationResult,
+    preview: async () => forecast.preview ?? { regions: [] },
     writeOrders: (update) => {
       if (current !== null) {
         const document = update(current.ordersDocument);
@@ -506,5 +518,295 @@ describe("list_order_edits", () => {
     await edits(host);
 
     expect(await edits(host)).toEqual([]);
+  });
+});
+
+/** One previewed row, with nothing changed but what `overrides` says. */
+function aUnitPreview(unit: ReportUnit, overrides: Partial<UnitPreview> = {}): UnitPreview {
+  return {
+    unit,
+    status: "present",
+    changes: [],
+    arrivingFrom: null,
+    departingTo: null,
+    aboard: null,
+    uncounted: [],
+    takenUnshown: [],
+    produced: [],
+    built: [],
+    created: [],
+    refusedCasts: [],
+    transportSent: [],
+    transportReceived: [],
+    transportTargetIssues: [],
+    shipmentUnmeasured: false,
+    itemChanges: [],
+    dissolvesInto: null,
+    formed: false,
+    dissolving: false,
+    skillMerges: [],
+    reportedSkills: [],
+    recruitsUnmerged: false,
+    menOfUnknownSkill: [],
+    study: null,
+    ...overrides
+  };
+}
+
+/** Farmers (100) as the orders leave them: buying, producing, studying and sent goods. */
+function farmersNextMonth(): UnitPreview {
+  return aUnitPreview(
+    aReportUnit({
+      unitId: "100",
+      name: "Farmers",
+      regionId: "1,1,1",
+      own: true,
+      factionId: "3",
+      men: 12,
+      items: [
+        { amount: 12, name: "humans", tag: "HUMN" },
+        { amount: 5, name: "grain", tag: "GRAI" }
+      ],
+      skills: [{ name: "farming", tag: "FARM", level: 1, points: 45 }]
+    }),
+    {
+      produced: [{ amount: 5, tag: "GRAI" }],
+      transportReceived: [{ amount: 20, tag: "WOOD", from: "Carters (300)" }],
+      study: {
+        tag: "FARM",
+        name: "farming",
+        levelBefore: 1,
+        pointsBefore: 30,
+        monthsNumerator: 1,
+        monthsDenominator: 1,
+        teachers: [],
+        halvedOutsideABuilding: false,
+        pointsAfter: 60,
+        levelAfter: 2,
+        ceilingLevel: 5,
+        limitingRaces: [],
+        cannotRaiseTheLevel: false,
+        doubts: []
+      }
+    }
+  );
+}
+
+const FARMERS_SILVER = aUnitSilver({
+  unitId: "100",
+  regionId: "1,1,1",
+  held: 500,
+  income: 0,
+  lateIncome: 0,
+  expense: 120,
+  atMonthEnd: 380,
+  upkeep: 100,
+  upkeepLent: 0,
+  shortForOrders: 0
+});
+
+describe("the forecast", () => {
+  it("answers a unit's month as the preview leaves it", async () => {
+    const { host } = aHost(aTurn(), [], {
+      silver: [FARMERS_SILVER],
+      preview: { regions: [{ regionId: "1,1,1", units: [farmersNextMonth()] }] }
+    });
+
+    const forecast = json((await call(host, "get_forecast", { unitId: "100" })).text);
+
+    expect(forecast.units).toHaveLength(1);
+    const farmers = forecast.units[0];
+    expect(farmers).toMatchObject({
+      unitId: "100",
+      name: "Farmers",
+      status: "present",
+      men: 12,
+      itemsAtMonthEnd: "12 HUMN, 5 GRAI",
+      skillsAtMonthEnd: "FARM 1 (45)",
+      produced: [{ amount: 5, tag: "GRAI" }],
+      transportReceived: [{ amount: 20, tag: "WOOD", from: "Carters (300)" }],
+      study: { tag: "FARM", levelAfter: 2, pointsAfter: 60 },
+      silver: { held: 500, expense: 120, atMonthEnd: 380, upkeep: 100, atMonthEndAfterUpkeep: 280, shortForOrders: 0 }
+    });
+    expect(farmers).not.toHaveProperty("transportSent");
+    expect(farmers).not.toHaveProperty("dissolving");
+  });
+
+  it("answers every unit in a hex, the ones the orders leave alone included", async () => {
+    const arriving = aUnitPreview(
+      aReportUnit({ unitId: "200", name: "Walkers", regionId: "2,1,1", own: true, factionId: "3", men: 2 }),
+      { status: "arriving", arrivingFrom: "forest (2,1,1)" }
+    );
+    const { host } = aHost(aTurn(), [], {
+      silver: [FARMERS_SILVER],
+      preview: { regions: [{ regionId: "1,1,1", units: [farmersNextMonth(), arriving] }] }
+    });
+
+    const forecast = json((await call(host, "get_forecast", { regionId: "1,1,1" })).text);
+
+    expect(forecast.region).toBe("plain (1,1,1) in Coast");
+    expect(forecast.units.map((unit: { unitId: string; status: string }) => [unit.unitId, unit.status])).toEqual([
+      ["100", "present"],
+      ["200", "arriving"],
+      ["101", "unchanged"]
+    ]);
+    expect(forecast.units[1].arrivingFrom).toBe("forest (2,1,1)");
+    expect(forecast.units[2]).not.toHaveProperty("silver");
+  });
+
+  it("finds a hex by its coordinates", async () => {
+    const { host } = aHost(aTurn(), [], { preview: { regions: [] } });
+
+    const forecast = json((await call(host, "get_forecast", { x: 1, y: 1 })).text);
+
+    expect(forecast.units.map((unit: { unitId: string }) => unit.unitId)).toEqual(["100", "101"]);
+  });
+
+  it("refuses a unit or a hex the report does not show", async () => {
+    const { host } = aHost(aTurn());
+
+    const unit = await call(host, "get_forecast", { unitId: "555" });
+    const region = await call(host, "get_forecast", { regionId: "9,9,9" });
+    const neither = await call(host, "get_forecast", {});
+
+    expect(unit.isError).toBe(true);
+    expect(unit.text).toContain("no unit 555");
+    expect(region.isError).toBe(true);
+    expect(neither.isError).toBe(true);
+  });
+
+  it("refuses while the game data is still loading, for a unit or a hex", async () => {
+    const { host } = aHost(aTurn({ rulesetText: null }));
+
+    const unit = await call(host, "get_forecast", { unitId: "100" });
+    const hex = await call(host, "get_forecast", { regionId: "1,1,1" });
+
+    expect(unit.isError).toBe(true);
+    expect(unit.text).toContain("game data has not loaded");
+    expect(hex.isError).toBe(true);
+    expect(hex.text).toContain("game data has not loaded");
+  });
+
+  it("refuses another faction's unit", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = await call(host, "get_forecast", { unitId: "900" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("only own units are forecast");
+  });
+
+  it("says where a departing unit goes and what carries it", async () => {
+    const departing = aUnitPreview(
+      aReportUnit({ unitId: "101", name: "Scout", regionId: "1,1,1", own: true, factionId: "3", men: 1 }),
+      { status: "departing", departingTo: "forest (2,1,1)", aboard: "Swift [5]" }
+    );
+    const { host } = aHost(aTurn(), [], { preview: { regions: [{ regionId: "1,1,1", units: [departing] }] } });
+
+    const forecast = json((await call(host, "get_forecast", { regionId: "1,1,1" })).text);
+
+    expect(forecast.units[0]).toMatchObject({
+      unitId: "101",
+      status: "departing",
+      departingTo: "forest (2,1,1)",
+      aboard: "Swift [5]"
+    });
+  });
+
+  it("leaves silver out of the items, since the silver figures say it", async () => {
+    const holding = aUnitPreview(
+      aReportUnit({
+        unitId: "100",
+        name: "Farmers",
+        regionId: "1,1,1",
+        own: true,
+        factionId: "3",
+        men: 10,
+        items: [
+          { amount: 10, name: "humans", tag: "HUMN" },
+          { amount: 380, name: "silver", tag: "SILV" }
+        ]
+      })
+    );
+    const { host } = aHost(aTurn(), [], {
+      silver: [FARMERS_SILVER],
+      preview: { regions: [{ regionId: "1,1,1", units: [holding] }] }
+    });
+
+    const forecast = json((await call(host, "get_forecast", { unitId: "100" })).text);
+
+    expect(forecast.units[0].itemsAtMonthEnd).toBe("10 HUMN");
+    expect(forecast.units[0].silver.atMonthEnd).toBe(380);
+  });
+});
+
+describe("where silver runs short", () => {
+  it("lists every unit whose silver runs short, hex by hex", async () => {
+    const short = aUnitSilver({ unitId: "100", regionId: "1,1,1", shortForOrders: 300, shortOn: "buy", atMonthEnd: 0, upkeep: 0 });
+    const redAfterUpkeep = aUnitSilver({ unitId: "101", regionId: "1,1,1", atMonthEnd: 20, upkeep: 50, upkeepLent: 0, shortForOrders: 0 });
+    const healthy = aUnitSilver({ unitId: "102", regionId: "2,1,1", atMonthEnd: 900, upkeep: 10, upkeepLent: 0, shortForOrders: 0 });
+    const { host } = aHost(aTurn(), [], { silver: [short, redAfterUpkeep, healthy] });
+
+    const answer = json((await call(host, "get_silver_shortfalls")).text);
+
+    expect(answer.regions).toHaveLength(1);
+    expect(answer.regions[0]).toMatchObject({ regionId: "1,1,1", region: "plain (1,1,1) in Coast" });
+    expect(answer.regions[0].units).toEqual([
+      expect.objectContaining({ unitId: "100", name: "Farmers", shortForOrders: 300, shortOn: "buy" }),
+      expect.objectContaining({ unitId: "101", name: "Scout", atMonthEndAfterUpkeep: -30 })
+    ]);
+    expect(answer.regions[0].units[0]).not.toHaveProperty("changes");
+  });
+
+  it("lists a unit whose month could not be priced, or whose order the game refuses", async () => {
+    const doubted = aUnitSilver({ unitId: "100", regionId: "1,1,1", doubt: "unknown-tax-base", atMonthEnd: null, shortForOrders: null });
+    const refused = aUnitSilver({
+      unitId: "101",
+      regionId: "1,1,1",
+      atMonthEnd: 10,
+      upkeep: 0,
+      shortForOrders: 0,
+      refused: [{ cause: "studied", line: 8, cost: 50, available: 10, afterSpending: false }]
+    });
+    const { host } = aHost(aTurn(), [], { silver: [doubted, refused] });
+
+    const answer = json((await call(host, "get_silver_shortfalls")).text);
+
+    expect(answer.regions[0].units.map((unit: { unitId: string }) => unit.unitId)).toEqual(["100", "101"]);
+    expect(answer.regions[0].units[0].doubt).toBe("unknown-tax-base");
+    expect(answer.regions[0].units[1].refused).toHaveLength(1);
+  });
+
+  it("refuses while the game data is still loading, rather than finding nobody short", async () => {
+    const { host } = aHost(aTurn({ rulesetText: null }));
+
+    const answer = await call(host, "get_silver_shortfalls");
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("game data has not loaded");
+  });
+
+  it("names a unit this month's orders form by its alias", async () => {
+    const formed = aUnitSilver({
+      unitId: "new-1",
+      regionId: "1,1,1",
+      shortForOrders: 40,
+      formed: { alias: "new 1", formedBy: "100" }
+    });
+    const { host } = aHost(aTurn(), [], { silver: [formed] });
+
+    const answer = json((await call(host, "get_silver_shortfalls")).text);
+
+    expect(answer.regions[0].units[0]).toMatchObject({ unitId: "new-1", name: "new 1" });
+  });
+
+  it("is empty when nobody is short", async () => {
+    const { host } = aHost(aTurn(), [], {
+      silver: [aUnitSilver({ unitId: "100", regionId: "1,1,1", atMonthEnd: 5, upkeep: 5, upkeepLent: 0, shortForOrders: 0 })]
+    });
+
+    const answer = json((await call(host, "get_silver_shortfalls")).text);
+
+    expect(answer.regions).toEqual([]);
   });
 });
