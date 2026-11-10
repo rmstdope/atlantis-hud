@@ -93,6 +93,9 @@ type OrdersPanelProps = {
 
   /** Lands on one of those stops exactly as F8 would: a click on a FORM line's tag. */
   onOpenProblem?: (target: DiagnosticTarget) => void;
+
+  /** The assistant has just written the very unit the player is typing in (ah-bcdri). */
+  assistantRewrote?: boolean;
 };
 
 export function OrdersPanel({
@@ -118,7 +121,8 @@ export function OrdersPanel({
   orders,
   onShowProblemsIn,
   problemTargets,
-  onOpenProblem
+  onOpenProblem,
+  assistantRewrote = false
 }: OrdersPanelProps) {
   // Read here rather than in the editor: the panel re-renders on a settings change, which is what
   // keeps the editor's `latest` ref current without rebuilding the view.
@@ -191,6 +195,11 @@ export function OrdersPanel({
         <LockNotice lock={lock} ownFaction={ownFactionName} />
       ) : (
         <div className="flex h-full min-h-0 flex-col">
+          {assistantRewrote ? (
+            <p data-testid="orders-assistant-rewrote" className="m-0 mb-1 flex-none text-pane-sm text-brass">
+              The assistant just rewrote these orders. Your text is under Before.
+            </p>
+          ) : null}
           <OrdersEditor
             ref={editorRef}
             unitId={unitId ?? ""}

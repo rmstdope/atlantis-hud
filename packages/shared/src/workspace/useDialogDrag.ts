@@ -43,9 +43,10 @@ export type DialogDrag = {
 };
 
 /**
- * A dialog dragged by its top bar (ah-aak5). `DialogFrame` is its one caller (ah-yaat): it spreads
- * `barProps` on the top bar, `dialogRef` and `dialogStyle` on the `role="dialog"` box, and drops the
- * backdrop's veil while `moved`.
+ * A dialog dragged by its top bar (ah-aak5). `DialogFrame` is its one modal caller (ah-yaat): it
+ * spreads `barProps` on the top bar, `dialogRef` and `dialogStyle` on the `role="dialog"` box, and
+ * drops the backdrop's veil while `moved`. `AssistantChangesPanel` is the one floating window that
+ * uses it, with no veil to drop.
  *
  * The position is this mounted dialog's alone: the dialogs unmount when they close, so a reopen is
  * always centred, and nothing is stored anywhere. Where it may go is `clampDialogPosition`'s rule;

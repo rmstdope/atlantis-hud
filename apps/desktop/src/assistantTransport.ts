@@ -10,6 +10,14 @@ import type { AssistantCall, AssistantTransport } from "@atlantis/shared";
 import { hasTauriRuntime } from "./desktopCore";
 
 export function desktopAssistantTransport(): AssistantTransport | undefined {
+  // A stand-in a smoke test installs before the bundle runs, as `desktopPlugins` allows for its port.
+  const standIn =
+    typeof window === "undefined"
+      ? undefined
+      : (window as Window & { __ATLANTIS_DESKTOP_ASSISTANT__?: AssistantTransport }).__ATLANTIS_DESKTOP_ASSISTANT__;
+  if (standIn) {
+    return standIn;
+  }
   if (!hasTauriRuntime()) {
     return undefined;
   }

@@ -74,6 +74,8 @@ export type PaletteWorld = {
    * remembered: a hex's own report still lists its gate.
    */
   gates?: GateMemory;
+  /** Whether the assistant changes list has anything on it (ah-bcdri). */
+  assistantChangesListed?: boolean;
 };
 
 /** A key dialog the palette opens, as AppShell's `showOnlyKeyDialog` takes it. */
@@ -98,6 +100,7 @@ export type PaletteDoors = {
   openExport: () => void;
   exportMageSheet: () => void;
   openBattles: () => void;
+  showAssistantChanges: () => void;
   openProduction: () => void;
   addHexNote: (regionId: string) => void;
   /** After going to the note's hex: bring the note into view in the Notes section. */
@@ -304,6 +307,10 @@ function paletteActions(
     // nothing is worse than no command at all.
     ...(parsed && parsed.battles.length > 0
       ? [{ id: "open-battles", label: "Open battles", run: doors.openBattles }]
+      : []),
+    // Only while something is listed: there is no empty panel to show.
+    ...(world.assistantChangesListed === true
+      ? [{ id: "show-assistant-changes", label: "Show assistant changes", run: doors.showAssistantChanges }]
       : []),
     ...(parsed && world.offersProduction
       ? [{ id: "open-production", label: "Production", run: doors.openProduction }]

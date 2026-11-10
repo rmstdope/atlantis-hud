@@ -33,6 +33,8 @@ import { formTagWidgets, setFormTags } from "./formTagWidgets";
 /** What the shell may do to the editor from outside: the shortcut layer lands here. */
 export type OrdersEditorHandle = {
   focus(): void;
+  /** Whether the cursor is in this box. */
+  hasFocus(): boolean;
   /** Puts the selection on a span and scrolls it into view. */
   select(from: number, to?: number): void;
   /**
@@ -665,6 +667,9 @@ export const OrdersEditor = forwardRef<OrdersEditorHandle, OrdersEditorProps>(fu
   useImperativeHandle(ref, () => ({
     focus() {
       view.current?.focus();
+    },
+    hasFocus() {
+      return view.current?.hasFocus ?? false;
     },
     select(from, to = from) {
       const editor = view.current;

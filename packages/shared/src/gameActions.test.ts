@@ -16,6 +16,7 @@ import {
   resetGame
 } from "./gameActions";
 import { loadSavedView, saveMapView } from "./workspace/mapViewportStorage";
+import { loadAssistantChanges, saveAssistantChanges } from "./assistant/assistantChangesStorage";
 
 // A second ruleset this build "ships" only for this test, so `changeRuleset`'s actual move can be
 // exercised - `rulesets.ts` ships exactly one ruleset otherwise, which cannot tell "known and
@@ -291,6 +292,16 @@ describe("replacing a game with its backup", () => {
 });
 
 describe("deleting a game", () => {
+  it("forgets the assistant changes listed for it", async () => {
+    stubGlobalStorage();
+    const scope = { gameId: "gone", factionId: "3", turn: 71 };
+    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }] });
+
+    await deleteGame(fakeClient(), "gone", null, NOW, vi.fn());
+
+    expect(loadAssistantChanges(scope).changes).toEqual([]);
+  });
+
   it("discards the open draft before deleting, when the deleted game is the open one", async () => {
     const calls: string[] = [];
     const client = fakeClient({
@@ -411,6 +422,17 @@ describe("resetting a game", () => {
 
     expect(loadSavedView("emptied")).toBeNull();
     expect(loadSavedView("untouched")).not.toBeNull();
+  });
+
+  it("forgets the assistant changes listed for the emptied game", async () => {
+    stubGlobalStorage();
+    const scope = { gameId: "emptied", factionId: "3", turn: 71 };
+    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }] });
+    expect(loadAssistantChanges(scope).changes).toHaveLength(1);
+
+    await resetGame(fakeClient(), "emptied", null, NOW, vi.fn());
+
+    expect(loadAssistantChanges(scope).changes).toEqual([]);
   });
 });
 
