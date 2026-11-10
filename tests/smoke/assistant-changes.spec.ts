@@ -156,6 +156,8 @@ test(
     // Edited since: Revert is off but Keep is not, and keeping keeps the edit.
     await fillOrders(page, "work");
     await expect(entry(page, MAGE)).toContainText("edited since");
+    // Saved while it is surely unsaved; the list itself is stored as it changes.
+    await saveNow(page);
     await expect(page.getByTestId(`assistant-change-revert-${MAGE}`)).toBeDisabled();
     await page.getByTestId(`assistant-change-keep-${MAGE}`).click();
     await expect(entry(page, MAGE)).toHaveCount(0);
@@ -163,13 +165,18 @@ test(
     await expect(panel(page)).toBeFocused();
     await expectOrders(page, /^work$/mu);
 
+    // With the Revert all question open, Keep still works and the question's number follows.
+    await page.getByTestId("assistant-changes-revert-all").click();
+    await expect(question).toContainText("Revert 2 units?");
     await page.getByTestId(`assistant-change-keep-${second as string}`).click();
     await expect(entry(page, second as string)).toHaveCount(0);
     await expect(count(page)).toHaveText("1 unit");
+    await expect(question).toContainText("Revert 1 unit? The assistant's orders for it will be gone.");
+    await page.getByTestId("assistant-changes-cancel").click();
+    await expect(question).toHaveCount(0);
     expect((await call(page, "get_orders", { unitId: second as string })).text).toContain("work");
 
     // A kept unit stays off the list after a reload.
-    await saveNow(page);
     await page.reload();
     await expect(count(page)).toHaveText("1 unit");
     await expect(entry(page, second as string)).toHaveCount(0);
