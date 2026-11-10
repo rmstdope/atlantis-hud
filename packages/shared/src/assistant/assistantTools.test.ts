@@ -22,6 +22,11 @@ import { NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { orderProcessingFor } from "../orderProcessing";
 import { newAssistantSeen } from "./assistantSeen";
 import type { EarlierTurnSource } from "./earlierTurns";
+import { readRuleset } from "@atlantis/fixtures";
+import { parseGameData, type GameDataIndex } from "../gameData";
+import { buildMagicTree, studyPlannerTree } from "../magicTree";
+import { NO_TEACHING_RULE } from "../teachingPermission";
+import type { StudyPlannerInputs } from "./assistantStudyPlans";
 import { ASSISTANT_TOOLS, answerToolCall, readyArmies, type AssistantHost, type AssistantTurn } from "./assistantTools";
 
 const DOCUMENT = [
@@ -207,8 +212,9 @@ interface Forecast {
   readonly route?: RoutePlanResponse;
 }
 
-/** What the host lends the army tools, each part replaceable by a test. */
+/** What the host lends the army and study-plan tools, each part replaceable by a test. */
 interface ArmyWorld {
+  studyPlanner: StudyPlannerInputs | "loading" | "failed";
   armies: readonly ArmyRecord[] | "loading" | "failed";
   skills: DerivedSkills;
   scanning: boolean;
@@ -222,6 +228,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
   const written: string[] = [];
   const files: { path: string; text: string }[] = [];
   const armyWorld: ArmyWorld = {
+    studyPlanner: "loading",
     armies: [],
     skills: NO_DERIVED_SKILLS,
     scanning: false,
@@ -233,6 +240,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
   let current = turn;
   const host: AssistantHost & { typeByHand(document: string): void } = {
     armies: () => armyWorld.armies,
+    studyPlanner: () => armyWorld.studyPlanner,
     battleSkills: () => ({ skills: armyWorld.skills, scanning: armyWorld.scanning, unreadTurns: armyWorld.unreadTurns }),
     writeFile: async (path, text) => {
       if (armyWorld.writeFails !== null) {
@@ -1550,5 +1558,110 @@ describe("reading an earlier turn", () => {
 
     expect(answer.isError).toBe(true);
     expect(list.isError).toBe(true);
+  });
+});
+
+describe("get_study_plans", () => {
+  const tree = studyPlannerTree(buildMagicTree(parseGameData(readRuleset()) as GameDataIndex));
+  /** Ereb, your mage, planned to study force on turn 13 - the first turn after this report's 12. */
+  const PLANNER: StudyPlannerInputs = {
+    groups: [
+      {
+        factionId: "3",
+        factionLabel: "Testers (3)",
+        source: "own",
+        heading: "Testers (3) — your faction, turn 12",
+        stale: false,
+        mages: [
+          {
+            key: "3/101",
+            factionId: "3",
+            factionLabel: "Testers (3)",
+            unitId: "101",
+            name: "Ereb",
+            regionId: "1,1,1",
+            structureId: null,
+            sheetTurn: null,
+            monthsUnreported: 0,
+            skills: [{ tag: "FORC", level: 1, points: 30 }]
+          }
+        ]
+      }
+    ] as unknown as StudyPlannerInputs["groups"],
+    plans: [
+      {
+        factionId: "3",
+        unitId: "101",
+        goals: [{ kind: "study", turn: 13, skill: "FORC" }],
+        casts: [],
+        comment: "",
+        updatedAt: "2026-01-01T00:00:00.000Z"
+      }
+    ],
+    tree,
+    viewedTurn: 12,
+    seats: new Map(),
+    structureNames: new Map(),
+    after: new Map(),
+    rule: NO_TEACHING_RULE,
+    assumeSheltered: false,
+    label: () => "plain (1,1)"
+  };
+
+  it("answers with the planner's mages, turns and warnings", async () => {
+    const { host } = aHost(aTurn(), [], {}, { studyPlanner: PLANNER });
+
+    const answer = await call(host, "get_study_plans");
+
+    expect(answer.isError).toBe(false);
+    const read = json(answer.text);
+    expect(read.turns[0]).toBe(13);
+    expect(read.mages).toHaveLength(1);
+    expect(read.mages[0]).toMatchObject({ unitId: "101", name: "Ereb", region: "plain (1,1)" });
+    expect(read.mages[0].turns[0]).toMatchObject({ turn: 13, study: "FORC" });
+    expect(read.summary).toBe("Nothing to warn about in this plan.");
+  });
+
+  it("answers one mage when a unit is named", async () => {
+    const { host } = aHost(aTurn(), [], {}, { studyPlanner: PLANNER });
+
+    const read = json((await call(host, "get_study_plans", { unitId: "101" })).text);
+
+    expect(read.mages.map((mage: { unitId: string }) => mage.unitId)).toEqual(["101"]);
+  });
+
+  it("refuses a unit the planner does not show", async () => {
+    const { host } = aHost(aTurn(), [], {}, { studyPlanner: PLANNER });
+
+    const answer = await call(host, "get_study_plans", { unitId: "100" });
+
+    expect(answer).toEqual({ text: "The study planner shows no mage 100: it lists only mages, yours and your allies'.", isError: true });
+  });
+
+  it("asks for a moment while the plans or the game data load", async () => {
+    const { host } = aHost(aTurn());
+
+    expect(await call(host, "get_study_plans")).toEqual({
+      text: "The study plans have not loaded yet; try again in a moment.",
+      isError: true
+    });
+  });
+
+  it("says so when the plans could not be read", async () => {
+    const { host } = aHost(aTurn(), [], {}, { studyPlanner: "failed" });
+
+    expect(await call(host, "get_study_plans")).toEqual({
+      text: "This game's study plans could not be read.",
+      isError: true
+    });
+  });
+
+  it("refuses a report with no turn number, which leaves the planner no turns", async () => {
+    const { host } = aHost(aTurn(), [], {}, { studyPlanner: { ...PLANNER, viewedTurn: null } });
+
+    expect(await call(host, "get_study_plans")).toEqual({
+      text: "This turn's report has no turn number, so the study planner has no turns to plan.",
+      isError: true
+    });
   });
 });

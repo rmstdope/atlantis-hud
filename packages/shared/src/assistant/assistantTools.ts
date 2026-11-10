@@ -34,6 +34,7 @@ import type { DerivedSkills } from "../battleSkills";
 import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 import type { EarlierTurn, EarlierTurnSource } from "./earlierTurns";
+import { studyPlansAnswer, type StudyPlannerInputs } from "./assistantStudyPlans";
 import { silverShown } from "../unitTable";
 import { describeEstimate, describeLoadCheck, describeProblem } from "../workspace/PlannerPanel";
 
@@ -83,6 +84,11 @@ export interface AssistantHost {
   readonly seen: AssistantSeen;
   /** The open game's Armies; `loading` until they are read, `failed` when they could not be. */
   armies(): readonly ArmyRecord[] | "loading" | "failed";
+  /**
+   * What the study planner is drawn from as it stands now - `loading` until the game data and the
+   * game's stored plans are in, `failed` when the plans could not be read.
+   */
+  studyPlanner(): StudyPlannerInputs | "loading" | "failed";
   /** What the battle-roster scan has recovered so far, as the Army export dialog reads it. */
   battleSkills(): { readonly skills: DerivedSkills; readonly scanning: boolean; readonly unreadTurns: number };
   /**
@@ -325,6 +331,12 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
       },
       required: ["path"]
     }
+  },
+  {
+    name: "get_study_plans",
+    description:
+      "The player's magic study plans from the HUD's study planner, as its Schedule draws them for the next six turns: each mage with something planned (own and allies'), his magic skills now and at the end, and each planned turn - the skill studied with the level, points and what the month is worth (2 taught, 0.5 studying above level 2 without a building seat), who teaches him, why a month buys nothing (blocked), whom he teaches and who is actually taught, and a planned cast. Then the planner's warnings, word for word: teaching that cannot happen, too many students, mages studying outside a building or without a free mage seat, and shelters it cannot judge. forecastAllSheltered says the player told the planner to assume every mage sheltered. Mages with nothing planned are only named. Pass unitId for one mage and his warnings.",
+    inputSchema: { type: "object", properties: { unitId: UNIT_ID } }
   },
   {
     name: "search_report",
@@ -1227,6 +1239,24 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
         refuse(`The file was not written: ${error instanceof Error ? error.message : String(error)}`);
       }
       return ok({ written: path, units: readiness.count, notices: readiness.notices.map((notice) => notice.text) });
+    }
+
+    case "get_study_plans": {
+      const planner = host.studyPlanner();
+      if (planner === "loading") {
+        refuse("The study plans have not loaded yet; try again in a moment.");
+      }
+      if (planner === "failed") {
+        refuse("This game's study plans could not be read.");
+      }
+      if (planner.viewedTurn === null) {
+        refuse("This turn's report has no turn number, so the study planner has no turns to plan.");
+      }
+      const unitId = stringArg(args, "unitId");
+      return ok(
+        studyPlansAnswer(planner, unitId) ??
+          refuse(`The study planner shows no mage ${unitId}: it lists only mages, yours and your allies'.`)
+      );
     }
 
     case "search_report": {

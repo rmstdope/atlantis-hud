@@ -181,6 +181,7 @@ import { disabledAdvisoryCodes, useSettingsStore } from "../settingsStore";
 import { previewOrdersRequest } from "../previewRequest";
 import { useAssistant, type AssistantTransport } from "../assistant/assistantTransport";
 import { readyArmies } from "../assistant/assistantTools";
+import { readyStudyPlans } from "../assistant/assistantStudyPlans";
 import { revertAssistantChanges } from "../assistant/assistantChanges";
 import { AssistantChangesPanel } from "./AssistantChangesPanel";
 import { useAssistantChanges } from "./useAssistantChanges";
@@ -4565,6 +4566,29 @@ export function AppShell({
     // Read through `getState()` on each call, like the Export button, so a call answers from the
     // Armies and scan as they stand when it arrives (ah-a97xg.11).
     armies: () => (game === null ? "loading" : readyArmies(useArmiesStore.getState(), game.manifest.metadata.gameId)),
+    // Exactly what the study planner dialog is handed below, so `get_study_plans` answers with the
+    // Schedule and warnings the player would see on opening it now (ah-a97xg.6). The rows are read
+    // through `getState()`, like the Armies, so a plan saved a moment ago is already in them.
+    studyPlanner: () => {
+      if (game === null || studyTree === null) {
+        return "loading";
+      }
+      const plans = readyStudyPlans(useStudyPlansStore.getState(), game.manifest.metadata.gameId);
+      return typeof plans === "string"
+        ? plans
+        : {
+            groups: plannerGroupRows,
+            plans,
+            tree: studyTree,
+            viewedTurn: parsed?.header.turnNumber ?? null,
+            seats: shelter,
+            structureNames: shelterNamesByKey,
+            after: plannerStanding,
+            rule: teachingRule,
+            assumeSheltered: assumeMagesSheltered,
+            label: hexLabel
+          };
+    },
     battleSkills: () => {
       const { skills, status, unreadTurns } = useBattleSkillsStore.getState();
       return { skills, scanning: status === "scanning", unreadTurns };
