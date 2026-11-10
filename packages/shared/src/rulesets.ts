@@ -19,6 +19,12 @@ export type Ruleset = {
   /** Where the shell fetches this ruleset from, relative to the app. */
   url: string;
   /**
+   * Where the shell fetches this world's rules and data pages, rendered by section for an assistant
+   * to read (ah-a97xg.8) - `pnpm run atlantis reference` writes it. Optional, because a world this
+   * build carries no snapshot for must say so rather than answer from another world's rules.
+   */
+  referenceUrl?: string;
+  /**
    * Where a faction's orders are posted for this ruleset's server.
    *
    * The upload address belongs to the game rather than to the build, and a game already records
@@ -55,6 +61,7 @@ export const RULESETS: readonly Ruleset[] = [
     id: "neworigins",
     label: "New Origins",
     url: "/ruleset.json",
+    referenceUrl: "/reference-neworigins.json",
     ordersUploadUrl: "https://atlantis-pbem.com/game/upload-orders",
     defaultMap: { width: 72, height: 96, wrapX: true, wrapY: false }
   },
@@ -62,12 +69,14 @@ export const RULESETS: readonly Ruleset[] = [
   {
     id: "newage-arcanum",
     label: "New Age: Arcanum",
-    url: "/ruleset-newage-arcanum.json"
+    url: "/ruleset-newage-arcanum.json",
+    referenceUrl: "/reference-newage-arcanum.json"
   },
   {
     id: "newage-trident",
     label: "New Age: Trident",
-    url: "/ruleset-newage-trident.json"
+    url: "/ruleset-newage-trident.json",
+    referenceUrl: "/reference-newage-trident.json"
   }
 ] as const;
 

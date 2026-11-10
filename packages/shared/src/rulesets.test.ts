@@ -72,6 +72,16 @@ describe("rulesets", () => {
     }
   });
 
+  it("names a rules snapshot this build serves, for every ruleset", () => {
+    // The assistant reads the open world's rules and data from it (ah-a97xg.8).
+    const served = (url: string) => fileURLToPath(new URL(`../../../config/public${url}`, import.meta.url));
+
+    for (const ruleset of RULESETS) {
+      expect(ruleset.referenceUrl, `${ruleset.id} has a rules snapshot`).toMatch(/^\/reference-[\w.-]+\.json$/);
+      expect(existsSync(served(ruleset.referenceUrl ?? "")), `${ruleset.id} points at ${ruleset.referenceUrl}`).toBe(true);
+    }
+  });
+
   it("reads a semicolon the way the selected world's rules page does", () => {
     expect(orderCommentSyntaxFor("newage-trident")).toBe("trident");
     expect(orderCommentSyntaxFor("neworigins")).toBe("origins");

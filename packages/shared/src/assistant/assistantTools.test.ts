@@ -32,6 +32,7 @@ import { parseGameData, type GameDataIndex } from "../gameData";
 import { buildMagicTree, studyPlannerTree } from "../magicTree";
 import { NO_TEACHING_RULE } from "../teachingPermission";
 import type { StudyPlannerInputs } from "./assistantStudyPlans";
+import type { RulesReference } from "./rulesReference";
 import { ASSISTANT_TOOLS, answerToolCall, readyArmies, type AssistantHost, type AssistantTurn } from "./assistantTools";
 
 const DOCUMENT = [
@@ -209,6 +210,33 @@ function anEarlierTurnSource(): EarlierTurnSource {
   };
 }
 
+/** A Trident rules snapshot as the shell serves it, small enough to read in a test. */
+const TRIDENT_REFERENCE: RulesReference = {
+  worldId: "newage-trident",
+  label: "New Age: Trident",
+  rulesUrl: "https://example.test/trident/rules",
+  catalogueUrl: "https://example.test/trident/database",
+  fetchedAt: "2026-09-29T00:17:16.414Z",
+  edition: "NewAge 1.1 Rules — Trident",
+  lastChange: "September 28, 2026",
+  sections: [
+    { anchor: "give", title: "GIVE", text: "GIVE\n\nGIVE [unit] [quantity] [item]\nA unit may give silver." },
+    { anchor: "giveall", title: "GIVE ALL", text: "GIVE ALL\n\nGives everything." }
+  ],
+  data: [
+    { section: "items", name: "sword", tag: "SWOR", text: "sword [SWOR], weight 1." },
+    { section: "items", name: "mithril sword", tag: "MSWO", text: "mithril sword [MSWO], weight 1." }
+  ]
+};
+
+/** The fake shell's rules snapshots, by ruleset id; any other id is refused as the shell would. */
+async function servedReference(rulesetId: string): Promise<string> {
+  if (rulesetId === "newage-trident") {
+    return JSON.stringify(TRIDENT_REFERENCE);
+  }
+  throw new Error(`This build carries no rules snapshot for ${rulesetId}.`);
+}
+
 /** What the fake host's preview and validation forecast, beside its diagnostics. */
 interface Forecast {
   readonly silver?: UnitSilver[];
@@ -265,6 +293,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     },
     orders: orderProcessingFor(null),
     earlierTurns: anEarlierTurnSource(),
+    rulesReference: servedReference,
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
     validate: async () =>
       ({ diagnostics, silver: forecast.silver ?? [], production: forecast.production ?? NO_PRODUCTION }) as unknown as OrderValidationResult,
@@ -314,6 +343,7 @@ describe("the assistant's tool list", () => {
         regionId: "1,1,1",
         orders: "work",
         query: "silver",
+        anchor: "give",
         path: "/tmp/battle.json"
       });
       expect(answer.text).not.toContain("no tool called");
@@ -1969,5 +1999,98 @@ describe("trade routes", () => {
     const answer = await call(host, "list_trade_routes");
     expect(answer.isError).toBe(true);
     expect(answer.text).toMatch(/not loaded/u);
+  });
+});
+
+describe("reading the open world's rules and data", () => {
+  const trident = () => aHost({ ...aTurn(), rulesetId: "newage-trident" }).host;
+  const SAYS_WHERE = { world: "New Age: Trident", snapshot: "2026-09-29", edition: "NewAge 1.1 Rules — Trident", lastChange: "September 28, 2026" };
+
+  it("lists the open world's rules sections, naming the world and the snapshot", async () => {
+    const answer = await call(trident(), "list_rules_sections");
+
+    expect(answer.isError).toBe(false);
+    expect(json(answer.text)).toEqual({
+      ...SAYS_WHERE,
+      sections: [
+        { anchor: "give", title: "GIVE" },
+        { anchor: "giveall", title: "GIVE ALL" }
+      ]
+    });
+  });
+
+  it("reads one section by its anchor", async () => {
+    const answer = json((await call(trident(), "read_rules_section", { anchor: "give" })).text);
+
+    expect(answer).toEqual({ ...SAYS_WHERE, source: "https://example.test/trident/rules", anchor: "give", title: "GIVE", text: TRIDENT_REFERENCE.sections[0]?.text });
+  });
+
+  it("refuses an anchor the world's rules do not have, offering the closest", async () => {
+    const answer = await call(trident(), "read_rules_section", { anchor: "giv" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toBe('The New Age: Trident rules have no section called "giv". Closest: give, giveall.');
+  });
+
+  it("searches the rules, quoting the lines that match", async () => {
+    const answer = json((await call(trident(), "search_rules", { query: "silver" })).text);
+
+    expect(answer).toEqual({ ...SAYS_WHERE, matches: [{ anchor: "give", title: "GIVE", lines: ["A unit may give silver."] }] });
+  });
+
+  it("says so when no section mentions the query", async () => {
+    const answer = json((await call(trident(), "search_rules", { query: "gold" })).text);
+
+    expect(answer.matches).toEqual([]);
+  });
+
+  it("reads the data page's whole entry for a tag", async () => {
+    const answer = json((await call(trident(), "read_data_entry", { query: "SWOR" })).text);
+
+    expect(answer).toEqual({
+      ...SAYS_WHERE,
+      source: "https://example.test/trident/database",
+      entries: [{ section: "items", name: "sword", tag: "SWOR", text: "sword [SWOR], weight 1." }]
+    });
+  });
+
+  it("lists the names when a query fits several entries", async () => {
+    const answer = json((await call(trident(), "read_data_entry", { query: "wor" })).text);
+
+    expect(answer.names).toEqual([
+      { section: "items", name: "sword", tag: "SWOR" },
+      { section: "items", name: "mithril sword", tag: "MSWO" }
+    ]);
+  });
+
+  it("refuses a data query nothing on the page fits", async () => {
+    const answer = await call(trident(), "read_data_entry", { query: "laser" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toBe('Nothing on the New Age: Trident data page is called "laser".');
+  });
+
+  it("refuses while the game records no ruleset", async () => {
+    const answer = await call(aHost(aTurn()).host, "list_rules_sections");
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toBe("This game records no ruleset, so the HUD cannot say which world's rules apply.");
+  });
+
+  it("refuses with the shell's own sentence when it cannot serve the snapshot", async () => {
+    const answer = await call(aHost({ ...aTurn(), rulesetId: "atlantis-classic" }).host, "read_rules_section", { anchor: "give" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toBe("This build carries no rules snapshot for atlantis-classic.");
+  });
+
+  it("asks the shell for the open turn's own world", async () => {
+    const asked: string[] = [];
+    const { host } = aHost({ ...aTurn(), rulesetId: "newage-trident" });
+    const recording = { ...host, rulesReference: (id: string) => (asked.push(id), servedReference(id)) };
+
+    await call(recording, "search_rules", { query: "give" });
+
+    expect(asked).toEqual(["newage-trident"]);
   });
 });
