@@ -252,6 +252,12 @@ const TRIDENT_REFERENCE: RulesReference = {
     { anchor: "giveall", title: "GIVE ALL", text: "GIVE ALL\n\nGives everything." }
   ],
   data: [
+    {
+      section: "skills",
+      name: "weaponsmith",
+      tag: "WEAP",
+      text: "weaponsmith [WEAP] 2: A unit with this skill may PRODUCE swords [SWOR]\n  from 2 iron [IRON] at a rate of 1 per 2 man-months."
+    },
     { section: "items", name: "sword", tag: "SWOR", text: "sword [SWOR], weight 1." },
     { section: "items", name: "mithril sword", tag: "MSWO", text: "mithril sword [MSWO], weight 1." }
   ]
@@ -2287,8 +2293,22 @@ describe("reading the open world's rules and data", () => {
     expect(answer).toEqual({
       ...SAYS_WHERE,
       source: "https://example.test/trident/database",
-      entries: [{ section: "items", name: "sword", tag: "SWOR", text: "sword [SWOR], weight 1." }]
+      entries: [
+        {
+          section: "items",
+          name: "sword",
+          tag: "SWOR",
+          text: "sword [SWOR], weight 1.",
+          producedBy: [{ skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }]
+        }
+      ]
     });
+  });
+
+  it("says nothing of producers for an item no skill on the page produces", async () => {
+    const answer = json((await call(trident(), "read_data_entry", { query: "MSWO" })).text);
+
+    expect(answer.entries).toEqual([{ section: "items", name: "mithril sword", tag: "MSWO", text: "mithril sword [MSWO], weight 1." }]);
   });
 
   it("lists the names when a query fits several entries", async () => {

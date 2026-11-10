@@ -42,6 +42,7 @@ import { studyPlansAnswer, type StudyPlannerInputs } from "./assistantStudyPlans
 import { rulesetById } from "../rulesets";
 import {
   dataEntriesFor,
+  producersOf,
   parseRulesReference,
   provenance,
   rulesSectionText,
@@ -405,7 +406,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "read_data_entry",
     description:
-      "Read this game's own data page - the world's skill, item and object descriptions, every level of a skill - by tag (e.g. \"SWOR\") or name, as the page writes it: the full text, which can say more than get_game_data does. A query that fits several names answers with the names. Names the world and the snapshot's date.",
+      "Read this game's own data page - the world's skill, item and object descriptions, every level of a skill - by tag (e.g. \"SWOR\") or name, as the page writes it: the full text, which can say more than get_game_data does. An item also carries producedBy when a skill on the page may PRODUCE it: the skill, its tag and level, the inputs as the page writes them (from) and the rate. A query that fits several names answers with the names. Names the world and the snapshot's date.",
     inputSchema: {
       type: "object",
       properties: { query: { type: "string", description: "A tag or a name." } },
@@ -1643,7 +1644,17 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       if ("entries" in found && found.entries.length === 0) {
         refuse(`Nothing on the ${reference.label} data page is called "${query}".`);
       }
-      return ok({ ...provenance(reference), source: reference.catalogueUrl, ...found });
+      // The page carries no recipe on an item; it is in the skill level that PRODUCEs it.
+      const withProducers =
+        "entries" in found
+          ? {
+              entries: found.entries.map((entry) => {
+                const producedBy = entry.section === "items" && entry.tag !== null ? producersOf(reference, entry.tag) : [];
+                return producedBy.length > 0 ? { ...entry, producedBy } : entry;
+              })
+            }
+          : found;
+      return ok({ ...provenance(reference), source: reference.catalogueUrl, ...withProducers });
     }
 
     case "list_armies": {
