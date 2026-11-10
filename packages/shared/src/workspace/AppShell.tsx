@@ -4625,6 +4625,11 @@ export function AppShell({
       rulesetText === null
         ? Promise.reject(new Error("The game data has not loaded yet."))
         : client.planRoute(rulesetText, rawReport, rememberedJson, unitId, destination, mapJson, carryingJson),
+    // The Trade panel's own question, with the same inputs, so the assistant reads what it lists (ah-a97xg.7).
+    tradeRoutes: () =>
+      rulesetText === null
+        ? Promise.reject(new Error("The game data has not loaded yet."))
+        : client.tradeRoutes(rulesetText, rawReport, rememberedJson, mapJson),
     // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
     // kept. Only the open unit's editor takes its block again: a write to another unit leaves
     // whatever the player is typing alone, and the autosave writes the draft either way.

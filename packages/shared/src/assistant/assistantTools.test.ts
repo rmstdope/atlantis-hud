@@ -8,6 +8,8 @@ import {
   aReportHeaderInfo,
   aReportRegion,
   aReportUnit,
+  aTradedGood,
+  aTradeRoute,
   aUnitSilver,
   type OrderDiagnostic,
   type OrderValidationResult,
@@ -15,6 +17,7 @@ import {
   type ProductionOverview,
   type ReportUnit,
   type RoutePlanResponse,
+  type TradeRoute,
   type UnitPreview,
   type UnitSilver
 } from "@atlantis/core-client";
@@ -213,6 +216,8 @@ interface Forecast {
   /** What the route planner answers; every question it is asked is recorded in `planned`. */
   readonly route?: RoutePlanResponse;
   readonly production?: ProductionOverview;
+  /** The routes the Trade panel lists; none when left out. */
+  readonly trade?: TradeRoute[];
 }
 
 /** What the host lends the army and study-plan tools, each part replaceable by a test. */
@@ -268,6 +273,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       planned.push({ unitId, destination, carryingJson });
       return forecast.route ?? { plan: null, problem: { kind: "noKnownRoute" }, risk: null, fullyModelled: true };
     },
+    tradeRoutes: async () => forecast.trade ?? [],
     writeOrders: (update) => {
       if (current !== null) {
         const document = update(current.ordersDocument);
@@ -1865,5 +1871,103 @@ describe("get_study_plans", () => {
       text: "This turn's report has no turn number, so the study planner has no turns to plan.",
       isError: true
     });
+  });
+});
+
+describe("trade routes", () => {
+  /** Grain from the coast to the woods and iron back: a circuit, and the best route. */
+  const circuit = aTradeRoute({
+    from: { x: 1, y: 1, z: 1 },
+    to: { x: 2, y: 1, z: 1 },
+    outbound: [aTradedGood({ tag: "GRAI", name: "grain", buyPrice: 20, sellPrice: 35, quantity: 40, margin: 15, buySeenTurn: 12, sellSeenTurn: 12 })],
+    inbound: [aTradedGood({ tag: "IRON", name: "iron", buyPrice: 60, sellPrice: 80, quantity: 10, margin: 20, buySeenTurn: 12, sellSeenTurn: 12 })],
+    worth: 800,
+    turns: { walk: 1, ride: 1, fly: 1 }
+  });
+  /** Livestock from the remembered plain to the coast, one way, priced on turn 9. */
+  const oneWay = aTradeRoute({
+    from: { x: 19, y: 5, z: 1 },
+    to: { x: 1, y: 1, z: 1 },
+    outbound: [aTradedGood({ tag: "LIVE", name: "livestock", buyPrice: 40, sellPrice: 50, quantity: 30, margin: 10, buySeenTurn: 9, sellSeenTurn: 12 })],
+    inbound: [],
+    worth: 300,
+    turns: { walk: 6, ride: 3, fly: null }
+  });
+
+  it("lists the routes the HUD finds, best first, with goods, ends, months and margin", async () => {
+    const { host } = aHost(aTurn(), [], { trade: [circuit, oneWay] });
+    const answer = await call(host, "list_trade_routes");
+    expect(answer.isError).toBe(false);
+    const listed = json(answer.text);
+    expect(listed.currentTurn).toBe(12);
+    expect(listed.routes).toHaveLength(2);
+    expect(listed.routes[0]).toEqual({
+      from: "1,1,1",
+      fromRegion: "plain (1,1,1) in Coast",
+      to: "2,1,1",
+      toRegion: "forest (2,1,1) in Woods",
+      circuit: true,
+      worth: 800,
+      months: { walk: 1, ride: 1, fly: 1 },
+      outbound: [{ tag: "GRAI", name: "grain", buyPrice: 20, sellPrice: 35, quantity: 40, margin: 15, buySeenTurn: 12, sellSeenTurn: 12 }],
+      inbound: [{ tag: "IRON", name: "iron", buyPrice: 60, sellPrice: 80, quantity: 10, margin: 20, buySeenTurn: 12, sellSeenTurn: 12 }]
+    });
+    expect(listed.routes[1]).toMatchObject({ from: "1:19,5", fromRegion: "plain (19,5,1) in Borg", to: "1,1,1", circuit: false, months: { fly: null } });
+    expect(listed.note).toMatch(/as last seen/u);
+  });
+
+  it("lists only the routes that start or end in a region, named by id or by coordinates", async () => {
+    const { host } = aHost(aTurn(), [], { trade: [circuit, oneWay] });
+    const byId = json((await call(host, "list_trade_routes", { regionId: "2,1,1" })).text);
+    expect(byId.routes.map((route: { from: string }) => route.from)).toEqual(["1,1,1"]);
+    const remembered = json((await call(host, "list_trade_routes", { regionId: "1:19,5" })).text);
+    expect(remembered.routes.map((route: { to: string }) => route.to)).toEqual(["1,1,1"]);
+    const byCoordinates = json((await call(host, "list_trade_routes", { x: 1, y: 1 })).text);
+    expect(byCoordinates.routes).toHaveLength(2);
+    const bare = json((await call(host, "list_trade_routes", { regionId: "1:2,1" })).text);
+    expect(bare.routes).toHaveLength(1);
+  });
+
+  it("refuses a region neither the report nor the map knows", async () => {
+    const { host } = aHost(aTurn(), [], { trade: [circuit] });
+    for (const args of [{ regionId: "nowhere" }, { regionId: "1:99,99" }, { x: 99, y: 99 }, { x: 99, y: 99, z: 1 }]) {
+      const answer = await call(host, "list_trade_routes", args);
+      expect(answer.isError, JSON.stringify(args)).toBe(true);
+      expect(answer.text, JSON.stringify(args)).toMatch(/list_known_regions/u);
+    }
+  });
+
+  it("asks for the level when the coordinates are on more than one", async () => {
+    const turn = aTurn();
+    const map = aMap();
+    const { host } = aHost(
+      { ...turn, knownMap: { ...map, hexes: [...map.hexes, aKnownMapHex({ coordinate: { x: 1, y: 1, z: 2 }, terrain: "tunnels", province: "Deep" })] } },
+      [],
+      { trade: [circuit] }
+    );
+    const answer = await call(host, "list_trade_routes", { x: 1, y: 1 });
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toMatch(/z: 1, 2/u);
+  });
+
+  it("stops a long list at the limit and says how many it left out", async () => {
+    const many = Array.from({ length: 25 }, (_, index) => aTradeRoute({ from: { x: index, y: 40, z: 1 }, worth: 1000 - index }));
+    const { host } = aHost(aTurn(), [], { trade: many });
+    const shown = json((await call(host, "list_trade_routes")).text);
+    expect(shown.routes).toHaveLength(20);
+    expect(shown.leftOut).toBe(5);
+    const fewer = json((await call(host, "list_trade_routes", { limit: 3 })).text);
+    expect(fewer.routes.map((route: { worth: number }) => route.worth)).toEqual([1000, 999, 998]);
+    expect(fewer.leftOut).toBe(22);
+    const all = json((await call(host, "list_trade_routes", { limit: 500 })).text);
+    expect(all.routes).toHaveLength(25);
+    expect(all.leftOut).toBeUndefined();
+  });
+
+  it("refuses while the game data is still loading, rather than finding nothing to trade", async () => {
+    const { host } = aHost(aTurn({ rulesetText: null }), [], { trade: [circuit] });
+    const answer = await call(host, "list_trade_routes");
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toMatch(/not loaded/u);
   });
 });

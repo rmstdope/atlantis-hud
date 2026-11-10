@@ -24,6 +24,8 @@ import type {
   ReportRegion,
   ReportUnit,
   RoutePlanResponse,
+  TradedGood,
+  TradeRoute,
   UnitPreview,
   UnitSilver,
   WorkedRegion
@@ -77,6 +79,11 @@ export interface AssistantHost {
    * tag to how many the unit will hold when it moves. Rejects while the game data has not loaded.
    */
   planRoute(unitId: string, destination: string, carryingJson: string): Promise<RoutePlanResponse>;
+  /**
+   * The trade routes the HUD's Trade panel lists, best first, over the same remembered map and map
+   * shape. Rejects while the game data has not loaded.
+   */
+  tradeRoutes(): Promise<TradeRoute[]>;
   /**
    * Applies `update`, which rewrites `unitId`'s block, to the document as it stands when the write
    * lands - which may hold something typed since the tool read it - and saves the result.
@@ -260,6 +267,21 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     }
   },
   {
+    name: "list_trade_routes",
+    description:
+      "The trade routes the HUD's Trade panel lists, found over every market the HUD's map knows - this report's and those remembered from earlier reports - best first: from and to (the hex to buy in and the hex to sell in, as list_known_regions names them) with fromRegion and toRegion (how each reads, null where neither the report nor the map describes it), circuit (true when the way back pays too), worth (silver earned running it once, every good on both legs, quantity times margin), months (how many months the journey takes on foot, riding and flying; null where the known map offers that way no route), and the goods each way: outbound (bought at from, sold at to) and inbound (bought at to, sold at from), each with tag, name, buyPrice, sellPrice, quantity (the smaller of what is for sale and what is wanted), margin per item and the turn each price was last seen (buySeenTurn, sellSeenTurn; compare currentTurn). note says what the figures assume. Pass regionId, or x, y and z, for only the routes that start or end there. At most limit routes (20 when left out, 100 at most); leftOut says how many more there are. Writes nothing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        regionId: { type: "string", description: "Only routes to or from this hex, as list_known_regions names it, e.g. \"1:12,4\"." },
+        x: { type: "number" },
+        y: { type: "number" },
+        z: { type: "number", description: "The level. Needed when x and y exist on more than one." },
+        limit: { type: "number", description: "How many routes at most; 20 when left out, 100 at most." }
+      }
+    }
+  },
+  {
     name: "get_silver_shortfalls",
     description:
       "Where the faction's silver runs short this month, hex by hex, as the HUD forecasts it: every own unit whose orders are short of silver, that ends the month below zero once upkeep is paid, that has an order the game refuses for want of silver, or whose month could not be priced at all. Empty regions mean nobody is short. Also how much of the unclaimed fund the orders use.",
@@ -380,6 +402,8 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
 const MAX_SEARCH_HITS = 200;
 const MAX_READ_LINES = 1000;
 const MAX_KNOWN_REGIONS = 500;
+const TRADE_ROUTES_SHOWN = 20;
+const MAX_TRADE_ROUTES = 100;
 
 class Refusal extends Error {}
 
@@ -862,6 +886,86 @@ function routeAnswer(unitId: string, destination: string, response: RoutePlanRes
   };
 }
 
+/** A hex as the tools name it: the report's region, else the map's, else just its coordinates. */
+function namedHex(turn: AssistantTurn, coordinate: Coordinate): { id: string; label: string | null } {
+  const same = (other: Coordinate) => other.x === coordinate.x && other.y === coordinate.y && other.z === coordinate.z;
+  const region = turn.parsed.regions.find((candidate) => same(candidate.coordinate));
+  if (region) {
+    return { id: region.regionId, label: regionLabel(region) };
+  }
+  const hex = turn.knownMap?.hexes.find((candidate) => same(candidate.coordinate));
+  return hex ? { id: hexIdOf(hex), label: regionLabel(hex) } : { id: regionIdOf(coordinate), label: null };
+}
+
+/**
+ * The hex `args` names, by `regionId` (this report's, the map's, or a bare `z:x,y`) or by `x`, `y`
+ * and `z`; `undefined` when it names none. Only a hex the report or the map knows is answered - a
+ * trade route only ever ends in one - and with no unit to lend a level, `z` may be left out only
+ * where the coordinates are on one level.
+ */
+function namedCoordinate(turn: AssistantTurn, args: Record<string, unknown>): Coordinate | undefined {
+  const known = [
+    ...turn.parsed.regions.map((region) => ({ id: region.regionId, coordinate: region.coordinate })),
+    ...(turn.knownMap?.hexes ?? []).map((hex) => ({ id: hexIdOf(hex), coordinate: hex.coordinate }))
+  ];
+  const unknown = (what: string): never =>
+    refuse(`Neither this turn's report nor the HUD's map knows ${what}, so no trade route ends there. list_known_regions names every one the map knows.`);
+  const regionId = stringArg(args, "regionId")?.trim();
+  if (regionId !== undefined) {
+    return (
+      known.find((hex) => hex.id === regionId || regionIdOf(hex.coordinate) === regionId)?.coordinate ??
+      unknown(`region ${regionId}`)
+    );
+  }
+  const x = numberArg(args, "x");
+  const y = numberArg(args, "y");
+  if (x === undefined && y === undefined) {
+    return undefined;
+  }
+  if (x === undefined || y === undefined) {
+    refuse("Name the region by regionId, or by x and y (and z).");
+  }
+  const z = numberArg(args, "z");
+  const matches = known.filter(
+    ({ coordinate }) => coordinate.x === x && coordinate.y === y && (z === undefined || coordinate.z === z)
+  );
+  const levels = [...new Set(matches.map(({ coordinate }) => coordinate.z))].sort((a, b) => a - b);
+  if (levels.length > 1) {
+    refuse(`(${x},${y}) is on several levels; say which with z: ${levels.join(", ")}.`);
+  }
+  return levels.length === 1 ? { x, y, z: levels[0] } : unknown(z === undefined ? `(${x},${y})` : `(${x},${y},${z})`);
+}
+
+function tradedGood(good: TradedGood) {
+  return {
+    tag: good.tag,
+    name: good.name,
+    buyPrice: good.buyPrice,
+    sellPrice: good.sellPrice,
+    quantity: good.quantity,
+    margin: good.margin,
+    buySeenTurn: good.buySeenTurn,
+    sellSeenTurn: good.sellSeenTurn
+  };
+}
+
+/** One route as the Trade panel shows it, for the model. */
+function tradeRouteRow(turn: AssistantTurn, route: TradeRoute) {
+  const from = namedHex(turn, route.from);
+  const to = namedHex(turn, route.to);
+  return {
+    from: from.id,
+    fromRegion: from.label,
+    to: to.id,
+    toRegion: to.label,
+    circuit: route.inbound.length > 0,
+    worth: route.worth,
+    months: { walk: route.turns.walk, ride: route.turns.ride, fly: route.turns.fly },
+    outbound: route.outbound.map(tradedGood),
+    inbound: route.inbound.map(tradedGood)
+  };
+}
+
 /** Names the turn on screen, so a write can say which turn it was worked out for. */
 function turnKeyOf(turn: AssistantTurn): string {
   return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
@@ -1114,6 +1218,25 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       }
       const validation = await host.validate(turn.ordersDocument);
       return ok(productionAnswer(parsed, validation.production, validation.silver, region));
+    }
+
+    case "list_trade_routes": {
+      if (turn.rulesetText === null) {
+        // Without the game data nothing is found, and an empty answer would read as nothing to trade.
+        refuse("The game data has not loaded yet; try again in a moment.");
+      }
+      const where = namedCoordinate(turn, args);
+      const touches = (coordinate: Coordinate) =>
+        where !== undefined && coordinate.x === where.x && coordinate.y === where.y && coordinate.z === where.z;
+      const found = await host.tradeRoutes();
+      const routes = where === undefined ? found : found.filter((route) => touches(route.from) || touches(route.to));
+      const limit = Math.min(Math.max(Math.floor(numberArg(args, "limit") ?? TRADE_ROUTES_SHOWN), 1), MAX_TRADE_ROUTES);
+      return ok({
+        currentTurn: turn.knownMap?.currentTurn ?? parsed.header.turnNumber ?? null,
+        routes: routes.slice(0, limit).map((route) => tradeRouteRow(turn, route)),
+        ...(routes.length > limit ? { leftOut: routes.length - limit } : {}),
+        note: "Prices are as last seen, and the journeys assume an unladen unit through hexes the faction has explored."
+      });
     }
 
     case "get_silver_shortfalls": {
