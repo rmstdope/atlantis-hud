@@ -190,7 +190,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_unit",
     description:
-      "One unit in full as the report shows it (flags, items, skills, movement, capacity, structure, description), with the orders currently written for it, their version (hand it to write_orders) and every problem the HUD's validator finds in them. With turn, as that earlier turn's report showed it, with the orders the HUD kept for that turn and no problems (marked earlier: true).",
+      "One unit in full as the report shows it (flags, items, skills, movement, capacity, structure, description), with the orders currently written for it, their version (hand it to write_orders) and every problem the HUD's validator finds in them. With turn, as that earlier turn's report showed it, with the orders the HUD kept for that turn and no problems (marked earlier: true); when it kept none, the unit's block from that turn's report orders template instead, marked fromTemplate: true - what was most likely sent, not what the player wrote.",
     inputSchema: { type: "object", properties: { unitId: UNIT_ID, turn: TURN }, required: ["unitId"] }
   },
   {
@@ -1199,6 +1199,20 @@ function answerEarlier(host: AssistantHost, earlier: EarlierTurn, name: string, 
     earlier.ordersDocument === null ? null : host.orders.readUnitOrders(earlier.ordersDocument, unitId, unitIdsOf(region));
   const unitIn = (unitId: string) =>
     findUnit(parsed, unitId) ?? refuse(`Turn ${turnNumber}'s report shows no unit ${unitId}.`);
+  /** Never saved in the HUD, so the report's own template is the likeliest account of what was sent. */
+  const fromTemplate = (): { template: string; marking: { fromTemplate: true; note: string } } | null => {
+    const template = parsed.ordersTemplate?.text ?? "";
+    if (earlier.ordersDocument !== null || template.trim() === "") {
+      return null;
+    }
+    return {
+      template,
+      marking: {
+        fromTemplate: true,
+        note: `The HUD kept no orders for turn ${turnNumber}; these are the orders template from that turn's report, not orders the player saved.`
+      }
+    };
+  };
   switch (name) {
     case "get_region":
       return ok({
@@ -1207,12 +1221,13 @@ function answerEarlier(host: AssistantHost, earlier: EarlierTurn, name: string, 
       });
     case "get_unit": {
       const found = unitIn(requiredString(args, "unitId"));
-      return ok({
-        ...mark,
-        unit: found.unit,
-        region: regionLabel(found.region),
-        orders: found.unit.own ? orders(found.unit.unitId, found.region) : null
-      });
+      const answered = { ...mark, unit: found.unit, region: regionLabel(found.region) };
+      const kept = found.unit.own ? fromTemplate() : null;
+      if (kept !== null) {
+        const block = host.orders.readUnitOrders(kept.template, found.unit.unitId, unitIdsOf(found.region));
+        return ok({ ...answered, orders: block ?? "", ...kept.marking });
+      }
+      return ok({ ...answered, orders: found.unit.own ? orders(found.unit.unitId, found.region) : null });
     }
     case "get_turn_events":
       return ok({
@@ -1226,20 +1241,15 @@ function answerEarlier(host: AssistantHost, earlier: EarlierTurn, name: string, 
       const unitId = stringArg(args, "unitId");
       const found = unitId === undefined ? null : unitIn(unitId);
       if (earlier.ordersDocument === null) {
-        // Never saved in the HUD, so the report's own template is the likeliest account of what was sent.
-        const template = parsed.ordersTemplate?.text ?? "";
-        if (template.trim() === "") {
+        const kept = fromTemplate();
+        if (kept === null) {
           return ok({ ...mark, ...(unitId === undefined ? {} : { unitId }), orders: null, note: `The HUD kept no orders for turn ${turnNumber}.` });
         }
-        const fromTemplate = {
-          fromTemplate: true,
-          note: `The HUD kept no orders for turn ${turnNumber}; these are the orders template from that turn's report, not orders the player saved.`
-        };
         if (unitId === undefined) {
-          return ok({ ...mark, orders: template, ...fromTemplate });
+          return ok({ ...mark, orders: kept.template, ...kept.marking });
         }
-        const block = found ? host.orders.readUnitOrders(template, unitId, unitIdsOf(found.region)) : null;
-        return ok({ ...mark, unitId, orders: block ?? "", ...fromTemplate });
+        const block = found ? host.orders.readUnitOrders(kept.template, unitId, unitIdsOf(found.region)) : null;
+        return ok({ ...mark, unitId, orders: block ?? "", ...kept.marking });
       }
       if (unitId === undefined) {
         return ok({ ...mark, orders: earlier.ordersDocument });
