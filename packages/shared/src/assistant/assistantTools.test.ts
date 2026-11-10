@@ -1930,9 +1930,11 @@ describe("trade routes", () => {
 
   it("refuses a region neither the report nor the map knows", async () => {
     const { host } = aHost(aTurn(), [], { trade: [circuit] });
-    const answer = await call(host, "list_trade_routes", { regionId: "nowhere" });
-    expect(answer.isError).toBe(true);
-    expect(answer.text).toMatch(/list_known_regions/u);
+    for (const args of [{ regionId: "nowhere" }, { regionId: "1:99,99" }, { x: 99, y: 99 }, { x: 99, y: 99, z: 1 }]) {
+      const answer = await call(host, "list_trade_routes", args);
+      expect(answer.isError, JSON.stringify(args)).toBe(true);
+      expect(answer.text, JSON.stringify(args)).toMatch(/list_known_regions/u);
+    }
   });
 
   it("asks for the level when the coordinates are on more than one", async () => {

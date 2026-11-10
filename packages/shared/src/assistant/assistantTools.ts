@@ -269,7 +269,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "list_trade_routes",
     description:
-      "The trade routes the HUD's Trade panel lists, found over every market the HUD's map knows - this report's and those remembered from earlier reports - best first: from and to (the hex to buy in and the hex to sell in), circuit (true when the way back pays too), worth (silver earned running it once, every good on both legs, quantity times margin), months (how many months the journey takes on foot, riding and flying; null where the known map offers that way no route), and the goods each way: outbound (bought at from, sold at to) and inbound (bought at to, sold at from), each with tag, name, buyPrice, sellPrice, quantity (the smaller of what is for sale and what is wanted), margin per item and the turn each price was last seen. Pass regionId, or x, y and z, for only the routes that start or end there. At most limit routes (20 when left out, 100 at most); leftOut says how many more there are. Writes nothing.",
+      "The trade routes the HUD's Trade panel lists, found over every market the HUD's map knows - this report's and those remembered from earlier reports - best first: from and to (the hex to buy in and the hex to sell in, as list_known_regions names them) with fromRegion and toRegion (how each reads, null where neither the report nor the map describes it), circuit (true when the way back pays too), worth (silver earned running it once, every good on both legs, quantity times margin), months (how many months the journey takes on foot, riding and flying; null where the known map offers that way no route), and the goods each way: outbound (bought at from, sold at to) and inbound (bought at to, sold at from), each with tag, name, buyPrice, sellPrice, quantity (the smaller of what is for sale and what is wanted), margin per item and the turn each price was last seen (buySeenTurn, sellSeenTurn; compare currentTurn). note says what the figures assume. Pass regionId, or x, y and z, for only the routes that start or end there. At most limit routes (20 when left out, 100 at most); leftOut says how many more there are. Writes nothing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -899,24 +899,23 @@ function namedHex(turn: AssistantTurn, coordinate: Coordinate): { id: string; la
 
 /**
  * The hex `args` names, by `regionId` (this report's, the map's, or a bare `z:x,y`) or by `x`, `y`
- * and `z`; `undefined` when it names none. With no unit to lend a level, `z` may be left out only
+ * and `z`; `undefined` when it names none. Only a hex the report or the map knows is answered - a
+ * trade route only ever ends in one - and with no unit to lend a level, `z` may be left out only
  * where the coordinates are on one level.
  */
 function namedCoordinate(turn: AssistantTurn, args: Record<string, unknown>): Coordinate | undefined {
+  const known = [
+    ...turn.parsed.regions.map((region) => ({ id: region.regionId, coordinate: region.coordinate })),
+    ...(turn.knownMap?.hexes ?? []).map((hex) => ({ id: hexIdOf(hex), coordinate: hex.coordinate }))
+  ];
+  const unknown = (what: string): never =>
+    refuse(`Neither this turn's report nor the HUD's map knows ${what}, so no trade route ends there. list_known_regions names every one the map knows.`);
   const regionId = stringArg(args, "regionId")?.trim();
-  const hexes = turn.knownMap?.hexes ?? [];
   if (regionId !== undefined) {
-    const coordinate =
-      turn.parsed.regions.find((region) => region.regionId === regionId)?.coordinate ??
-      hexes.find((hex) => hexIdOf(hex) === regionId)?.coordinate;
-    if (coordinate) {
-      return coordinate;
-    }
-    const bare = /^(-?\d+):(-?\d+),(-?\d+)$/u.exec(regionId);
-    if (bare) {
-      return { z: Number(bare[1]), x: Number(bare[2]), y: Number(bare[3]) };
-    }
-    refuse(`No region ${regionId} is known to this turn's report or the HUD's map. list_known_regions names every one the map knows.`);
+    return (
+      known.find((hex) => hex.id === regionId || regionIdOf(hex.coordinate) === regionId)?.coordinate ??
+      unknown(`region ${regionId}`)
+    );
   }
   const x = numberArg(args, "x");
   const y = numberArg(args, "y");
@@ -927,22 +926,14 @@ function namedCoordinate(turn: AssistantTurn, args: Record<string, unknown>): Co
     refuse("Name the region by regionId, or by x and y (and z).");
   }
   const z = numberArg(args, "z");
-  if (z !== undefined) {
-    return { x, y, z };
-  }
-  const at = (coordinate: Coordinate) => coordinate.x === x && coordinate.y === y;
-  const levels = [
-    ...new Set([
-      ...turn.parsed.regions.filter((region) => at(region.coordinate)).map((region) => region.coordinate.z),
-      ...hexes.filter((hex) => at(hex.coordinate)).map((hex) => hex.coordinate.z)
-    ])
-  ].sort((a, b) => a - b);
+  const matches = known.filter(
+    ({ coordinate }) => coordinate.x === x && coordinate.y === y && (z === undefined || coordinate.z === z)
+  );
+  const levels = [...new Set(matches.map(({ coordinate }) => coordinate.z))].sort((a, b) => a - b);
   if (levels.length > 1) {
     refuse(`(${x},${y}) is on several levels; say which with z: ${levels.join(", ")}.`);
   }
-  return levels.length === 1
-    ? { x, y, z: levels[0] }
-    : refuse(`Neither this turn's report nor the HUD's map knows (${x},${y}); say which level with z.`);
+  return levels.length === 1 ? { x, y, z: levels[0] } : unknown(z === undefined ? `(${x},${y})` : `(${x},${y},${z})`);
 }
 
 function tradedGood(good: TradedGood) {
@@ -1240,11 +1231,10 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       const found = await host.tradeRoutes();
       const routes = where === undefined ? found : found.filter((route) => touches(route.from) || touches(route.to));
       const limit = Math.min(Math.max(Math.floor(numberArg(args, "limit") ?? TRADE_ROUTES_SHOWN), 1), MAX_TRADE_ROUTES);
-      const rows = routes.map((route) => tradeRouteRow(turn, route));
       return ok({
         currentTurn: turn.knownMap?.currentTurn ?? parsed.header.turnNumber ?? null,
-        routes: rows.slice(0, limit),
-        ...(rows.length > limit ? { leftOut: rows.length - limit } : {}),
+        routes: routes.slice(0, limit).map((route) => tradeRouteRow(turn, route)),
+        ...(routes.length > limit ? { leftOut: routes.length - limit } : {}),
         note: "Prices are as last seen, and the journeys assume an unladen unit through hexes the faction has explored."
       });
     }
