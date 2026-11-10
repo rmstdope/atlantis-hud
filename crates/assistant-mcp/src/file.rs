@@ -89,7 +89,10 @@ mod tests {
 
         let error = write_assistant_file(&path, "{}").expect_err("a refusal");
 
-        assert_eq!(error, format!("the folder {} does not exist.", dir.display()));
+        assert_eq!(
+            error,
+            format!("the folder {} does not exist.", dir.display())
+        );
         assert!(!dir.exists());
     }
 }
