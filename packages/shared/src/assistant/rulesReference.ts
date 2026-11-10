@@ -197,6 +197,11 @@ export type ItemProducer = {
   readonly from: string | null;
   /** E.g. "1 per 2 man-months". */
   readonly rate: string;
+  /**
+   * How many one production makes, as the page writes it between the product and its inputs
+   * (`newage trident data COOK`: "equal to their skill level"); null when it writes nothing there.
+   */
+  readonly yield: string | null;
 };
 
 /**
@@ -210,6 +215,12 @@ const PRODUCT_CLAUSE = /\[([A-Z0-9]+)\]((?:(?! at a rate of ).)*?) at a rate of 
 function inputsOf(words: string): string | null {
   const found = /(?:^| )from (.+)$/u.exec(words);
   return found?.[1]?.trim() ?? null;
+}
+
+/** The words a clause writes before its inputs, as the page writes them: how many it makes. */
+function yieldOf(words: string): string | null {
+  const before = /^(.*?)(?:^| )from /u.exec(words)?.[1] ?? words;
+  return before.trim() === "" ? null : before.trim();
 }
 
 /**
@@ -238,7 +249,7 @@ export function producersOf(reference: RulesReference, itemTag: string): ItemPro
         }
         for (const [, tag, words, rate] of sentence.slice(at).matchAll(PRODUCT_CLAUSE)) {
           if (tag === wanted && rate !== undefined) {
-            producers.push({ skill: entry.name, tag: entry.tag, level: Number(level), from: inputsOf(words ?? ""), rate });
+            producers.push({ skill: entry.name, tag: entry.tag, level: Number(level), from: inputsOf(words ?? ""), rate, yield: yieldOf(words ?? "") });
           }
         }
       }

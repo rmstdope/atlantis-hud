@@ -406,7 +406,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "read_data_entry",
     description:
-      "Read this game's own data page - the world's skill, item and object descriptions, every level of a skill - by tag (e.g. \"SWOR\") or name, as the page writes it: the full text, which can say more than get_game_data does. An item also carries producedBy when a skill on the page may PRODUCE it: the skill, its tag and level, the inputs as the page writes them (from) and the rate. A query that fits several names answers with the names. Names the world and the snapshot's date.",
+      "Read this game's own data page - the world's skill, item and object descriptions, every level of a skill - by tag (e.g. \"SWOR\") or name, as the page writes it: the full text, which can say more than get_game_data does. An item also carries producedBy when a skill on the page may PRODUCE it: the skill, its tag and level, the inputs as the page writes them (from), the rate, and how many one production makes as the page writes it (yield, e.g. \"equal to their skill level\"; null when the page says nothing). A query that fits several names answers with the names. Names the world and the snapshot's date.",
     inputSchema: {
       type: "object",
       properties: { query: { type: "string", description: "A tag or a name." } },
