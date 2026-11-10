@@ -6,6 +6,7 @@ import {
   assistantChangeViews,
   assistantChipLabel,
   currentOrdersOf,
+  keepAssistantChange,
   recordAssistantWrite,
   settleAssistantChanges,
   type AssistantChangesState
@@ -98,6 +99,7 @@ export function useAssistantChanges(input: {
   );
 
   const replace = useCallback((next: AssistantChangesState) => update(() => next), [update]);
+  const keep = useCallback((unitId: string) => update((now) => keepAssistantChange(now, unitId)), [update]);
   const keepAll = useCallback(() => update((now) => ({ ...now, changes: [] })), [update]);
 
   // The cursor goes with a deliberate open or close, never with one that happened by itself: it
@@ -137,6 +139,7 @@ export function useAssistantChanges(input: {
     chipLabel: !state.open && views.length > 0 ? assistantChipLabel(views) : null,
     recordWrite,
     replace,
+    keep,
     keepAll,
     show,
     close,

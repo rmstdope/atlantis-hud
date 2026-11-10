@@ -13,6 +13,7 @@ import {
   assistantChipLabel,
   countLabel,
   currentOrdersOf,
+  keepAssistantChange,
   problemMark,
   recordAssistantWrite,
   revertAllPrompt,
@@ -85,6 +86,40 @@ describe("recordAssistantWrite", () => {
     };
 
     expect(written("101", "tax", "work", closed).open).toBe(false);
+  });
+});
+
+describe("keepAssistantChange", () => {
+  const state: AssistantChangesState = {
+    open: false,
+    changes: [
+      { unitId: "100", before: "work", after: "move N" },
+      { unitId: "101", before: "tax", after: "work" },
+      { unitId: "102", before: "", after: "study FORC" }
+    ]
+  };
+
+  it("takes the named unit off the list and leaves the others in order", () => {
+    expect(keepAssistantChange(state, "101").changes.map((change) => change.unitId)).toEqual(["100", "102"]);
+  });
+
+  it("leaves the panel's open state alone", () => {
+    expect(keepAssistantChange(state, "100").open).toBe(false);
+    expect(keepAssistantChange({ ...state, open: true }, "100").open).toBe(true);
+  });
+
+  it("returns the same state for a unit that is not listed", () => {
+    expect(keepAssistantChange(state, "999")).toBe(state);
+  });
+
+  it("a unit written again after Keep comes back with the kept orders as Before", () => {
+    const kept = keepAssistantChange(state, "100");
+
+    expect(written("100", "move N", "move N E", kept).changes).toContainEqual({
+      unitId: "100",
+      before: "move N",
+      after: "move N E"
+    });
   });
 });
 

@@ -6408,6 +6408,7 @@ export function AppShell({
           panelRef={assistantChanges.panelRef}
           onClose={assistantChanges.close}
           onKeepAll={assistantChanges.keepAll}
+          onKeep={assistantChanges.keep}
           onRevert={revertAssistantUnits}
           onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId === "" ? undefined : regionId)}
         />
