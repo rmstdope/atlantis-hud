@@ -2339,10 +2339,16 @@ describe("reading the open world's rules and data", () => {
           name: "sword",
           tag: "SWOR",
           text: "sword [SWOR], weight 1.",
-          producedBy: [{ skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }]
+          producedBy: [{ skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months", yield: null }]
         }
       ]
     });
+  });
+
+  it("tells the model a producer says how many one production makes", () => {
+    const readDataEntry = ASSISTANT_TOOLS.find((tool) => tool.name === "read_data_entry");
+
+    expect(readDataEntry?.description).toContain("(yield");
   });
 
   it("says nothing of producers for an item no skill on the page produces", async () => {

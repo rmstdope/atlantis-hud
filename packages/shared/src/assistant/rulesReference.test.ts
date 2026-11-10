@@ -148,18 +148,18 @@ describe("producersOf", () => {
         "weaponsmith [WEAP] 2: A unit with this skill may PRODUCE swords [SWOR]\n  from 2 iron [IRON] at a rate of 1 per 2 man-months, pikes [PIKE] from 2 wood [WOOD] at a rate\n  of 1 per 2 man-months."
     );
     expect(producersOf(reference, "SWOR")).toEqual([
-      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }
+      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months", yield: null }
     ]);
     // The tag matches regardless of case.
     expect(producersOf(reference, "pike")).toEqual([
-      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 wood [WOOD]", rate: "1 per 2 man-months" }
+      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 wood [WOOD]", rate: "1 per 2 man-months", yield: null }
     ]);
   });
 
   it("reads a rate of more than one per month", () => {
     const reference = smith("weaponsmith [WEAP] 1: A unit with this skill may PRODUCE picks [PICK] from iron [IRON] at a rate of 2 per man-month.");
     expect(producersOf(reference, "PICK")).toEqual([
-      { skill: "weaponsmith", tag: "WEAP", level: 1, from: "iron [IRON]", rate: "2 per man-month" }
+      { skill: "weaponsmith", tag: "WEAP", level: 1, from: "iron [IRON]", rate: "2 per man-month", yield: null }
     ]);
   });
 
@@ -177,7 +177,7 @@ describe("producersOf", () => {
       "HERB"
     );
     expect(producersOf(reference, "HERB")).toEqual([
-      { skill: "herb lore", tag: "HERB", level: 1, from: null, rate: "1 per man-month" }
+      { skill: "herb lore", tag: "HERB", level: 1, from: null, rate: "1 per man-month", yield: null }
     ]);
   });
 });
@@ -198,7 +198,17 @@ describe("producersOf, when words come between the product and its inputs", () =
     };
     expect(producersOf(reference, "FISH")).toEqual([]);
     expect(producersOf(reference, "MEAL")).toEqual([
-      { skill: "cooking", tag: "COOK", level: 1, from: "any of grain [GRAI], livestock [LIVE] and fish [FISH]", rate: "1 per man-month" }
+      { skill: "cooking", tag: "COOK", level: 1, from: "any of grain [GRAI], livestock [LIVE] and fish [FISH]", rate: "1 per man-month", yield: "equal to their skill level" }
+    ]);
+  });
+
+  it("reads a yield written with no inputs", () => {
+    const reference: RulesReference = {
+      ...REFERENCE,
+      data: [{ section: "skills", name: "cooking", tag: "COOK", text: "cooking [COOK] 1: A unit with this skill may PRODUCE meals [MEAL] equal to their skill level at a rate of 1 per man-month." }]
+    };
+    expect(producersOf(reference, "MEAL")).toEqual([
+      { skill: "cooking", tag: "COOK", level: 1, from: null, rate: "1 per man-month", yield: "equal to their skill level" }
     ]);
   });
 });
@@ -223,7 +233,33 @@ describe("the committed Trident reference", () => {
   it("says weaponsmith 2 makes a sword from 2 iron", () => {
     // `pnpm run atlantis newage trident data WEAP`, level 2.
     expect(producersOf(committed, "SWOR")).toEqual([
-      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }
+      { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months", yield: null }
+    ]);
+  });
+
+  it("says a cook makes as many meals as their skill level", () => {
+    // `pnpm run atlantis newage trident data COOK`, level 1.
+    expect(producersOf(committed, "MEAL")).toEqual([
+      { skill: "cooking", tag: "COOK", level: 1, from: "any of grain [GRAI], livestock [LIVE] and fish [FISH]", rate: "1 per man-month", yield: "equal to their skill level" }
+    ]);
+  });
+});
+
+describe("the committed New Origins reference", () => {
+  it("says a cook makes half their skill level in meals, rounded up", () => {
+    // `pnpm run atlantis data COOK`, level 1.
+    const committed = parseRulesReference(
+      readFileSync(fileURLToPath(new URL("../../../../config/public/reference-neworigins.json", import.meta.url)), "utf8")
+    );
+    expect(producersOf(committed, "MEAL")).toEqual([
+      {
+        skill: "cooking",
+        tag: "COOK",
+        level: 1,
+        from: "any of grain [GRAI], livestock [LIVE] and fish [FISH]",
+        rate: "1 per man-month",
+        yield: "equal to skill level divided by 2, rounded up"
+      }
     ]);
   });
 });
