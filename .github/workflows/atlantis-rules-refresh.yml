@@ -118,7 +118,11 @@ jobs:
                 "git", "add", "tests/fixtures/ruleset",
                 "config/public/ruleset.json",
                 "config/public/ruleset-newage-arcanum.json",
-                "config/public/ruleset-newage-trident.json"
+                "config/public/ruleset-newage-trident.json",
+                // The rules snapshots refresh rewrites with the sources (ah-a97xg.8).
+                "config/public/reference-neworigins.json",
+                "config/public/reference-newage-arcanum.json",
+                "config/public/reference-newage-trident.json"
               ]);
               run(["git", "commit", "-m", title]);
               run(["git", "push", "--force", "origin", mod.REFRESH_BRANCH]);

@@ -39,6 +39,16 @@ import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 import type { EarlierTurn, EarlierTurnSource } from "./earlierTurns";
 import { studyPlansAnswer, type StudyPlannerInputs } from "./assistantStudyPlans";
+import { rulesetById } from "../rulesets";
+import {
+  dataEntriesFor,
+  parseRulesReference,
+  provenance,
+  rulesSectionText,
+  rulesSections,
+  searchRulesText,
+  type RulesReference
+} from "./rulesReference";
 import { silverShown } from "../unitTable";
 import { describeEstimate, describeLoadCheck, describeProblem } from "../workspace/PlannerPanel";
 
@@ -107,6 +117,11 @@ export interface AssistantHost {
   writeFile(path: string, text: string): Promise<void>;
   /** The open game's stored turns, or `null` while the HUD cannot read them. */
   readonly earlierTurns: EarlierTurnSource | null;
+  /**
+   * The rules snapshot of the world `rulesetId` names, as the file's text (`rulesReference.ts`);
+   * rejects with a sentence the assistant can read when this build has none or cannot read it.
+   */
+  rulesReference(rulesetId: string): Promise<string>;
 }
 
 /**
@@ -348,6 +363,42 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     }
   },
   {
+    name: "list_rules_sections",
+    description:
+      "Every section of this game's own rules - the rules of the world the open game is played in, as this HUD's snapshot of them has it - by anchor and title, in page order. Read one with read_rules_section. Use these rules tools rather than fetching rules from the web, which may be another world's. Every answer names the world and the snapshot's date.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "read_rules_section",
+    description:
+      "Read one section of this game's own rules, whole, by its anchor (from list_rules_sections or search_rules, e.g. \"give\"). Names the world and the snapshot's date.",
+    inputSchema: {
+      type: "object",
+      properties: { anchor: { type: "string", description: "The section's anchor." } },
+      required: ["anchor"]
+    }
+  },
+  {
+    name: "search_rules",
+    description:
+      "Search this game's own rules, case-insensitively, for a word or phrase. Answers with each section that contains it - anchor, title and up to three matching lines - for read_rules_section. Names the world and the snapshot's date.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string" } },
+      required: ["query"]
+    }
+  },
+  {
+    name: "read_data_entry",
+    description:
+      "Read this game's own data page - the world's skill, item and object descriptions, every level of a skill - by tag (e.g. \"SWOR\") or name, as the page writes it: the full text, which can say more than get_game_data does. A query that fits several names answers with the names. Names the world and the snapshot's date.",
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", description: "A tag or a name." } },
+      required: ["query"]
+    }
+  },
+  {
     name: "list_armies",
     description:
       "The Armies the player has saved in the HUD, each with its members as last seen: unit, faction, men, items, skills, whether it fights from behind, its combat spell, and whether it was missing from this turn's report. An Army is what export_battle_file writes out for a battle simulator.",
@@ -404,6 +455,7 @@ const MAX_READ_LINES = 1000;
 const MAX_KNOWN_REGIONS = 500;
 const TRADE_ROUTES_SHOWN = 20;
 const MAX_TRADE_ROUTES = 100;
+const MAX_RULES_MATCHES = 50;
 
 class Refusal extends Error {}
 
@@ -966,6 +1018,24 @@ function tradeRouteRow(turn: AssistantTurn, route: TradeRoute) {
   };
 }
 
+/** The open world's rules snapshot, or a refusal naming why it cannot be read. */
+async function openReference(host: AssistantHost, turn: AssistantTurn): Promise<RulesReference> {
+  const rulesetId =
+    turn.rulesetId ?? refuse("This game records no ruleset, so the HUD cannot say which world's rules apply.");
+  let text: string;
+  try {
+    text = await host.rulesReference(rulesetId);
+  } catch (error: unknown) {
+    refuse(error instanceof Error ? error.message : String(error));
+  }
+  try {
+    return parseRulesReference(text);
+  } catch (error: unknown) {
+    const world = rulesetById(rulesetId)?.label ?? rulesetId;
+    refuse(`The rules snapshot for ${world} could not be read: ${error instanceof Error ? error.message : String(error)}.`);
+  }
+}
+
 /** Names the turn on screen, so a write can say which turn it was worked out for. */
 function turnKeyOf(turn: AssistantTurn): string {
   return `${turn.gameId}/${turn.parsed.header.factionId}/${turn.parsed.header.turnNumber}`;
@@ -1426,6 +1496,44 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       const rulesetText = turn.rulesetText ?? refuse("The game data has not loaded yet; try again in a moment.");
       const found = lookupGameData(rulesetText, query);
       return ok(found.length > 0 ? found : refuse(`Nothing in the game data is called "${query}".`));
+    }
+
+    case "list_rules_sections": {
+      const reference = await openReference(host, turn);
+      return ok({ ...provenance(reference), sections: rulesSections(reference) });
+    }
+
+    case "read_rules_section": {
+      const anchor = requiredString(args, "anchor");
+      const reference = await openReference(host, turn);
+      const found = rulesSectionText(reference, anchor);
+      if ("closest" in found) {
+        const closest = found.closest.length > 0 ? ` Closest: ${found.closest.join(", ")}.` : " list_rules_sections names them all.";
+        refuse(`The ${reference.label} rules have no section called "${anchor}".${closest}`);
+      }
+      return ok({ ...provenance(reference), source: reference.rulesUrl, ...found });
+    }
+
+    case "search_rules": {
+      const query = requiredString(args, "query");
+      const reference = await openReference(host, turn);
+      const matches = searchRulesText(reference, query);
+      const more = matches.length - MAX_RULES_MATCHES;
+      return ok({
+        ...provenance(reference),
+        matches: matches.slice(0, MAX_RULES_MATCHES),
+        ...(more > 0 ? { moreSections: more } : {})
+      });
+    }
+
+    case "read_data_entry": {
+      const query = requiredString(args, "query");
+      const reference = await openReference(host, turn);
+      const found = dataEntriesFor(reference, query);
+      if ("entries" in found && found.entries.length === 0) {
+        refuse(`Nothing on the ${reference.label} data page is called "${query}".`);
+      }
+      return ok({ ...provenance(reference), source: reference.catalogueUrl, ...found });
     }
 
     case "list_armies": {

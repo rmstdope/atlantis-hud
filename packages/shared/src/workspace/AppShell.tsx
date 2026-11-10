@@ -80,6 +80,7 @@ import {
   type ReportLoadOutcome,
 } from "../reportLoad";
 import { earlierTurnSource } from "../assistant/earlierTurns";
+import { rulesReferenceLoader } from "../assistant/rulesReference";
 import { chooseViewerFaction } from "../reportBatch";
 import {
   batchFinish,
@@ -515,6 +516,12 @@ async function fetchRulesetText(rulesetId: string): Promise<string> {
   }
   return response.text();
 }
+
+/**
+ * Each world's rules snapshot, for an assistant reading the open game's own rules (ah-a97xg.8).
+ * Fetched only when an assistant asks, so a shell with no assistant never downloads one.
+ */
+const loadRulesReference = rulesReferenceLoader((url) => fetch(url));
 
 /** The order list before the core has answered for the open ruleset; one value, so memos hold. */
 const NO_ORDER_COMMANDS: readonly string[] = [];
@@ -4562,6 +4569,7 @@ export function AppShell({
           },
     orders,
     earlierTurns,
+    rulesReference: loadRulesReference,
     bannerFor: regionBanner,
     // Read through `getState()` on each call, like the Export button, so a call answers from the
     // Armies and scan as they stand when it arrives (ah-a97xg.11).

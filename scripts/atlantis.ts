@@ -22,6 +22,7 @@ import { pid } from "node:process";
 import { fileURLToPath } from "node:url";
 import type { Ruleset, ScrapedWorld } from "@atlantis/ruleset";
 import { buildRuleset, catalogueDataPage, preformattedText, WORLDS, worldBuildInput, worldById } from "@atlantis/ruleset";
+import { buildRulesReference, referenceFileText } from "./atlantisReference";
 import type { RefreshOutcome, WorldRefresh } from "./atlantisRefresh";
 import {
   dataEntries,
@@ -151,9 +152,10 @@ const HELP_TEXT = [
   "  atlantis check                             fetches every world's sources, compares their bytes",
   "  atlantis refresh                           re-fetches, rewrites every world's sources and ruleset",
   "  atlantis refresh --json                    same, but prints the outcome as one JSON object",
+  "  atlantis reference                         rewrites every world's reference file from its sources",
   "",
   "A plain lookup answers from New Origins and ends with a line naming the other committed worlds;",
-  "verify, check and refresh cover every committed world and take no world of their own.",
+  "verify, check, refresh and reference cover every committed world and take no world of their own.",
   "",
   "verify compares only what the scraper models — items, skills, buildings, region resources and",
   "movement — not prose.",
@@ -433,10 +435,48 @@ function verifyWorld(world: ScrapedWorld, io: Io): boolean {
   return anyDisagree;
 }
 
+/**
+ * A world's reference file - its rules and data pages rendered for an assistant (ah-a97xg.8) - as
+ * its committed sources generate it, stamped with its committed ruleset's fetch date.
+ */
+function worldReferenceText(world: ScrapedWorld, io: Io): string {
+  const ruleset = JSON.parse(io.readFile(world.rulesetPath)) as Pick<Ruleset, "source">;
+  return referenceFileText(
+    buildRulesReference(world, io.readFile(world.rulesFixture), io.readFile(world.catalogueFixture), ruleset.source.fetchedAt)
+  );
+}
+
+function runReference(io: Io): number {
+  for (const world of WORLDS) {
+    io.writeFile(world.referencePath, worldReferenceText(world, io));
+    io.out(`${world.id}: wrote ${world.referencePath}`);
+  }
+  return 0;
+}
+
+/** Whether the committed reference file still matches its sources; a missing one does not. */
+function verifyReference(world: ScrapedWorld, io: Io): boolean {
+  let committed: string | null;
+  try {
+    committed = io.readFile(world.referencePath);
+  } catch {
+    committed = null;
+  }
+  if (committed === worldReferenceText(world, io)) {
+    io.out("reference: agree");
+    return false;
+  }
+  io.out(`reference: ${committed === null ? "MISSING" : "DISAGREE"} - regenerate with pnpm run atlantis reference`);
+  return true;
+}
+
 function runVerify(io: Io): number {
   let anyDisagree = false;
   for (const world of WORLDS) {
     if (verifyWorld(world, io)) {
+      anyDisagree = true;
+    }
+    if (verifyReference(world, io)) {
       anyDisagree = true;
     }
   }
@@ -570,6 +610,9 @@ async function runRefresh(io: Io, json: boolean): Promise<number> {
         "--out",
         tempOut
       ]);
+      // The reference is rendered from the same sources after the scrape, so prove it renders now,
+      // while nothing has been written; its fetch date is not known yet and does not matter here.
+      buildRulesReference(world, live.rules, live.catalogue, "");
     } catch (error) {
       const message = messageOf(error);
       if (json) {
@@ -616,6 +659,8 @@ async function runRefresh(io: Io, json: boolean): Promise<number> {
     ]);
 
     const after = io.readFile(world.rulesetPath);
+    // After the ruleset, so the reference carries the fetch date the scrape just stamped.
+    io.writeFile(world.referencePath, worldReferenceText(world, io));
     const changes: string[] = [];
     const beforeParsed = JSON.parse(before) as Record<string, unknown>;
     const afterParsed = JSON.parse(after) as Record<string, unknown>;
@@ -686,7 +731,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
 
   // verify, check and refresh are about the repository rather than about one world, so naming a
   // world before them is refused rather than silently scoped.
-  if (explicit && (command === "verify" || command === "check" || command === "refresh")) {
+  if (explicit && (command === "verify" || command === "check" || command === "refresh" || command === "reference")) {
     io.err(
       `'${command}' covers every committed world at once - run it without naming one:\n` +
         `  pnpm run atlantis ${command}`
@@ -708,6 +753,9 @@ export async function run(argv: string[], io: Io): Promise<number> {
   }
   if (command === "refresh") {
     return runRefresh(io, rest[0] === "--json");
+  }
+  if (command === "reference") {
+    return runReference(io);
   }
 
   io.err(`unknown command '${command}'.\n\n${HELP_TEXT}`);

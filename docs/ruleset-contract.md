@@ -39,6 +39,17 @@ block: `specializedSkills` preserves the listed skill tags, `specializedLevel` i
 `defaultLevel` is the ceiling for every other skill. `data/LEAD` has an empty specialized list and
 uses level 5 for both ceilings; `data/HUMN` lists six level-4 specializations and a level-2 default.
 
+## The rules snapshot an assistant reads
+
+Beside each ruleset the build serves `config/public/reference-<world>.json`: the same committed
+rules page and catalogue, rendered by section (each anchor's text, and each data-page entry with
+all its levels) and stamped with the ruleset's `source.fetchedAt`. The desktop shell hands it to an
+assistant's `list_rules_sections`, `read_rules_section`, `search_rules` and `read_data_entry`
+tools, so an assistant reads the open game's own world rather than the web. It is generated, never
+edited: `pnpm run atlantis reference` rewrites all three from the committed fixtures,
+`pnpm run atlantis refresh` rewrites them with the sources, and `pnpm run atlantis verify` fails
+when one is stale.
+
 ## Running it
 
 ```

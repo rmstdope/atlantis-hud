@@ -31,6 +31,13 @@ const TRIDENT_RULES_HTML = read(TRIDENT_RULES_FIXTURE);
 const TRIDENT_DB = read(TRIDENT_DB_FIXTURE);
 const TRIDENT_RULESET_JSON = read(TRIDENT_RULESET_PATH);
 
+/** Each world's committed reference file (ah-a97xg.8), which verify holds to its sources. */
+const REFERENCE_FILES = [
+  "config/public/reference-neworigins.json",
+  "config/public/reference-newage-arcanum.json",
+  "config/public/reference-newage-trident.json"
+].map((path) => [path, read(path)] as const);
+
 const ARCANUM_RULES_URL = "https://atlantis-newage.com/api/worlds/arcanum/game/rules";
 const ARCANUM_DATA_URL = "https://atlantis-newage.com/api/worlds/arcanum/game/database";
 const TRIDENT_RULES_URL = "https://atlantis-newage.com/api/worlds/trident/game/rules";
@@ -59,7 +66,8 @@ function fakeIo(overrides: Partial<Io> = {}): {
     [ARCANUM_RULESET_PATH, ARCANUM_RULESET_JSON],
     [TRIDENT_RULES_FIXTURE, TRIDENT_RULES_HTML],
     [TRIDENT_DB_FIXTURE, TRIDENT_DB],
-    [TRIDENT_RULESET_PATH, TRIDENT_RULESET_JSON]
+    [TRIDENT_RULESET_PATH, TRIDENT_RULESET_JSON],
+    ...REFERENCE_FILES
   ]);
 
   const io: Io = {
@@ -291,6 +299,21 @@ describe("run — verify", () => {
     expect(printed).toContain("terrainResourceChances:");
   });
 
+  it("holds each world's reference file to its sources", async () => {
+    const { io, out } = fakeIo();
+
+    expect(await run(["verify"], io)).toBe(0);
+    expect(out.filter((line) => line === "reference: agree")).toHaveLength(3);
+  });
+
+  it("fails when a reference file is stale", async () => {
+    const { io, out, files } = fakeIo();
+    files.set("config/public/reference-newage-trident.json", "{}\n");
+
+    expect(await run(["verify"], io)).toBe(1);
+    expect(out.join("\n")).toContain("reference: DISAGREE - regenerate with pnpm run atlantis reference");
+  });
+
   it("fails naming the world whose ruleset disagrees", async () => {
     const committed = JSON.parse(TRIDENT_RULESET_JSON);
     const [tag] = Object.keys(committed.items);
@@ -474,7 +497,8 @@ describe("run — refresh", () => {
   it("rewrites every world's sources once all three scrape", async () => {
     // Every source is served with a marker appended, so a fixture still holding the committed
     // bytes is a write that did not happen rather than a page that did not move.
-    const moved = (text: string) => `${text}<!-- moved -->`;
+    // Trailing whitespace rather than a comment, so a New Age database still parses as JSON.
+    const moved = (text: string) => `${text}\n\n`;
     const { io, files } = fakeIo({
       fetchText: async (url) => moved(await servingCommitted(url)),
       scrape: () => {}
@@ -493,6 +517,29 @@ describe("run — refresh", () => {
     ] as const) {
       expect(files.get(path)).toBe(moved(committed));
     }
+  });
+
+  it("rewrites every world's reference file from the refreshed sources", async () => {
+    const { io, files } = fakeIo({ fetchText: servingCommitted, scrape: () => {} });
+    for (const [path] of REFERENCE_FILES) {
+      files.set(path, "stale");
+    }
+
+    expect(await run(["refresh"], io)).toBe(0);
+    for (const [path, committed] of REFERENCE_FILES) {
+      expect(files.get(path)).toBe(committed);
+    }
+  });
+
+  it("rewrites nothing when one world's catalogue cannot be rendered for its reference", async () => {
+    const { io, files } = fakeIo({
+      fetchText: async (url) => (url === TRIDENT_DATA_URL ? "not json" : servingCommitted(url)),
+      scrape: () => {}
+    });
+
+    expect(await run(["refresh"], io)).toBe(3);
+    expect(files.get(TRIDENT_DB_FIXTURE)).toBe(TRIDENT_DB);
+    expect(files.get(RULES_FIXTURE)).toBe(RULES_HTML);
   });
 
   it("reports the changed fields after a successful refresh", async () => {
@@ -617,6 +664,35 @@ describe("run — refresh --json", () => {
     expect(code).toBe(2);
     expect(out).toHaveLength(0);
     expect(err.join("\n")).toContain("ENOTFOUND");
+  });
+});
+
+describe("run — reference", () => {
+  it("writes each world's reference file from its committed fixtures", async () => {
+    const { io, files } = fakeIo();
+
+    const code = await run(["reference"], io);
+
+    expect(code).toBe(0);
+    for (const [path, label] of [
+      ["config/public/reference-neworigins.json", "New Origins"],
+      ["config/public/reference-newage-arcanum.json", "New Age: Arcanum"],
+      ["config/public/reference-newage-trident.json", "New Age: Trident"]
+    ] as const) {
+      const written = JSON.parse(files.get(path) ?? "null") as { label: string; sections: unknown[]; data: unknown[] };
+      expect(written.label).toBe(label);
+      expect(written.sections.length).toBeGreaterThan(100);
+      expect(written.data.length).toBeGreaterThan(100);
+    }
+  });
+
+  it("stamps each file with its committed ruleset's fetch date", async () => {
+    const { io, files } = fakeIo();
+
+    await run(["reference"], io);
+
+    const written = JSON.parse(files.get("config/public/reference-newage-trident.json") ?? "null") as { fetchedAt: string };
+    expect(written.fetchedAt).toBe((JSON.parse(TRIDENT_RULESET_JSON) as { source: { fetchedAt: string } }).source.fetchedAt);
   });
 });
 

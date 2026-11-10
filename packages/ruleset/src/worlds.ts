@@ -27,6 +27,11 @@ export type ScrapedWorld = {
   rulesFixture: string;
   catalogueFixture: string;
   rulesetPath: string;
+  /**
+   * The rules and data pages rendered for an assistant to read by section (ah-a97xg.8), written by
+   * `pnpm run atlantis reference` and served beside the ruleset.
+   */
+  referencePath: string;
 };
 
 export const WORLDS: readonly ScrapedWorld[] = [
@@ -39,7 +44,8 @@ export const WORLDS: readonly ScrapedWorld[] = [
     orderLanguage: "new-origins",
     rulesFixture: "tests/fixtures/ruleset/neworigins-rules.html",
     catalogueFixture: "tests/fixtures/ruleset/neworigins-data.html",
-    rulesetPath: "config/public/ruleset.json"
+    rulesetPath: "config/public/ruleset.json",
+    referencePath: "config/public/reference-neworigins.json"
   },
   {
     id: "newage-arcanum",
@@ -50,7 +56,8 @@ export const WORLDS: readonly ScrapedWorld[] = [
     orderLanguage: "new-age-arcanum",
     rulesFixture: "tests/fixtures/ruleset/newage-arcanum-rules.html",
     catalogueFixture: "tests/fixtures/ruleset/newage-arcanum-database.json",
-    rulesetPath: "config/public/ruleset-newage-arcanum.json"
+    rulesetPath: "config/public/ruleset-newage-arcanum.json",
+    referencePath: "config/public/reference-newage-arcanum.json"
   },
   {
     id: "newage-trident",
@@ -61,7 +68,8 @@ export const WORLDS: readonly ScrapedWorld[] = [
     orderLanguage: "new-age-trident",
     rulesFixture: "tests/fixtures/ruleset/newage-trident-rules.html",
     catalogueFixture: "tests/fixtures/ruleset/newage-trident-database.json",
-    rulesetPath: "config/public/ruleset-newage-trident.json"
+    rulesetPath: "config/public/ruleset-newage-trident.json",
+    referencePath: "config/public/reference-newage-trident.json"
   }
 ];
 

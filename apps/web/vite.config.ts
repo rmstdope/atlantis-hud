@@ -77,8 +77,10 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,wasm,json,woff2}"],
         // The biome generator's contact sheets (`all_biomes.png`, one per texture set) are for
         // whoever regenerates the textures; nothing in the app loads them, and each would add more
-        // than a megabyte to every install.
-        globIgnores: ["**/all_biomes.png"],
+        // than a megabyte to every install. The rules snapshots (`reference-*.json`, ah-a97xg.8)
+        // are read only by an assistant, which only the desktop shell serves - about a megabyte
+        // between them that no web install would ever open.
+        globIgnores: ["**/all_biomes.png", "**/reference-*.json"],
         // Headroom rather than a fix. The chunk carrying the map renderer and the orders editor is
         // around 290 KiB against Workbox's 2 MiB default - it was roughly 750 KiB until #58 took
         // the map off PixiJS - and nothing today is close, but the
