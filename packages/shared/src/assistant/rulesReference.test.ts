@@ -150,8 +150,16 @@ describe("producersOf", () => {
     expect(producersOf(reference, "SWOR")).toEqual([
       { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 iron [IRON]", rate: "1 per 2 man-months" }
     ]);
+    // The tag matches regardless of case.
     expect(producersOf(reference, "pike")).toEqual([
       { skill: "weaponsmith", tag: "WEAP", level: 2, from: "2 wood [WOOD]", rate: "1 per 2 man-months" }
+    ]);
+  });
+
+  it("reads a rate of more than one per month", () => {
+    const reference = smith("weaponsmith [WEAP] 1: A unit with this skill may PRODUCE picks [PICK] from iron [IRON] at a rate of 2 per man-month.");
+    expect(producersOf(reference, "PICK")).toEqual([
+      { skill: "weaponsmith", tag: "WEAP", level: 1, from: "iron [IRON]", rate: "2 per man-month" }
     ]);
   });
 

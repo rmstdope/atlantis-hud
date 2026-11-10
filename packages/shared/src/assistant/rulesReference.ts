@@ -204,7 +204,7 @@ export type ItemProducer = {
  * PRODUCE: the clause's first tag is the product, whatever words follow it (`data/COOK`: "meals
  * [MEAL] equal to their skill level from any of grain [GRAI], ... at a rate of 1 per man-month").
  */
-const PRODUCT_CLAUSE = /\[([A-Z0-9]+)\]((?:(?! at a rate of ).)*?) at a rate of (1 per (?:\d+ )?man-months?)/gu;
+const PRODUCT_CLAUSE = /\[([A-Z0-9]+)\]((?:(?! at a rate of ).)*?) at a rate of (\d+ per (?:\d+ )?man-months?)/gu;
 
 /** The inputs a clause's words name, as the page writes them: everything after its first "from". */
 function inputsOf(words: string): string | null {
