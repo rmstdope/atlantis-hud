@@ -596,7 +596,6 @@ function unitForecast(
   };
 }
 
-/** Whether the HUD's forecast says this unit's silver runs short, or cannot say it does not. */
 /** One product's figures, shared by a region's line and the faction-wide totals. */
 function productFigures(tag: string, name: string, available: number | null, produced: number, beyondCap: number) {
   return { tag, name, available, produced, spare: available === null ? null : available - produced, beyondCap };
@@ -671,6 +670,7 @@ function productionAnswer(
   return { limits: overview.limits, regionsUsed: overview.used, regions, totals: [...totals.values()] };
 }
 
+/** Whether the HUD's forecast says this unit's silver runs short, or cannot say it does not. */
 function runsShort(silver: UnitSilver): boolean {
   const afterUpkeep = silverShown(silver, true);
   return (

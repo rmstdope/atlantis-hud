@@ -1022,6 +1022,63 @@ describe("production against each region's cap", () => {
     expect(answer.limits).toEqual({ pooled: 10, tax: null, trade: null });
   });
 
+  it("counts as beyond the cap only what the region's amount stopped, not silver or materials", async () => {
+    const broke = aUnitSilver({
+      unitId: "101",
+      regionId: "1,1,1",
+      produced: 4,
+      producedName: "grain",
+      productionWanted: 10,
+      productionCappedBy: "silver"
+    });
+    const farming: ProductionOverview = {
+      ...MINING,
+      regions: [
+        {
+          ...MINING.regions[0],
+          resources: [
+            MINING.regions[0].resources[0],
+            { name: "grain", tag: "GRAI", produced: 4, available: 20, producers: [{ unitId: "101", regionId: "1,1,1" }] }
+          ]
+        }
+      ]
+    };
+    const { host } = aHost(aProducingTurn(), [], { silver: [MINER, broke], production: farming });
+
+    const answer = json((await call(host, "get_production", { regionId: "1,1,1" })).text);
+
+    expect(answer.regions[0].resources[1]).toMatchObject({ tag: "GRAI", produced: 4, spare: 16, beyondCap: 0 });
+    expect(answer.regions[0].resources[1].producers[0]).toMatchObject({ unitId: "101", couldMake: 10, cappedBy: "silver" });
+  });
+
+  it("totals a product's amount as unknown when one region's amount is", async () => {
+    const turn = aProducingTurn();
+    const [home, away] = turn.parsed.regions;
+    const ironBoth = {
+      ...turn,
+      parsed: {
+        ...turn.parsed,
+        regions: [home, { ...away, products: [{ amount: 8, name: "iron", tag: "IRON" }] }]
+      }
+    };
+    const unknownAmount: ProductionOverview = {
+      ...MINING,
+      regions: [
+        MINING.regions[0],
+        {
+          ...MINING.regions[0],
+          regionId: "2,1,1",
+          resources: [{ name: "iron", tag: "IRON", produced: 3, available: null, producers: [] }]
+        }
+      ]
+    };
+    const { host } = aHost(ironBoth, [], { silver: [MINER], production: unknownAmount });
+
+    const answer = json((await call(host, "get_production")).text);
+
+    expect(answer.totals[0]).toEqual({ tag: "IRON", name: "iron", available: null, produced: 18, spare: null, beyondCap: 9 });
+  });
+
   it("answers a named region nothing is produced in from its products, unworked", async () => {
     const { host } = aHost(aProducingTurn(), [], { silver: [MINER], production: MINING });
 
