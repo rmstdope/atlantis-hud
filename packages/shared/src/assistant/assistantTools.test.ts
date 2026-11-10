@@ -493,6 +493,12 @@ describe("list_order_edits", () => {
     ]);
   });
 
+  it("is refused while no turn is open", async () => {
+    const answer = await call(aHost(null).host, "list_order_edits");
+
+    expect(answer.isError).toBe(true);
+  });
+
   it("counts its own answer as a look, so an edit is listed once", async () => {
     const { host } = aHost(aTurn());
     await call(host, "get_orders", { unitId: "100" });
