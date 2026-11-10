@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resizable Assistant Changes</title>
+<style>
+:root{color-scheme:dark;--page:#10151c;--ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--edge-soft:#333d49;--ink:#d4dce6;--soft:#a8b4c2;--dim:#99a4b2;--brass:#e0b25a;--bright:#eebe63;--warn:#d9a441;--gone:#e8949426;--added:#4fb78326;--added-ink:#8fd6ae;--gone-ink:#f0b4b4;--ui:system-ui,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.5 var(--ui)}
+.page{padding:24px 16px 48px;max-width:80rem;margin:0 auto;display:grid;gap:12px}
+h1{font-size:20px;margin:0}.lede{color:var(--soft);margin:0;max-width:75ch}
+.hud{position:relative;display:grid;grid-template-rows:auto 1fr;height:42rem;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--ground);font-size:12.5px}
+.bar{display:flex;gap:12px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--edge)}.bar b{color:var(--brass)}.bar span{color:var(--soft)}
+.body{display:grid;grid-template-columns:15rem 1fr 17rem;min-height:0}
+.rail{background:var(--panel);padding:8px;color:var(--dim);border-right:1px solid var(--edge)}.rail.r{border-right:0;border-left:1px solid var(--edge)}
+.rail h2{font-size:12.5px;margin:0 0 6px;color:var(--soft)}
+.mid{position:relative;display:grid;grid-template-rows:1fr 13rem;min-width:0}
+.map{background:repeating-linear-gradient(60deg,#1f2731 0 22px,#212a35 22px 44px)}
+.dock{background:var(--panel);border-top:1px solid var(--edge);padding:6px 8px;overflow:hidden}
+.dock h2{font-size:12.5px;margin:0 0 4px;color:var(--soft)}
+.dock table{width:100%;border-collapse:collapse;font-size:12px}.dock td,.dock th{padding:2px 6px;text-align:left;border-bottom:1px solid var(--edge-soft)}.dock th{color:var(--dim);font-weight:600}
+.changes{position:absolute;left:14px;bottom:14px;width:640px;max-height:calc(100% - 60px);display:grid;grid-template-rows:auto minmax(0,1fr);background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 30px #0009;min-width:320px;min-height:120px}
+.head{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--edge);cursor:move;user-select:none}
+.head .count{color:var(--soft)}.head .gap{flex:1}
+.btn{font:inherit;color:inherit;border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:2px 9px;cursor:pointer}
+.x{background:none;border:0;color:var(--dim);font:inherit;cursor:pointer}
+.list{overflow:auto;min-height:0}
+.unit{padding:8px;border-bottom:1px solid var(--edge-soft)}
+.uhead{display:flex;gap:8px;align-items:baseline;margin-bottom:5px}.name{color:var(--brass);font-weight:600}.where{color:var(--dim)}.uhead .gap{flex:1}
+.sbs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--edge-soft);border-radius:3px;background:var(--ground);font:12px/1.6 var(--mono)}
+.cap{font:600 11px/1.5 var(--ui);text-transform:uppercase;color:var(--dim);padding:2px 8px;border-bottom:1px solid var(--edge-soft)}.cap+.cap,.l.r{border-left:1px solid var(--edge-soft)}
+.l{padding:0 8px;min-height:1.6em;white-space:pre-wrap}.l.gone{background:var(--gone);color:var(--gone-ink)}.l.add{background:var(--added);color:var(--added-ink)}
+/* resize affordances */
+.edge{position:absolute;z-index:2}
+.edge.n{top:-4px;left:6px;right:6px;height:8px;cursor:ns-resize}.edge.s{bottom:-4px;left:6px;right:6px;height:8px;cursor:ns-resize}
+.edge.e{right:-4px;top:6px;bottom:6px;width:8px;cursor:ew-resize}.edge.w{left:-4px;top:6px;bottom:6px;width:8px;cursor:ew-resize}
+.edge.ne{top:-5px;right:-5px;width:12px;height:12px;cursor:nesw-resize}.edge.nw{top:-5px;left:-5px;width:12px;height:12px;cursor:nwse-resize}
+.edge.se{bottom:-5px;right:-5px;width:12px;height:12px;cursor:nwse-resize}.edge.sw{bottom:-5px;left:-5px;width:12px;height:12px;cursor:nesw-resize}
+.edge:hover,.edge.active{background:#e0b25a55;border-radius:3px}
+.grip{position:absolute;top:0;right:0;width:16px;height:16px;cursor:nesw-resize;z-index:2;
+ background:linear-gradient(225deg,transparent 0 3px,var(--dim) 3px 4px,transparent 4px 7px,var(--dim) 7px 8px,transparent 8px 11px,var(--dim) 11px 12px,transparent 12px)}
+.grip:hover{filter:brightness(1.6)}
+.note{color:var(--soft);font-size:13px;margin:0}
+.variant-B .edge{display:none}.variant-A .grip{display:none}
+.variant-B .head{padding-right:22px}
+</style></head>
+<body class="variant-A">
+<div class="page">
+<h1>Assistant changes — resizable (agreed)</h1>
+<p class="lede">Drag any edge or corner to resize; the edge lights up while held and the pointer changes, with no words. The size you set is a limit: a short list shrinks the panel to fit, more units grow it up to your size, then the list scrolls. It cannot shrink below about 20rem wide and the title bar plus one entry. Double-click any edge or corner to return to the original size. The size lasts until the app restarts. In a narrow window the bottom sheet resizes from its top edge the same way.</p>
+<div class="hud">
+ <div class="bar"><b>Atlantis HUD</b><span>Turn 84 · Hacksaw Clan (12)</span></div>
+ <div class="body">
+  <div class="rail"><h2>Region</h2>Plain (12,4)<br>Peasants: 3,412 humans<br>Wages 14</div>
+  <div class="mid">
+   <div class="map"></div>
+   <div class="dock"><h2>Units in hex — Plain (12,4)</h2>
+    <table><tr><th>Unit</th><th>Men</th><th>Long order</th><th>Silver</th></tr>
+    <tr><td>Scouts (231)</td><td>2</td><td>MOVE N N</td><td>40</td></tr>
+    <tr><td>Miners (245)</td><td>10</td><td>PRODUCE iron</td><td>120</td></tr>
+    <tr><td>Guard (250)</td><td>25</td><td>—</td><td>600</td></tr>
+    <tr><td>Traders (262)</td><td>4</td><td>BUY 20 horse</td><td>1,900</td></tr>
+    <tr><td>Builders (270)</td><td>6</td><td>BUILD tower</td><td>80</td></tr></table>
+   </div>
+  </div>
+  <div class="rail r"><h2>Orders — Miners (245)</h2><div style="font:12px/1.6 var(--mono);color:var(--ink)">produce iron</div></div>
+ </div>
+ <section class="changes" id="p" aria-label="Assistant changes">
+  <div class="edge n" data-d="n"></div><div class="edge s" data-d="s"></div><div class="edge e" data-d="e"></div><div class="edge w" data-d="w"></div>
+  <div class="edge ne" data-d="ne"></div><div class="edge nw" data-d="nw"></div><div class="edge se" data-d="se"></div><div class="edge sw" data-d="sw"></div>
+  <div class="grip" data-d="ne" title="Drag to resize"></div>
+  <div class="head" id="h"><strong>Assistant changes</strong><span class="count">3 units</span><span class="gap"></span><button class="btn">Keep all</button><button class="btn">Revert all</button><button class="x" aria-label="Close the panel">✕</button></div>
+  <div class="list">
+   <div class="unit"><div class="uhead"><span class="name">Scouts (231)</span><span class="where">Plain (12,4)</span><span class="gap"></span><button class="btn">Revert</button></div>
+    <div class="sbs"><div class="cap">Before</div><div class="cap">After</div><div class="l gone">move N</div><div class="l r add">move N N</div><div class="l"></div><div class="l r add">claim 40</div></div></div>
+   <div class="unit"><div class="uhead"><span class="name">Miners (245)</span><span class="where">Plain (12,4)</span><span class="gap"></span><button class="btn">Revert</button></div>
+    <div class="sbs"><div class="cap">Before</div><div class="cap">After</div><div class="l gone">work</div><div class="l r add">produce iron</div></div></div>
+   <div class="unit"><div class="uhead"><span class="name">Traders (262)</span><span class="where">Forest (13,4)</span><span class="gap"></span><button class="btn">Revert</button></div>
+    <div class="sbs"><div class="cap">Before</div><div class="cap">After</div><div class="l">buy 10 horse</div><div class="l r">buy 10 horse</div><div class="l"></div><div class="l r add">buy 10 horse</div><div class="l gone">sell all fish</div><div class="l r"></div></div></div>
+  </div>
+ </section>
+</div>
+<p class="note">Try it: drag the top edge down until the Units in hex rows show, then use the buttons to add or revert units and watch the panel follow its limit. Double-click an edge to reset.</p><p class="note"><button class="btn" id="add">Assistant writes another unit</button> <button class="btn" id="rm">Revert the last unit</button></p>
+</div>
+<script>
+const p=document.getElementById('p'),hud=p.parentElement,h=document.getElementById('h');
+function px(v){return parseFloat(v)}
+function frame(){const r=p.getBoundingClientRect(),H=hud.getBoundingClientRect();return{l:r.left-H.left,t:r.top-H.top,w:r.width,hh:r.height,H}}
+p.querySelectorAll('[data-d]').forEach(el=>el.addEventListener('pointerdown',e=>{
+ e.preventDefault();el.setPointerCapture(e.pointerId);el.classList.add('active');
+ const f=frame(),d=el.dataset.d,x0=e.clientX,y0=e.clientY;
+ p.style.bottom='auto';p.style.left=f.l+'px';p.style.top=f.t+'px';
+ const mv=ev=>{let dx=ev.clientX-x0,dy=ev.clientY-y0,l=f.l,t=f.t,w=f.w,hh=f.hh;
+  if(d.includes('e'))w=f.w+dx; if(d.includes('s'))hh=f.hh+dy;
+  if(d.includes('w')){w=f.w-dx;l=f.l+dx} if(d.includes('n')){hh=f.hh-dy;t=f.t+dy}
+  const minW=320,minH=120;
+  if(w<minW){if(d.includes('w'))l-=minW-w;w=minW} if(hh<minH){if(d.includes('n'))t-=minH-hh;hh=minH}
+  t=Math.max(36,t);l=Math.max(0,l);w=Math.min(w,f.H.width-l);hh=Math.min(hh,f.H.height-t);
+  Object.assign(p.style,{left:l+'px',top:t+'px',width:w+'px',height:hh+'px'})};
+ const up=()=>{el.classList.remove('active');if(p.style.height){p.style.maxHeight=p.style.height;p.style.height='';}el.removeEventListener('pointermove',mv);el.removeEventListener('pointerup',up)};
+ el.addEventListener('pointermove',mv);el.addEventListener('pointerup',up)}));
+h.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;e.preventDefault();h.setPointerCapture(e.pointerId);
+ const f=frame(),x0=e.clientX,y0=e.clientY;p.style.bottom='auto';
+ const mv=ev=>{p.style.left=Math.max(0,f.l+ev.clientX-x0)+'px';p.style.top=Math.max(36,f.t+ev.clientY-y0)+'px'};
+ const up=()=>{h.removeEventListener('pointermove',mv);h.removeEventListener('pointerup',up)};
+ h.addEventListener('pointermove',mv);h.addEventListener('pointerup',up)});
+
+const D={w:'640px'};
+p.querySelectorAll('[data-d]').forEach(el=>el.addEventListener('dblclick',()=>{p.style.width=D.w;p.style.maxHeight='';p.style.height='';}));
+const list=p.querySelector('.list'),count=p.querySelector('.count');let n=3;
+function upd(){count.textContent=n+(n==1?' unit':' units')}
+document.getElementById('add').onclick=()=>{const c=list.firstElementChild.cloneNode(true);n++;c.querySelector('.name').textContent='Courier ('+(300+n)+')';list.appendChild(c);upd()};
+document.getElementById('rm').onclick=()=>{if(n>1){list.lastElementChild.remove();n--;upd()}};
+</script>
+</body></html>
