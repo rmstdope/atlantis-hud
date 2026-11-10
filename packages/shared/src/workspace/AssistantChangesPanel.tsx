@@ -418,17 +418,13 @@ export function AssistantChangesPanel({
   // exactly the dragged size instead, so the edge follows the pointer.
   const live = resize.live;
   const homeStyle = dragStyle === undefined && resize.homeLeft !== null ? { left: resize.homeLeft } : undefined;
-  const at = {
-    left: dragStyle === undefined ? resize.homeLeft : Number(dragStyle.left),
-    top: dragStyle === undefined ? null : Number(dragStyle.top)
-  };
   const heldHeight = (height: number) => ({ height, maxHeight: "none" });
   const sizeStyle = narrow
     ? live === null
       ? sheetSizeStyle(size.sheet)
       : heldHeight(live.frame.height)
     : {
-        ...floatingSizeStyle(size.floating, at),
+        ...floatingSizeStyle(size.floating, dragStyle === undefined ? null : Number(dragStyle.top)),
         ...(live === null
           ? {}
           : { width: live.frame.width, ...(movesHeight(live.edge) ? heldHeight(live.frame.height) : {}) })

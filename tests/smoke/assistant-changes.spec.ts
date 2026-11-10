@@ -278,6 +278,12 @@ test(
     await expect(page.getByTestId("assistant-changes-resize-e")).not.toHaveAttribute("data-active", "");
     await expect.poll(async () => Math.round((await frame(page)).width)).toBe(Math.round(original.width + 100));
 
+    // The left edge of a panel still in its corner moves its left side and keeps the right one.
+    const homeRight = (await frame(page)).x + (await frame(page)).width;
+    await dragEdge(page, "w", 40, 0);
+    await expect.poll(async () => Math.round((await frame(page)).x)).toBe(Math.round(original.x + 40));
+    expect(Math.round((await frame(page)).x + (await frame(page)).width)).toBe(Math.round(homeRight));
+
     // Only the width was set, so more units still grow it to fit them.
     await write(page, key, units[1] as string, "work");
     await write(page, key, units[2] as string, "work");
@@ -303,9 +309,10 @@ test(
     expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
 
     // The left edge moves the left side and keeps the right one.
-    const right = (await frame(page)).x + (await frame(page)).width;
+    const { x: leftBefore } = await frame(page);
+    const right = leftBefore + (await frame(page)).width;
     await dragEdge(page, "w", 50, 0);
-    await expect.poll(async () => Math.round((await frame(page)).x)).toBe(Math.round(original.x + 50));
+    await expect.poll(async () => Math.round((await frame(page)).x)).toBe(Math.round(leftBefore + 50));
     expect(Math.round((await frame(page)).x + (await frame(page)).width)).toBe(Math.round(right));
 
     // It will not go narrower than its smallest width.
@@ -327,15 +334,27 @@ test(
     }).toBeLessThanOrEqual(400);
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect.poll(async () => Math.round((await frame(page)).height)).toBe(Math.round(limit));
-    await dragEdge(page, "e", 380, 0);
-    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(700);
+    await dragEdge(page, "e", 440, 0);
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(760);
     await page.setViewportSize({ width: 770, height: 720 });
-    await expect.poll(async () => {
-      const box = await frame(page);
-      return box.x + box.width;
-    }).toBeLessThanOrEqual(770);
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(770 - 28);
     await page.setViewportSize({ width: 1280, height: 720 });
-    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(700);
+    await expect.poll(async () => Math.round((await frame(page)).width)).toBe(760);
+
+    // Moved by its title bar, even partly off the window, it keeps its width.
+    const barBox = (await page.getByTestId("assistant-changes-bar").boundingBox())!;
+    const { x: homeX } = await frame(page);
+    await page.mouse.move(barBox.x + 100, barBox.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(barBox.x + 700, barBox.y + 10, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => Math.round((await frame(page)).x)).toBeGreaterThan(Math.round(barBox.x + 500));
+    expect(Math.round((await frame(page)).width)).toBe(760);
+    await page.mouse.move(barBox.x + 700, barBox.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(barBox.x + 100, barBox.y + 10, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => Math.round((await frame(page)).x)).toBe(Math.round(homeX));
 
     // A double-click on an edge puts the size back and leaves the panel where it is.
     const placed = await frame(page);

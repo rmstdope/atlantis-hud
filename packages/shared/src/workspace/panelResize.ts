@@ -100,23 +100,20 @@ export function resizeSheetHeight(start: number, dy: number, minHeight: number, 
 
 /**
  * The floating panel's size as CSS: nothing while the default applies, otherwise the player's
- * width and height limit, each capped by today's margins from where the panel sits - its left
- * (`null`: the home corner's 14px) and its top (`null`: pinned at the home corner by its bottom,
- * below the header).
+ * width and height limit. The width is capped by the window alone (less today's margins), so
+ * moving the panel by its title bar - which may slide it partly off an edge, as it always could -
+ * never changes its width. The height is capped as it is today: below the header at the home
+ * corner, and by what is left below its top once moved there (`top`).
  */
-export function floatingSizeStyle(
-  size: PanelSize | null,
-  at: { left: number | null; top: number | null }
-): CSSProperties {
+export function floatingSizeStyle(size: PanelSize | null, top: number | null): CSSProperties {
   if (size === null) {
     return {};
   }
-  const left = Math.max(0, at.left ?? 14);
-  const width = `min(${String(size.width)}px, calc(100vw - ${String(left)}px - 14px))`;
+  const width = `min(${String(size.width)}px, calc(100vw - 28px))`;
   if (size.height === null) {
     return { width };
   }
-  const cap = at.top === null ? "calc(100dvh - 60px)" : `calc(100dvh - ${String(at.top)}px - 14px)`;
+  const cap = top === null ? "calc(100dvh - 60px)" : `calc(100dvh - ${String(top)}px - 14px)`;
   return { width, maxHeight: `min(${String(size.height)}px, ${cap})` };
 }
 

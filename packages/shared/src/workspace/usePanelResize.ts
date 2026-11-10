@@ -147,8 +147,8 @@ export function usePanelResize({
         return;
       }
       const start = current.start;
-      // The same margins the committed size keeps, so nothing jumps on release - unless the panel
-      // already sits past one (dragged there by its bar), when that side does not jump either.
+      // The window's margins, as the home corner keeps them. A side the title bar already slid past
+      // one is left where it is while held, rather than jumping in at the first move.
       const frame = resizePanelFrame(start, current.edge, dx, dy, {
         minWidth: PANEL_MIN_WIDTH_REM * remPx(),
         minHeight: current.minHeight,

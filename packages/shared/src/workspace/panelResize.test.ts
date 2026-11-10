@@ -82,24 +82,26 @@ describe("resizeSheetHeight", () => {
 
 describe("the size styles", () => {
   it("leave the floating panel at today's default while no size is set", () => {
-    expect(floatingSizeStyle(null, { left: null, top: null })).toEqual({});
+    expect(floatingSizeStyle(null, null)).toEqual({});
   });
 
-  it("cap a set size by the window from where the panel sits, so a smaller window shrinks it and a larger one gives it back", () => {
-    expect(floatingSizeStyle({ width: 500, height: 300 }, { left: null, top: null })).toEqual({
-      width: "min(500px, calc(100vw - 14px - 14px))",
+  it("cap a set size by the window, so a smaller window shrinks it and a larger one gives it back", () => {
+    expect(floatingSizeStyle({ width: 500, height: 300 }, null)).toEqual({
+      width: "min(500px, calc(100vw - 28px))",
       maxHeight: "min(300px, calc(100dvh - 60px))"
     });
-    expect(floatingSizeStyle({ width: 500, height: 300 }, { left: 600, top: 120 })).toEqual({
-      width: "min(500px, calc(100vw - 600px - 14px))",
+    expect(floatingSizeStyle({ width: 500, height: 300 }, 120)).toEqual({
+      width: "min(500px, calc(100vw - 28px))",
       maxHeight: "min(300px, calc(100dvh - 120px - 14px))"
     });
   });
 
+  it("keep the width cap the window's alone, so moving the panel by its title bar never changes its width", () => {
+    expect(floatingSizeStyle({ width: 500, height: 300 }, 120).width).toBe(floatingSizeStyle({ width: 500, height: 300 }, 600).width);
+  });
+
   it("set only the width when no height limit was set", () => {
-    expect(floatingSizeStyle({ width: 500, height: null }, { left: 40, top: null })).toEqual({
-      width: "min(500px, calc(100vw - 40px - 14px))"
-    });
+    expect(floatingSizeStyle({ width: 500, height: null }, 40)).toEqual({ width: "min(500px, calc(100vw - 28px))" });
   });
 
   it("give the sheet its height limit, or today's half window", () => {
