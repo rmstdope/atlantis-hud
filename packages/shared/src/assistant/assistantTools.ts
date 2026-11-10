@@ -312,7 +312,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_orders",
     description:
-      "The orders document as it stands in the player's editor, with the version of every own unit's orders (hand it to write_orders); or with unitId just that unit's block (the lines below its 'unit' line) and its version. With turn, the orders the HUD kept for that earlier turn's report, as last saved - what the player wrote, which is usually what was sent - as JSON marked earlier: true, orders null when it kept none.",
+      "The orders document as it stands in the player's editor, with the version of every own unit's orders (hand it to write_orders); or with unitId just that unit's block (the lines below its 'unit' line) and its version. With turn, the orders the HUD kept for that earlier turn's report, as last saved - what the player wrote, which is usually what was sent - as JSON marked earlier: true; when it kept none, that turn's report orders template instead, marked fromTemplate: true - what was most likely sent, not what the player wrote - and orders null only when the report carried no template either.",
     inputSchema: { type: "object", properties: { unitId: UNIT_ID, turn: TURN } }
   },
   {
@@ -1225,7 +1225,20 @@ function answerEarlier(host: AssistantHost, earlier: EarlierTurn, name: string, 
       const unitId = stringArg(args, "unitId");
       const found = unitId === undefined ? null : unitIn(unitId);
       if (earlier.ordersDocument === null) {
-        return ok({ ...mark, ...(unitId === undefined ? {} : { unitId }), orders: null, note: `The HUD kept no orders for turn ${turnNumber}.` });
+        // Never saved in the HUD, so the report's own template is the likeliest account of what was sent.
+        const template = parsed.ordersTemplate?.text ?? "";
+        if (template.trim() === "") {
+          return ok({ ...mark, ...(unitId === undefined ? {} : { unitId }), orders: null, note: `The HUD kept no orders for turn ${turnNumber}.` });
+        }
+        const fromTemplate = {
+          fromTemplate: true,
+          note: `The HUD kept no orders for turn ${turnNumber}; these are the orders template from that turn's report, not orders the player saved.`
+        };
+        if (unitId === undefined) {
+          return ok({ ...mark, orders: template, ...fromTemplate });
+        }
+        const block = found ? host.orders.readUnitOrders(template, unitId, unitIdsOf(found.region)) : null;
+        return ok({ ...mark, unitId, orders: block ?? "", ...fromTemplate });
       }
       if (unitId === undefined) {
         return ok({ ...mark, orders: earlier.ordersDocument });
