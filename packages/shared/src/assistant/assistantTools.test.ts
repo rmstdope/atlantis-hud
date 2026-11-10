@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  type ArmyMemberRecord,
+  type ArmyRecord,
   aKnownMap,
   aKnownMapHex,
   aParsedReport,
@@ -14,9 +16,11 @@ import {
   type UnitPreview,
   type UnitSilver
 } from "@atlantis/core-client";
+import { battleFileOf, battleFileText } from "../armyExport";
+import { NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { orderProcessingFor } from "../orderProcessing";
 import { newAssistantSeen } from "./assistantSeen";
-import { ASSISTANT_TOOLS, answerToolCall, type AssistantHost, type AssistantTurn } from "./assistantTools";
+import { ASSISTANT_TOOLS, answerToolCall, readyArmies, type AssistantHost, type AssistantTurn } from "./assistantTools";
 
 const DOCUMENT = [
   "#atlantis 3",
@@ -167,11 +171,38 @@ interface Forecast {
   readonly preview?: OrdersPreviewResponse;
 }
 
+/** What the host lends the army tools, each part replaceable by a test. */
+interface ArmyWorld {
+  armies: readonly ArmyRecord[] | null;
+  skills: DerivedSkills;
+  scanning: boolean;
+  unreadTurns: number;
+  /** Rejects every write with this message when set. */
+  writeFails: string | null;
+}
+
 /** A host over one turn, recording what it was asked to write and answering with `diagnostics`. */
-function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], forecast: Forecast = {}) {
+function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], forecast: Forecast = {}, world: Partial<ArmyWorld> = {}) {
   const written: string[] = [];
+  const files: { path: string; text: string }[] = [];
+  const armyWorld: ArmyWorld = {
+    armies: [],
+    skills: NO_DERIVED_SKILLS,
+    scanning: false,
+    unreadTurns: 0,
+    writeFails: null,
+    ...world
+  };
   let current = turn;
   const host: AssistantHost & { typeByHand(document: string): void } = {
+    armies: () => armyWorld.armies,
+    battleSkills: () => ({ skills: armyWorld.skills, scanning: armyWorld.scanning, unreadTurns: armyWorld.unreadTurns }),
+    writeFile: async (path, text) => {
+      if (armyWorld.writeFails !== null) {
+        throw new Error(armyWorld.writeFails);
+      }
+      files.push({ path, text });
+    },
     turn: () => current,
     seen: newAssistantSeen(),
     typeByHand: (document) => {
@@ -191,7 +222,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     }
   };
-  return { host, written };
+  return { host, written, files };
 }
 
 async function call(host: AssistantHost, name: string, args: Record<string, unknown> = {}) {
@@ -222,7 +253,8 @@ describe("the assistant's tool list", () => {
         unitId: "100",
         regionId: "1,1,1",
         orders: "work",
-        query: "silver"
+        query: "silver",
+        path: "/tmp/battle.json"
       });
       expect(answer.text).not.toContain("no tool called");
     }
@@ -1004,5 +1036,214 @@ describe("regions the HUD remembers from earlier reports", () => {
 
     expect(region.remembered).toBe(false);
     expect(region.knowledge).toBe("current");
+  });
+});
+
+function aMember(overrides: Partial<ArmyMemberRecord> = {}): ArmyMemberRecord {
+  return {
+    unitId: "100",
+    name: "Farmers",
+    factionId: "3",
+    factionName: "Testers",
+    own: true,
+    regionId: "1,1,1",
+    flags: [],
+    items: [{ amount: 10, name: "humans", tag: "HUMN" }],
+    skills: [],
+    combatSpell: null,
+    men: 10,
+    seenTurn: 12,
+    seenAt: "2026-11-10T12:00:00Z",
+    ...overrides
+  } as ArmyMemberRecord;
+}
+
+function anArmy(id: string, name: string, members: ArmyMemberRecord[]): ArmyRecord {
+  return { id, gameId: "game-1", name, members, createdAt: "2026-11-10T12:00:00Z", updatedAt: "2026-11-10T12:00:00Z" };
+}
+
+const GUARDS = aMember({
+  unitId: "900",
+  name: "City Guard",
+  factionId: "1",
+  factionName: "The Guardsmen",
+  own: false,
+  flags: ["behind"],
+  items: [{ amount: 20, name: "swords", tag: "SWOR" }],
+  seenTurn: 10
+});
+const HOST_ARMY = anArmy("army-1", "Northern Host", [
+  aMember({
+    skills: [{ name: "combat", tag: "COMB", level: 2, points: 90 }],
+    combatSpell: { name: "fireball", tag: "FIRE" }
+  } as Partial<ArmyMemberRecord>)
+]);
+const WATCH_ARMY = anArmy("army-2", "Coastal Watch", [GUARDS]);
+
+describe("readyArmies", () => {
+  it("answers the open game's Armies once they have loaded", () => {
+    expect(readyArmies({ gameId: "game-1", status: "ready", armies: [HOST_ARMY] }, "game-1")).toEqual([HOST_ARMY]);
+  });
+
+  it("answers null while they load, after a failed load, and for another game's list", () => {
+    expect(readyArmies({ gameId: "game-1", status: "loading", armies: [] }, "game-1")).toBeNull();
+    expect(readyArmies({ gameId: "game-1", status: "error", armies: [] }, "game-1")).toBeNull();
+    expect(readyArmies({ gameId: "game-2", status: "ready", armies: [HOST_ARMY] }, "game-1")).toBeNull();
+  });
+});
+
+describe("list_armies", () => {
+  it("lists each saved Army with its members as last seen", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY, WATCH_ARMY] });
+
+    const listed = json((await call(host, "list_armies")).text);
+
+    expect(listed).toEqual([
+      {
+        armyId: "army-1",
+        name: "Northern Host",
+        members: [
+          {
+            unitId: "100",
+            name: "Farmers",
+            faction: "own",
+            men: 10,
+            regionId: "1,1,1",
+            seenTurn: 12,
+            notInThisTurn: false,
+            items: "10 HUMN",
+            skills: "COMB 2",
+            behind: false,
+            combatSpell: "FIRE"
+          }
+        ]
+      },
+      {
+        armyId: "army-2",
+        name: "Coastal Watch",
+        members: [
+          {
+            unitId: "900",
+            name: "City Guard",
+            faction: "The Guardsmen (1)",
+            men: 10,
+            regionId: "1,1,1",
+            seenTurn: 10,
+            notInThisTurn: true,
+            items: "20 SWOR",
+            skills: "",
+            behind: true,
+            combatSpell: null
+          }
+        ]
+      }
+    ]);
+  });
+
+  it("refuses while the game's Armies are still loading", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: null });
+
+    const answer = await call(host, "list_armies");
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("still loading");
+  });
+});
+
+describe("export_battle_file", () => {
+  it("writes exactly the file the Export button would, to the path it was given", async () => {
+    const { host, files } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY, WATCH_ARMY] });
+
+    const answer = await call(host, "export_battle_file", {
+      attackers: "army-1",
+      defenders: "Coastal Watch",
+      path: "/tmp/host-vs-watch.json"
+    });
+
+    expect(answer.isError).toBe(false);
+    expect(files).toEqual([
+      { path: "/tmp/host-vs-watch.json", text: battleFileText(battleFileOf(HOST_ARMY, WATCH_ARMY, NO_DERIVED_SKILLS)) }
+    ]);
+    expect(json(answer.text)).toEqual({
+      written: "/tmp/host-vs-watch.json",
+      units: 2,
+      notices: [
+        "1 unit was not in this turn's report. It goes out as it was when last seen.",
+        "1 unit belongs to another faction. It goes out with no skills — no battle we have seen involved it."
+      ]
+    });
+  });
+
+  it("carries the combat skills the battle-roster scan recovered, as the Export button does", async () => {
+    const skills: DerivedSkills = new Map([["900", [{ name: "combat", tag: "COMB", level: 3, turn: 11, coordinate: null, terrain: null }]]]);
+    const { host, files } = aHost(aTurn(), [], {}, { armies: [WATCH_ARMY], skills });
+
+    await call(host, "export_battle_file", { defenders: "coastal watch", path: "/tmp/watch.json" });
+
+    expect(files[0]?.text).toBe(battleFileText(battleFileOf(null, WATCH_ARMY, skills)));
+  });
+
+  it("refuses with the Export dialog's own sentence when an Army has nobody in it", async () => {
+    const { host, files } = aHost(aTurn(), [], {}, { armies: [anArmy("army-3", "Empty", [])] });
+
+    const answer = await call(host, "export_battle_file", { attackers: "Empty", path: "/tmp/x.json" });
+
+    expect(answer).toEqual({ text: "Empty has no units in it.", isError: true });
+    expect(files).toEqual([]);
+  });
+
+  it("refuses when no Army is named for either side", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY] });
+
+    const answer = await call(host, "export_battle_file", { path: "/tmp/x.json" });
+
+    expect(answer).toEqual({ text: "Choose at least one Army.", isError: true });
+  });
+
+  it("refuses an Army it cannot find, and a name two Armies share", async () => {
+    const twin = anArmy("army-9", "Northern Host", [aMember()]);
+    const { host } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY, twin] });
+
+    const unknown = await call(host, "export_battle_file", { attackers: "Nobody", path: "/tmp/x.json" });
+    const shared = await call(host, "export_battle_file", { attackers: "Northern Host", path: "/tmp/x.json" });
+
+    expect(unknown.isError).toBe(true);
+    expect(unknown.text).toContain("No Army is called");
+    expect(shared.isError).toBe(true);
+    expect(shared.text).toContain("army-1, army-9");
+  });
+
+  it("waits, as the dialog does, while the scan could still give foreign units their skills", async () => {
+    const { host, files } = aHost(aTurn(), [], {}, { armies: [WATCH_ARMY], scanning: true });
+
+    const answer = await call(host, "export_battle_file", { defenders: "army-2", path: "/tmp/x.json" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("Still reading this game's battle reports");
+    expect(files).toEqual([]);
+  });
+
+  it("does not wait on the scan when every unit is the faction's own", async () => {
+    const { host, files } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY], scanning: true });
+
+    await call(host, "export_battle_file", { attackers: "army-1", path: "/tmp/x.json" });
+
+    expect(files).toHaveLength(1);
+  });
+
+  it("says why when the file could not be written", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY], writeFails: "the folder /nowhere does not exist" });
+
+    const answer = await call(host, "export_battle_file", { attackers: "army-1", path: "/nowhere/x.json" });
+
+    expect(answer).toEqual({ text: "The file was not written: the folder /nowhere does not exist", isError: true });
+  });
+
+  it("needs a path", async () => {
+    const { host } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY] });
+
+    const answer = await call(host, "export_battle_file", { attackers: "army-1" });
+
+    expect(answer).toEqual({ text: '"path" is required.', isError: true });
   });
 });

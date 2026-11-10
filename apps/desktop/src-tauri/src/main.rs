@@ -161,6 +161,7 @@ fn main() {
             assistant::assistant_register_tools,
             assistant::assistant_answer,
             assistant::assistant_connection,
+            assistant::assistant_write_file,
             atlantis_hud_core_tauri::command_parse_report,
             atlantis_hud_core_tauri::command_parse_report_full,
             atlantis_hud_core_tauri::command_preview_report_import,

@@ -43,6 +43,15 @@ export function desktopAssistantTransport(): AssistantTransport | undefined {
     async connection() {
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke("assistant_connection");
+    },
+    async writeFile(path, text) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      try {
+        await invoke("assistant_write_file", { path, text });
+      } catch (error: unknown) {
+        // The shell refuses with the sentence itself, which Tauri hands over as a bare string.
+        throw error instanceof Error ? error : new Error(String(error));
+      }
     }
   };
 }
