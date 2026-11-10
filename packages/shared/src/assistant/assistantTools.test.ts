@@ -203,7 +203,12 @@ function anEarlierTurnSource(): EarlierTurnSource {
   const scouts = aReportUnit({ unitId: "102", name: "Scouts", regionId: "1,1,1", own: true, factionId: "3", men: 1 });
   const templated = aParsedReport({
     header: aReportHeaderInfo({ factionId: "3", turnNumber: 9 }),
-    regions: [{ ...home, units: [...home.units, scouts] }],
+    regions: [
+      {
+        ...home,
+        units: [...home.units, scouts, aReportUnit({ unitId: "900", name: "Stranger", regionId: "1,1,1", own: false, factionId: "9" })]
+      }
+    ],
     ordersTemplate: { text: TEMPLATE_ORDERS, factionId: "3", units: [] }
   });
   return {
@@ -1982,6 +1987,16 @@ describe("reading an earlier turn", () => {
     const note = "The HUD kept no orders for turn 9; these are the orders template from that turn's report, not orders the player saved.";
     expect(farmers).toMatchObject({ turn: 9, earlier: true, unit: { unitId: "100" }, orders: "work", fromTemplate: true, note });
     expect(scouts).toMatchObject({ turn: 9, earlier: true, unit: { unitId: "102" }, orders: "", fromTemplate: true, note });
+  });
+
+  it("get_unit keeps a foreign unit's orders null on an earlier turn answered from the template", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "get_unit", { unitId: "900", turn: 9 })).text);
+
+    expect(answer).toMatchObject({ turn: 9, earlier: true, unit: { unitId: "900" }, orders: null });
+    expect(answer).not.toHaveProperty("fromTemplate");
+    expect(answer).not.toHaveProperty("note");
   });
 
   it("get_unit keeps orders null for an earlier turn whose report carried no template", async () => {
