@@ -1002,7 +1002,10 @@ mod reaches_the_planner_tests {
     fn a_route_is_planned_for_the_unit_as_loaded_by_what_it_will_carry() {
         let report = tundra_corridor(ARCHERS_AND_STABLE);
 
-        let walking = plan_carrying(&report, "").expect("the ruleset loads").plan.expect("a route");
+        let walking = plan_carrying(&report, "")
+            .expect("the ruleset loads")
+            .plan
+            .expect("a route");
         assert_eq!(walking.mode, crate::movement::rules::MovementMode::Walk);
         assert_eq!(walking.months[0].steps, 1);
 
@@ -1021,10 +1024,16 @@ mod reaches_the_planner_tests {
         let riders = "* Archers (900), Foo (1), behind, 60 high elves [HELF], 60 longbows [LBOW], 40 horses [HORS]. Weight: 2660. Capacity: 0/2800/3700/0.\n";
         let report = tundra_corridor(riders);
 
-        let as_reported = plan_carrying(&report, "").expect("loads").plan.expect("a route");
+        let as_reported = plan_carrying(&report, "")
+            .expect("loads")
+            .plan
+            .expect("a route");
         assert_eq!(as_reported.mode, crate::movement::rules::MovementMode::Ride);
 
-        let without = plan_carrying(&report, r#"{"hors":0}"#).expect("loads").plan.expect("a route");
+        let without = plan_carrying(&report, r#"{"hors":0}"#)
+            .expect("loads")
+            .plan
+            .expect("a route");
         assert_eq!(without.mode, crate::movement::rules::MovementMode::Walk);
     }
 
