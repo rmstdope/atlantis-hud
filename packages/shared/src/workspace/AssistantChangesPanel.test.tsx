@@ -30,6 +30,7 @@ function render(views: AssistantChangeView[], asking = false): string {
       onCancelRevertAll={vi.fn()}
       onClose={vi.fn()}
       onRevert={vi.fn()}
+      onKeep={vi.fn()}
       onSelectUnit={vi.fn()}
       cancelRef={{ current: null }}
       revertAllRef={{ current: null }}
@@ -94,5 +95,25 @@ describe("AssistantChangesContent", () => {
     expect(html).toContain(">Revert 2 units<");
     expect(html).toContain(">Cancel<");
     expect(render([view()])).not.toContain("will be gone");
+  });
+
+  it("puts Keep right before each unit's Revert", () => {
+    const html = render([view(), view({ unitId: "1301" })]);
+
+    for (const unitId of ["1234", "1301"]) {
+      const keep = html.indexOf(`data-testid="assistant-change-keep-${unitId}"`);
+      const revert = html.indexOf(`data-testid="assistant-change-revert-${unitId}"`);
+      expect(keep).toBeGreaterThan(-1);
+      expect(revert).toBeGreaterThan(keep);
+      expect(html.slice(keep, revert)).toMatch(/^[^>]*>Keep<\/button><button[^>]*$/u);
+    }
+  });
+
+  it("leaves Keep on for a unit edited since, and for one with a problem", () => {
+    expect(render([view({ edited: true })])).toContain('data-testid="assistant-change-keep-1234"');
+    expect(render([view({ edited: true })])).not.toMatch(/data-testid="assistant-change-keep-1234"[^>]*disabled=""/u);
+    expect(render([view({ problems: ["this hex does not sell silk"] })])).not.toMatch(
+      /data-testid="assistant-change-keep-1234"[^>]*disabled=""/u
+    );
   });
 });

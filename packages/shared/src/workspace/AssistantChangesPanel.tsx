@@ -70,10 +70,12 @@ function Comparison({ view }: { view: AssistantChangeView }) {
 
 function Entry({
   view,
+  onKeep,
   onRevert,
   onSelectUnit
 }: {
   view: AssistantChangeView;
+  onKeep: (unitId: string) => void;
   onRevert: (unitId: string) => void;
   onSelectUnit: (unitId: string, regionId: string) => void;
 }) {
@@ -95,6 +97,9 @@ function Entry({
         ) : view.problems.length > 0 ? (
           <span className="whitespace-nowrap text-pane-sm text-warn">{problemMark(view.problems.length)}</span>
         ) : null}
+        <button type="button" data-testid={`assistant-change-keep-${view.unitId}`} onClick={() => onKeep(view.unitId)} className={BUTTON}>
+          Keep
+        </button>
         <button
           type="button"
           data-testid={`assistant-change-revert-${view.unitId}`}
@@ -130,6 +135,7 @@ type ContentProps = {
   onCancelRevertAll: () => void;
   onClose: () => void;
   onRevert: (unitId: string) => void;
+  onKeep: (unitId: string) => void;
   onSelectUnit: (unitId: string, regionId: string) => void;
   cancelRef: RefObject<HTMLButtonElement | null>;
   revertAllRef: RefObject<HTMLButtonElement | null>;
@@ -148,6 +154,7 @@ export function AssistantChangesContent({
   onCancelRevertAll,
   onClose,
   onRevert,
+  onKeep,
   onSelectUnit,
   cancelRef,
   revertAllRef,
@@ -221,7 +228,7 @@ export function AssistantChangesContent({
         className="min-h-0 flex-1 overflow-auto [overflow-anchor:none]"
       >
         {views.map((view) => (
-          <Entry key={view.unitId} view={view} onRevert={onRevert} onSelectUnit={onSelectUnit} />
+          <Entry key={view.unitId} view={view} onKeep={onKeep} onRevert={onRevert} onSelectUnit={onSelectUnit} />
         ))}
       </div>
     </>
@@ -284,6 +291,7 @@ export function AssistantChangesPanel({
   panelRef,
   onClose,
   onKeepAll,
+  onKeep,
   onRevert,
   onSelectUnit
 }: {
@@ -292,6 +300,7 @@ export function AssistantChangesPanel({
   panelRef: Ref<HTMLElement>;
   onClose: () => void;
   onKeepAll: () => void;
+  onKeep: (unitId: string) => void;
   onRevert: (unitIds: readonly string[]) => void;
   onSelectUnit: (unitId: string, regionId: string) => void;
 }) {
@@ -390,6 +399,10 @@ export function AssistantChangesPanel({
         onRevert={(unitId) => {
           keepFocusInPanel();
           onRevert([unitId]);
+        }}
+        onKeep={(unitId) => {
+          keepFocusInPanel();
+          onKeep(unitId);
         }}
         onSelectUnit={onSelectUnit}
         cancelRef={cancelRef}

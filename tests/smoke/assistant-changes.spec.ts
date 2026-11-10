@@ -146,6 +146,38 @@ test(
     await page.getByTestId("assistant-changes-confirm").click();
     await expect(panel(page)).toHaveCount(0);
     await expectOrders(page, /study FORC/u);
+
+    // Keep takes one entry off and leaves its orders as they stand (ah-hwkak.2).
+    await write(page, key, second as string, "work");
+    await write(page, key, third as string, "work");
+    await write(page, key, MAGE, "study PATT");
+    await expect(count(page)).toHaveText("3 units");
+
+    // Edited since: Revert is off but Keep is not, and keeping keeps the edit.
+    await fillOrders(page, "work");
+    await expect(entry(page, MAGE)).toContainText("edited since");
+    await expect(page.getByTestId(`assistant-change-revert-${MAGE}`)).toBeDisabled();
+    await page.getByTestId(`assistant-change-keep-${MAGE}`).click();
+    await expect(entry(page, MAGE)).toHaveCount(0);
+    await expect(count(page)).toHaveText("2 units");
+    await expect(panel(page)).toBeFocused();
+    await expectOrders(page, /^work$/mu);
+
+    await page.getByTestId(`assistant-change-keep-${second as string}`).click();
+    await expect(entry(page, second as string)).toHaveCount(0);
+    await expect(count(page)).toHaveText("1 unit");
+    expect((await call(page, "get_orders", { unitId: second as string })).text).toContain("work");
+
+    // A kept unit stays off the list after a reload.
+    await saveNow(page);
+    await page.reload();
+    await expect(count(page)).toHaveText("1 unit");
+    await expect(entry(page, second as string)).toHaveCount(0);
+
+    // Keeping the last one takes the panel and the chip away.
+    await page.getByTestId(`assistant-change-keep-${third as string}`).click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(chip(page)).toHaveCount(0);
   }
 );
 

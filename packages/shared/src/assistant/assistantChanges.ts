@@ -48,6 +48,15 @@ export function recordAssistantWrite(
   return { open: state.changes.length === 0 ? true : state.open, changes };
 }
 
+/**
+ * One unit's change accepted (ah-hwkak.2): it leaves the list and its orders stay as they stand.
+ * The same state if the unit is not listed. A later write lists it afresh, Before being what was kept.
+ */
+export function keepAssistantChange(state: AssistantChangesState, unitId: string): AssistantChangesState {
+  const changes = state.changes.filter((change) => change.unitId !== unitId);
+  return changes.length === state.changes.length ? state : { ...state, changes };
+}
+
 /** Takes off the list every unit whose orders are back to Before; the same state if there are none. */
 export function settleAssistantChanges(
   state: AssistantChangesState,
