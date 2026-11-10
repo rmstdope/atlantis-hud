@@ -21,6 +21,7 @@ import { battleFileOf, battleFileText } from "../armyExport";
 import { NO_DERIVED_SKILLS, type DerivedSkills } from "../battleSkills";
 import { orderProcessingFor } from "../orderProcessing";
 import { newAssistantSeen } from "./assistantSeen";
+import type { EarlierTurnSource } from "./earlierTurns";
 import { ASSISTANT_TOOLS, answerToolCall, readyArmies, type AssistantHost, type AssistantTurn } from "./assistantTools";
 
 const DOCUMENT = [
@@ -166,6 +167,38 @@ function aDiagnostic(overrides: Partial<OrderDiagnostic> = {}): OrderDiagnostic 
   } as OrderDiagnostic;
 }
 
+/** Turn 11, stored: the home region then had fewer people, and Farmers fewer men. */
+const EARLIER_ORDERS = ["#atlantis 3", "", ";*** plain (1,1) in Coast ***", "", "unit 100", "tax", "", "#end", ""].join("\n");
+
+function anEarlierTurnSource(): EarlierTurnSource {
+  const parsed = aParsedReport({
+    header: aReportHeaderInfo({ factionId: "3", turnNumber: 11, events: ["Farmers (100) collects 40 silver."] }),
+    regions: [
+      aReportRegion({
+        regionId: "1,1,1",
+        coordinate: { x: 1, y: 1, z: 1 },
+        terrain: "plain",
+        province: "Coast",
+        population: 900,
+        units: [aReportUnit({ unitId: "100", name: "Farmers", regionId: "1,1,1", own: true, factionId: "3", men: 8 })]
+      })
+    ]
+  });
+  return {
+    list: async () => [
+      { turnNumber: 10, season: null, importedAt: "2026-01-10" },
+      { turnNumber: 11, season: null, importedAt: "2026-01-11" },
+      { turnNumber: 12, season: null, importedAt: "2026-01-12" }
+    ],
+    load: async (turnNumber) =>
+      turnNumber === 11
+        ? { turnNumber, parsed, ordersDocument: EARLIER_ORDERS }
+        : turnNumber === 10
+          ? { turnNumber, parsed: aParsedReport({ header: aReportHeaderInfo({ turnNumber: 10 }) }), ordersDocument: null }
+          : null
+  };
+}
+
 /** What the fake host's preview and validation forecast, beside its diagnostics. */
 interface Forecast {
   readonly silver?: UnitSilver[];
@@ -215,6 +248,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     },
     orders: orderProcessingFor(null),
+    earlierTurns: anEarlierTurnSource(),
     bannerFor: (regionId) => (regionId === "1,1,1" ? ";*** plain (1,1) in Coast ***" : null),
     validate: async () => ({ diagnostics, silver: forecast.silver ?? [] }) as unknown as OrderValidationResult,
     preview: async () => forecast.preview ?? { regions: [] },
@@ -1400,5 +1434,121 @@ describe("planning a route", () => {
     const answer = await call(host, "plan_route", { unitId: "101", x: 3, y: 1 });
 
     expect(answer).toEqual({ isError: true, text: "The game data has not loaded yet; try again in a moment." });
+  });
+});
+
+describe("reading an earlier turn", () => {
+  it("lists the stored turns and marks the open one", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "list_turns")).text);
+
+    expect(answer).toEqual({
+      openTurn: 12,
+      turns: [
+        { turn: 10, season: null, importedAt: "2026-01-10", open: false },
+        { turn: 11, season: null, importedAt: "2026-01-11", open: false },
+        { turn: 12, season: null, importedAt: "2026-01-12", open: true }
+      ]
+    });
+  });
+
+  it("reads the events of a named earlier turn", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "get_turn_events", { turn: 11 })).text);
+
+    expect(answer).toMatchObject({ turn: 11, earlier: true, events: ["Farmers (100) collects 40 silver."] });
+  });
+
+  it("reads the open turn as before when the turn named is the open one", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "get_turn_events", { turn: 12 })).text);
+
+    expect(answer.events).toEqual(["Farmers (100) earns 50 silver."]);
+    expect(answer.earlier).toBeUndefined();
+  });
+
+  it("reads a region and a unit as an earlier turn's report showed them", async () => {
+    const { host } = aHost(aTurn());
+
+    const region = json((await call(host, "get_region", { regionId: "1,1,1", turn: 11 })).text);
+    const unit = json((await call(host, "get_unit", { unitId: "100", turn: 11 })).text);
+
+    expect(region).toMatchObject({ turn: 11, earlier: true, regionId: "1,1,1", population: 900 });
+    expect(unit).toMatchObject({ turn: 11, earlier: true, unit: { unitId: "100", men: 8 }, orders: "tax" });
+  });
+
+  it("refuses a region or unit the earlier report did not show", async () => {
+    const { host } = aHost(aTurn());
+
+    const region = await call(host, "get_region", { regionId: "2,1,1", turn: 11 });
+    const unit = await call(host, "get_unit", { unitId: "101", turn: 11 });
+
+    expect(region.isError).toBe(true);
+    expect(region.text).toBe("Turn 11's report shows no such region.");
+    expect(unit.isError).toBe(true);
+    expect(unit.text).toContain("Turn 11's report shows no unit 101");
+  });
+
+  it("reads the orders written for an earlier turn, whole or for one unit", async () => {
+    const { host } = aHost(aTurn());
+
+    const whole = json((await call(host, "get_orders", { turn: 11 })).text);
+    const one = json((await call(host, "get_orders", { turn: 11, unitId: "100" })).text);
+
+    expect(whole).toEqual({ turn: 11, earlier: true, orders: EARLIER_ORDERS });
+    expect(one).toEqual({ turn: 11, earlier: true, unitId: "100", orders: "tax" });
+  });
+
+  it("says when the HUD kept no orders for an earlier turn", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = json((await call(host, "get_orders", { turn: 10 })).text);
+
+    expect(answer).toEqual({ turn: 10, earlier: true, orders: null, note: "The HUD kept no orders for turn 10." });
+  });
+
+  it("refuses a unit's earlier orders when that turn's report did not show the unit", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = await call(host, "get_orders", { turn: 10, unitId: "100" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("Turn 10's report shows no unit 100");
+  });
+
+  it("does not count an earlier turn's orders as read for the open turn", async () => {
+    const { host } = aHost(aTurn());
+    await call(host, "get_unit", { unitId: "100", turn: 11 });
+    host.typeByHand(DOCUMENT.replace("work", "study FARM"));
+
+    const edits = json((await call(host, "list_order_edits")).text);
+
+    expect(edits.edits).toEqual([]);
+  });
+
+  it("refuses a turn that is later than the open one, or not stored", async () => {
+    const { host } = aHost(aTurn());
+
+    const later = await call(host, "get_turn_events", { turn: 13 });
+    const missing = await call(host, "get_turn_events", { turn: 4 });
+
+    expect(later.isError).toBe(true);
+    expect(later.text).toContain("Turn 13 is after the open turn 12");
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toContain("list_turns");
+  });
+
+  it("refuses an earlier turn while the HUD cannot read stored turns", async () => {
+    const { host } = aHost(aTurn());
+    const without = { ...host, earlierTurns: null };
+
+    const answer = await call(without, "get_region", { regionId: "1,1,1", turn: 11 });
+    const list = await call(without, "list_turns");
+
+    expect(answer.isError).toBe(true);
+    expect(list.isError).toBe(true);
   });
 });

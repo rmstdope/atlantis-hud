@@ -79,6 +79,7 @@ import {
   type PendingMageSheet,
   type ReportLoadOutcome,
 } from "../reportLoad";
+import { earlierTurnSource } from "../assistant/earlierTurns";
 import { chooseViewerFaction } from "../reportBatch";
 import {
   batchFinish,
@@ -4526,6 +4527,24 @@ export function AppShell({
   // for the same reason (ah-n3j1q).
   const assistantDocument = useRef(ordersDocument);
   assistantDocument.current = ordersDocument;
+  // The open game's stored turns, for an assistant comparing turns (ah-a97xg.4). Rebuilt with the
+  // game, the faction or the parser, which drops the parsed reports the source keeps.
+  const assistantFactionId = parsed?.header.factionId ?? null;
+  const earlierTurns = useMemo(
+    () =>
+      game === null || !assistantFactionId
+        ? null
+        : earlierTurnSource(
+            client,
+            {
+              databasePath: game.databasePath,
+              gameId: game.manifest.metadata.gameId,
+              factionId: assistantFactionId
+            },
+            reportParser(client, ruleset)
+          ),
+    [client, game, assistantFactionId, ruleset]
+  );
   useAssistant(assistant, {
     turn: () =>
       game === null || parsed === null || draftKey === null
@@ -4541,6 +4560,7 @@ export function AppShell({
             knownMap: shownKnownMap
           },
     orders,
+    earlierTurns,
     bannerFor: regionBanner,
     // Read through `getState()` on each call, like the Export button, so a call answers from the
     // Armies and scan as they stand when it arrives (ah-a97xg.11).

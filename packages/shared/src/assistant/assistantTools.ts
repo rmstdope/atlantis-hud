@@ -33,6 +33,7 @@ import { battleFileOf, battleFileText, exportReadiness } from "../armyExport";
 import type { DerivedSkills } from "../battleSkills";
 import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
+import type { EarlierTurn, EarlierTurnSource } from "./earlierTurns";
 import { silverShown } from "../unitTable";
 import { describeEstimate, describeLoadCheck, describeProblem } from "../workspace/PlannerPanel";
 
@@ -89,6 +90,8 @@ export interface AssistantHost {
    * a sentence saying why it could not.
    */
   writeFile(path: string, text: string): Promise<void>;
+  /** The open game's stored turns, or `null` while the HUD cannot read them. */
+  readonly earlierTurns: EarlierTurnSource | null;
 }
 
 /**
@@ -124,6 +127,15 @@ export interface AssistantAnswer {
 
 const UNIT_ID = { type: "string", description: "The unit's number, e.g. \"1234\"." };
 
+const TURN = {
+  type: "number",
+  description:
+    "Read an earlier stored turn instead of the open one, as list_turns names it. Left out, or the open turn's number, reads the open turn."
+};
+
+/** The tools that can read an earlier turn instead of the open one. */
+const EARLIER_TURN_READS = new Set(["get_region", "get_unit", "get_turn_events", "get_orders"]);
+
 export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_turn_overview",
@@ -146,8 +158,8 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_unit",
     description:
-      "One unit in full as the report shows it (flags, items, skills, movement, capacity, structure, description), with the orders currently written for it and every problem the HUD's validator finds in them.",
-    inputSchema: { type: "object", properties: { unitId: UNIT_ID }, required: ["unitId"] }
+      "One unit in full as the report shows it (flags, items, skills, movement, capacity, structure, description), with the orders currently written for it and every problem the HUD's validator finds in them. With turn, as that earlier turn's report showed it, with the orders the HUD kept for that turn and no problems (marked earlier: true).",
+    inputSchema: { type: "object", properties: { unitId: UNIT_ID, turn: TURN }, required: ["unitId"] }
   },
   {
     name: "list_regions",
@@ -161,14 +173,15 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_region",
     description:
-      "One region in full: products, market (wanted and for sale), exits, structures, gate, and every unit in it. Name it by regionId or by x, y and z coordinates. A region this report does not show is answered from the HUD's map of earlier reports, marked remembered: true (false only for a hex seen this turn by someone else, e.g. an ally), with how it is known (knowledge), the turn it was last seen (lastSeenTurn), what it held then, and the units last seen there - who may since have moved.",
+      "One region in full: products, market (wanted and for sale), exits, structures, gate, and every unit in it. Name it by regionId or by x, y and z coordinates. With turn, as that earlier turn's report showed it (marked earlier: true; no map fallback). A region this report does not show is answered from the HUD's map of earlier reports, marked remembered: true (false only for a hex seen this turn by someone else, e.g. an ally), with how it is known (knowledge), the turn it was last seen (lastSeenTurn), what it held then, and the units last seen there - who may since have moved.",
     inputSchema: {
       type: "object",
       properties: {
         regionId: { type: "string", description: "As list_regions names it, e.g. \"1:12,4\"." },
         x: { type: "number" },
         y: { type: "number" },
-        z: { type: "number", description: "The level. Needed when x and y exist on more than one." }
+        z: { type: "number", description: "The level. Needed when x and y exist on more than one." },
+        turn: TURN
       }
     }
   },
@@ -233,14 +246,20 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_turn_events",
     description:
-      "What happened last month: the faction's events and errors as the report lists them, the battles fought, and moves the report says were blocked.",
-    inputSchema: { type: "object", properties: {} }
+      "What happened last month: the faction's events and errors as the report lists them, the battles fought, and moves the report says were blocked. With turn, what that earlier turn's report listed (marked earlier: true) - e.g. what last turn's orders achieved is in the open turn's events, and the orders that caused them are get_orders with the turn before.",
+    inputSchema: { type: "object", properties: { turn: TURN } }
   },
   {
     name: "get_orders",
     description:
-      "The orders document as it stands in the player's editor, or with unitId just that unit's block (the lines below its 'unit' line).",
-    inputSchema: { type: "object", properties: { unitId: UNIT_ID } }
+      "The orders document as it stands in the player's editor, or with unitId just that unit's block (the lines below its 'unit' line). With turn, the orders the HUD kept for that earlier turn's report, as last saved - what the player wrote, which is usually what was sent - as JSON marked earlier: true, orders null when it kept none.",
+    inputSchema: { type: "object", properties: { unitId: UNIT_ID, turn: TURN } }
+  },
+  {
+    name: "list_turns",
+    description:
+      "The faction's turns the HUD has stored for this game, oldest first: turn number, season, when it was imported, and which one is open. Any of them can be named as turn to get_region, get_unit, get_turn_events and get_orders, to compare turns.",
+    inputSchema: { type: "object", properties: {} }
   },
   {
     name: "set_unit_orders",
@@ -480,7 +499,11 @@ function numberedLines(lines: readonly string[], from: number): string {
  * The region `args` names by `regionId` or by `x`, `y` and `z`, or a refusal saying why there is
  * none. `get_region` and `get_forecast` read regions the same way.
  */
-function findRegion(parsed: ParsedReport, args: Record<string, unknown>): ReportRegion {
+function findRegion(
+  parsed: ParsedReport,
+  args: Record<string, unknown>,
+  missing = "This turn's report shows no such region. list_regions names every one it does."
+): ReportRegion {
   const regionId = stringArg(args, "regionId");
   const x = numberArg(args, "x");
   const y = numberArg(args, "y");
@@ -498,7 +521,7 @@ function findRegion(parsed: ParsedReport, args: Record<string, unknown>): Report
         candidate.coordinate.y === y &&
         (z === undefined || candidate.coordinate.z === z)
   );
-  return region ?? refuse("This turn's report shows no such region. list_regions names every one it does.");
+  return region ?? refuse(missing);
 }
 
 /**
@@ -758,8 +781,81 @@ function ownUnitOrders(host: AssistantHost, turn: AssistantTurn): Map<string, st
   );
 }
 
+/** The stored turn `args.turn` names, or `null` when it names none or the open one. */
+async function earlierTurnOf(host: AssistantHost, turn: AssistantTurn, args: Record<string, unknown>): Promise<EarlierTurn | null> {
+  if (args.turn === undefined) {
+    return null;
+  }
+  const named = numberArg(args, "turn");
+  const open = turn.parsed.header.turnNumber;
+  if (named === undefined || !Number.isInteger(named)) {
+    refuse('"turn" must be a turn number, as list_turns names it.');
+  }
+  if (named === open) {
+    return null;
+  }
+  if (open !== null && named > open) {
+    refuse(`Turn ${named} is after the open turn ${open}; only stored earlier turns can be read.`);
+  }
+  const source = host.earlierTurns ?? refuse("The HUD cannot read this game's stored turns yet; try again in a moment.");
+  return (await source.load(named)) ?? refuse(`The HUD has no stored report for turn ${named}. list_turns names every one it has.`);
+}
+
+/** A read of an earlier turn: its report and the orders kept for it, never the open turn's. */
+function answerEarlier(host: AssistantHost, earlier: EarlierTurn, name: string, args: Record<string, unknown>) {
+  const { parsed, turnNumber } = earlier;
+  const mark = { turn: turnNumber, earlier: true };
+  const orders = (unitId: string, region: ReportRegion) =>
+    earlier.ordersDocument === null ? null : host.orders.readUnitOrders(earlier.ordersDocument, unitId, unitIdsOf(region));
+  const unitIn = (unitId: string) =>
+    findUnit(parsed, unitId) ?? refuse(`Turn ${turnNumber}'s report shows no unit ${unitId}.`);
+  switch (name) {
+    case "get_region":
+      return ok({
+        ...mark,
+        ...findRegion(parsed, args, `Turn ${turnNumber}'s report shows no such region.`)
+      });
+    case "get_unit": {
+      const found = unitIn(requiredString(args, "unitId"));
+      return ok({
+        ...mark,
+        unit: found.unit,
+        region: regionLabel(found.region),
+        orders: found.unit.own ? orders(found.unit.unitId, found.region) : null
+      });
+    }
+    case "get_turn_events":
+      return ok({
+        ...mark,
+        events: parsed.header.events,
+        errors: parsed.header.errors,
+        battles: parsed.battles,
+        blockedMoves: parsed.blockedMoves
+      });
+    case "get_orders": {
+      const unitId = stringArg(args, "unitId");
+      const found = unitId === undefined ? null : unitIn(unitId);
+      if (earlier.ordersDocument === null) {
+        return ok({ ...mark, ...(unitId === undefined ? {} : { unitId }), orders: null, note: `The HUD kept no orders for turn ${turnNumber}.` });
+      }
+      if (unitId === undefined) {
+        return ok({ ...mark, orders: earlier.ordersDocument });
+      }
+      return ok({ ...mark, unitId, orders: (found && orders(unitId, found.region)) ?? "" });
+    }
+    default:
+      return null;
+  }
+}
+
 async function answer(host: AssistantHost, turn: AssistantTurn, name: string, args: Record<string, unknown>) {
   const { parsed } = turn;
+  if (EARLIER_TURN_READS.has(name)) {
+    const earlier = await earlierTurnOf(host, turn, args);
+    if (earlier !== null) {
+      return answerEarlier(host, earlier, name, args);
+    }
+  }
   const ownUnits = parsed.regions.flatMap((region) => region.units.filter((unit) => unit.own));
 
   switch (name) {
@@ -994,6 +1090,20 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
         currentTurn: map.currentTurn,
         regions: rows.slice(0, MAX_KNOWN_REGIONS),
         ...(rows.length > MAX_KNOWN_REGIONS ? { leftOut: rows.length - MAX_KNOWN_REGIONS } : {})
+      });
+    }
+
+    case "list_turns": {
+      const source = host.earlierTurns ?? refuse("The HUD cannot read this game's stored turns yet; try again in a moment.");
+      const open = parsed.header.turnNumber;
+      return ok({
+        openTurn: open,
+        turns: (await source.list()).map((stored) => ({
+          turn: stored.turnNumber,
+          season: stored.season,
+          importedAt: stored.importedAt,
+          open: stored.turnNumber === open
+        }))
       });
     }
 
