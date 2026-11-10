@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keep One Unit</title>
+<style>
+/* One screen of the HUD with the panel floating over it, no veil; the demo controls sit outside the app frame. */
+:root{
+  color-scheme:dark;
+  --page:#10151c;--ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--edge-soft:#333d49;
+  --ink:#d4dce6;--soft:#a8b4c2;--dim:#99a4b2;--brass:#e0b25a;--bright:#eebe63;--warn:#d9a441;--danger:#e89494;
+  --gone:#e8949426;--added:#4fb78326;--added-ink:#8fd6ae;--gone-ink:#f0b4b4;
+  --ui:system-ui,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.5 var(--ui)}
+.page{padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:76rem;margin:0 auto;display:grid;gap:14px}
+h1{font-size:20px;line-height:1.3;margin:0;text-wrap:balance}
+.lede{color:var(--soft);margin:4px 0 0;max-width:70ch}
+.demo{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.demo .said{color:var(--soft);min-width:0;flex:1 1 18rem}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--bright);outline-offset:1px}
+.btn{border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:3px 10px}
+.btn:hover:not(:disabled){border-color:var(--brass);color:var(--brass)}
+.btn:disabled{color:var(--dim);border-color:var(--edge-soft);cursor:not-allowed}
+.ico{border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:0 7px;line-height:1.6}.ico:hover:not(:disabled){border-color:var(--brass);color:var(--brass)}.ico:disabled{color:var(--dim);border-color:var(--edge-soft);cursor:not-allowed}
+.btn.go{border-color:var(--brass);color:var(--brass)}
+
+.hud{position:relative;display:grid;grid-template-rows:auto 1fr;height:39rem;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--ground);font-size:12.5px}
+.bar{display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--edge);min-width:0}
+.bar b{color:var(--brass);font-weight:600}
+.bar .turn{color:var(--soft)}
+.bar .gap{flex:1}
+.chip{border:1px solid var(--brass);color:var(--brass);background:var(--raised);border-radius:999px;padding:0 10px;font-variant-numeric:tabular-nums}
+.chip:hover{color:var(--bright);border-color:var(--bright)}
+.body{display:grid;grid-template-columns:1fr 19rem;min-height:0}
+.map{min-width:0;overflow:hidden}
+.map svg{width:100%;height:100%;display:block}
+.side{border-left:1px solid var(--edge);background:var(--panel);display:grid;grid-template-rows:auto 1fr auto;min-height:0;padding:8px;gap:6px}
+.side h2{font-size:12.5px;margin:0;font-weight:600;color:var(--soft)}
+textarea{width:100%;box-sizing:border-box;resize:none;background:var(--ground);color:var(--ink);border:1px solid var(--edge);border-radius:4px;padding:6px;font:12.5px/1.6 var(--mono)}
+.side p{margin:0;color:var(--dim);font-size:11.5px}
+
+.changes{position:absolute;left:14px;bottom:14px;width:min(45rem,calc(100% - 28px - 19rem));max-height:calc(100% - 60px);display:grid;grid-template-rows:auto auto 1fr;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 30px #0009}
+.changes[hidden]{display:none}
+.head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--edge);cursor:move;user-select:none}
+.head strong{font-weight:600}
+.head .count{color:var(--soft);font-variant-numeric:tabular-nums}
+.head .gap{flex:1}
+.x{background:none;border:0;color:var(--dim);padding:0 6px}
+.x:hover{color:var(--ink)}
+.list{overflow:auto;min-height:0}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;background:var(--panel);border-bottom:1px solid var(--edge)}
+.confirm[hidden]{display:none}
+.confirm .gap{flex:1}
+.unit{padding:8px;border-bottom:1px solid var(--edge-soft)}
+.unit:last-child{border-bottom:0}
+.uhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:5px}
+.name{background:none;border:0;padding:0;color:var(--brass);font-weight:600}
+.name:hover{color:var(--bright);text-decoration:underline}
+.where{color:var(--dim)}
+.uhead .gap{flex:1}
+.flag{font-size:11.5px;white-space:nowrap}
+.flag.warn{color:var(--warn)}
+.flag.edit{color:var(--soft)}
+.sbs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:1px solid var(--edge-soft);border-radius:3px;background:var(--ground);font:12px/1.6 var(--mono)}
+.cap{font:600 11px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--dim);padding:2px 8px;border-bottom:1px solid var(--edge-soft)}
+.cap+.cap,.l.r{border-left:1px solid var(--edge-soft)}
+.l{padding:0 8px;overflow-wrap:anywhere;min-height:1.6em;white-space:pre-wrap}
+.l.gone{background:var(--gone);color:var(--gone-ink)}
+.l.add{background:var(--added);color:var(--added-ink)}
+.l.none{color:var(--dim);font-style:italic}
+.why{margin:5px 0 0;color:var(--warn);font-size:11.5px}
+.why.edit{color:var(--soft)}
+.ring{fill:none;stroke:#f5f8fc;stroke-width:2.5}
+
+@media (max-width:760px){
+  .hud{height:auto;grid-template-rows:auto auto}
+  .body{grid-template-columns:1fr}
+  .map{height:9rem}
+  .side{border-left:0;border-top:1px solid var(--edge);grid-template-rows:auto 7rem auto}
+  .hud{position:relative}
+  .changes{left:0;right:0;bottom:0;width:auto;max-height:55%;border-width:1px 0 0;border-radius:0}
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header>
+    <h1>Keeping one unit's change</h1>
+    <p class="lede">Each unit has <b>Keep</b> beside <b>Revert</b>, in the same order as Keep all and Revert all above. Keep leaves that unit's orders exactly as they stand and takes it off the list. Try it on Scouts, on Traders (which has a problem) and on Guards (which you edited after the assistant).</p>
+  </header>
+
+  <div class="demo">
+    <button class="btn go" id="next" type="button">The assistant writes the next unit</button>
+    <button class="btn" id="reset" type="button">Start over</button>
+    <span class="said" id="said" aria-live="polite"></span>
+  </div>
+
+  <div class="hud">
+    <div class="bar">
+      <b>Atlantis HUD</b>
+      <span class="turn">Month 9, Year 3 · Turn 33</span>
+      <span class="gap"></span>
+      <button class="chip" id="chip" type="button" hidden></button>
+    </div>
+    <div class="body">
+      <div class="map"><svg id="map" viewBox="0 0 640 480" preserveAspectRatio="xMidYMid slice" aria-label="Map"></svg></div>
+      <div class="side">
+        <h2>Orders · Miners (1102)</h2>
+        <textarea id="editor" aria-label="Orders for Miners" spellcheck="false">produce iron</textarea>
+        <p>Your own unit, open while the assistant works on others.</p>
+      </div>
+    </div>
+    <section class="changes" id="panel" aria-label="Assistant changes" tabindex="-1">
+      <div class="head">
+        <strong>Assistant changes</strong>
+        <span class="count" id="count"></span>
+        <span class="gap"></span>
+        <button class="btn" id="keep" type="button">Keep all</button>
+        <button class="btn" id="revertAll" type="button">Revert all</button>
+        <button class="x" id="close" type="button" aria-label="Close the panel">✕</button>
+      </div>
+      <div class="confirm" id="confirm" hidden><span id="askText"></span><span class="gap"></span><button class="btn" id="yes" type="button"></button><button class="btn" id="no" type="button">Cancel</button></div>
+      <div class="list" id="list"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const UNITS = {
+  1234:{name:"Scouts",where:"Plain (12,4)",hex:[3,1]},
+  1301:{name:"Traders",where:"Forest (13,5)",hex:[4,2]},
+  1402:{name:"Guards",where:"City (14,4)",hex:[5,1]},
+  1510:{name:"Smiths",where:"Hill (15,5)",hex:[6,2]}
+};
+const START = [
+  {id:1234,before:["avoid 1","work"],after:["avoid 1","move N N"]},
+  {id:1301,before:[],after:["buy 10 silk"],problem:"this hex does not sell silk - its market has perfume and gems"},
+  {id:1402,before:["guard 1","tax"],after:["guard 1","behind 1","tax"],edited:true}
+];
+const WRITES = [
+  {id:1510,before:["produce swords"],after:["produce 5 swords"],said:"Smiths joins the list as a new change."},
+  {id:1234,before:["avoid 1","work"],after:["avoid 1","move N N E"],said:"Scouts is written again: still one entry, compared with the orders before the assistant's first write."},
+  {id:1301,before:[],after:[],said:"Traders is written back to what it was, so it drops off the list."}
+];
+let entries, step, open, selected;
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const same = (a,b) => a.length===b.length && a.every((l,i)=>l===b[i]);
+
+/* Lines common to both sides stay level; a removed line and an added one share a row. */
+function align(a,b){
+  const t=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
+  for(let i=a.length-1;i>=0;i--)for(let j=b.length-1;j>=0;j--)
+    t[i][j]=a[i]===b[j]?t[i+1][j+1]+1:Math.max(t[i+1][j],t[i][j+1]);
+  const rows=[];let i=0,j=0;
+  while(i<a.length||j<b.length){
+    if(i<a.length&&j<b.length&&a[i]===b[j]){rows.push([a[i],b[j],"same"]);i++;j++;continue}
+    const gone=i<a.length&&(j===b.length||t[i+1][j]>=t[i][j+1]);
+    const add=j<b.length&&(i===a.length||t[i][j+1]>=t[i+1][j]);
+    rows.push([gone?a[i]:null,add?b[j]:null,"diff"]);
+    if(gone)i++; if(add)j++;
+  }
+  return rows;
+}
+function side(text,kind,right){
+  const r=right?" r":"";
+  if(text===null) return `<div class="l${r}"></div>`;
+  return `<div class="l${kind?" "+kind:""}${r}">${esc(text)}</div>`;
+}
+/* Upper left first, row by row, then unit number. */
+const place=e=>UNITS[e.id].where.match(/\((\d+),(\d+)\)/).slice(1).map(Number);
+function byHex(a,b){const[ax,ay]=place(a),[bx,by]=place(b);return ay-by||ax-bx||a.id-b.id}
+function card(e){
+  const u=UNITS[e.id];
+  let rows;
+  if(!e.before.length) rows=`<div class="l none">no orders</div>`+e.after.map(()=>"").join("")+side(e.after[0],"add",true)+e.after.slice(1).map(l=>`<div class="l"></div>${side(l,"add",true)}`).join("");
+  else if(!e.after.length) rows=side(e.before[0],"gone",false)+`<div class="l none r">no orders</div>`;
+  else rows=align(e.before,e.after).map(([a,b,k])=>k==="same"?side(a,"",false)+side(b,"",true):side(a,"gone",false)+side(b,"add",true)).join("");
+  const flag=e.edited?`<span class="flag edit">✎ edited since</span>`:e.problem?`<span class="flag warn">⚠ 1 problem</span>`:"";
+  const title=e.edited?' title="You have changed this unit since the assistant wrote it, so a revert would lose your edit."':"";
+  return `<article class="unit">
+    <div class="uhead">
+      <button class="name" type="button" data-sel="${e.id}">${esc(u.name)} (${e.id})</button>
+      <span class="where">${esc(u.where)}</span><span class="gap"></span>${flag}
+      <button class="btn" type="button" data-keep="${e.id}">Keep</button>
+      <button class="btn" type="button" data-rev="${e.id}"${e.edited?" disabled":""}${title}>Revert</button>
+    </div>
+    <div class="sbs"><div class="cap">Before</div><div class="cap">After</div>${rows}</div>
+    ${e.edited?'<p class="why edit">You changed these orders after the assistant wrote them. Revert is off so it cannot overwrite your edit.</p>':e.problem?`<p class="why">${esc(e.problem)}</p>`:""}
+  </article>`;
+}
+function render(){
+  entries.sort(byHex);
+  const n=entries.length;
+  const problems=entries.filter(e=>e.problem&&!e.edited).length;
+  $("list").innerHTML=entries.map(card).join("");
+  $("count").textContent=`${n} unit${n===1?"":"s"}`;
+  $("panel").hidden=!open||n===0;
+  $("chip").hidden=open||n===0;
+  $("chip").textContent=`Assistant: ${n}${problems?` · ⚠ ${problems}`:""}`;
+  $("revertAll").disabled=!entries.some(e=>!e.edited);
+  $("next").disabled=step>=WRITES.length;
+  drawMap();
+}
+function write(w){
+  const at=entries.findIndex(e=>e.id===w.id);
+  if(at>=0){
+    const before=entries[at].before;
+    if(same(before,w.after)) entries.splice(at,1);
+    else entries[at]={...entries[at],after:w.after,problem:undefined};
+  }else entries.push({id:w.id,before:w.before,after:w.after});
+}
+function drawMap(){
+  const fills=["#7a7440","#2f5d3a","#5c5c66","#1d3f63","#75695b","#8a7546"],R=46,W=R*1.5,H=R*Math.sqrt(3);
+  let out="";
+  for(let q=-1;q<10;q++)for(let r=-1;r<7;r++){
+    const x=q*W+40,y=r*H+(q%2?H/2:0)+40;
+    const pts=[0,1,2,3,4,5].map(i=>`${(x+R*Math.cos(i*Math.PI/3)).toFixed(1)},${(y+R*Math.sin(i*Math.PI/3)).toFixed(1)}`).join(" ");
+    const c=fills[Math.abs(q*7+r*13+q*r)%fills.length];
+    const u=Object.keys(UNITS).find(id=>UNITS[id].hex[0]===q&&UNITS[id].hex[1]===r);
+    out+=`<polygon points="${pts}" fill="${c}" stroke="#0a0e13" stroke-width="1"/>`;
+    if(u) out+=`<circle cx="${x}" cy="${y}" r="7" fill="#5ec8f0" stroke="#0a0e13"/>`;
+    if(u&&String(selected)===u) out+=`<polygon class="ring" points="${pts}"/>`;
+  }
+  $("map").innerHTML=out;
+}
+function reset(){
+  entries=START.map(e=>({...e}));step=0;open=true;selected=null;
+  $("said").textContent="Three units have changed, listed by hex. The panel opened by itself and took no focus.";
+  render();
+}
+$("next").onclick=()=>{const w=WRITES[step++];write(w);$("said").textContent=w.said;render()};
+$("reset").onclick=reset;
+$("close").onclick=()=>{open=false;$("said").textContent="Closed, not cleared: the chip in the header brings it back.";render()};
+$("chip").onclick=()=>{open=true;$("said").textContent="";render()};
+$("keep").onclick=()=>{entries=[];$("said").textContent="Kept. The orders stay as the assistant wrote them and the list is empty.";render()};
+function revertAll(){
+  const left=entries.filter(e=>e.edited).length;
+  entries=entries.filter(e=>e.edited);
+  $("said").textContent=left?"Reverted, except the unit you edited yourself.":"All reverted.";
+  render();
+}
+$("revertAll").onclick=()=>{
+  const n=entries.filter(e=>!e.edited).length;
+  if(n<2){revertAll();return}
+  $("askText").textContent=`Revert ${n} units? The assistant's orders for them will be gone.`;
+  $("yes").textContent=`Revert ${n} units`;
+  $("confirm").hidden=false;
+};
+$("yes").onclick=()=>{$("confirm").hidden=true;revertAll()};
+$("no").onclick=()=>{$("confirm").hidden=true};
+$("list").onclick=ev=>{
+  const b=ev.target.closest("button");if(!b)return;
+  if(b.dataset.keep){const k=entries.find(e=>String(e.id)===b.dataset.keep);entries=entries.filter(e=>e!==k);$("said").textContent=`Kept. ${UNITS[k.id].name} keeps its orders as they stand and leaves the list.`;render();if(entries.length)$("panel").focus()}
+  if(b.dataset.rev){entries=entries.filter(e=>String(e.id)!==b.dataset.rev);$("said").textContent="Reverted. That unit has its earlier orders back.";render()}
+  if(b.dataset.sel){selected=b.dataset.sel;$("said").textContent=`${UNITS[selected].name} selected on the map.`;drawMap()}
+};
+reset();
+</script>
+</body>
+</html>
