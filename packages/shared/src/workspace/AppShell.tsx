@@ -1338,14 +1338,15 @@ export function AppShell({
   // reads `parsed` rather than the map, still works.
   // A merged faction's units are laid over the turn they belong to before the model is built, so
   // the map, the region panel and the Unit panel read the same units the table does (`ah-oqxn`).
-  const model = useMemo(
-    () => {
-      const known = memory.knownMap;
-      return known
-        ? timed("build map model", () => buildHexMapModel(knownMapWithMerged(known, mergedReports)))
-        : EMPTY;
-    },
+  // The same map is what an assistant reads (`list_known_regions`, `get_region`), so it knows what
+  // the screen shows.
+  const shownKnownMap = useMemo(
+    () => (memory.knownMap ? knownMapWithMerged(memory.knownMap, mergedReports) : null),
     [memory.knownMap, mergedReports]
+  );
+  const model = useMemo(
+    () => (shownKnownMap ? timed("build map model", () => buildHexMapModel(shownKnownMap)) : EMPTY),
+    [shownKnownMap]
   );
 
   // Every step of moving water repaints the whole map, so by default it moves only on a small map -
@@ -4535,7 +4536,8 @@ export function AppShell({
             rulesetText,
             parsed,
             rawReport,
-            ordersDocument: assistantDocument.current
+            ordersDocument: assistantDocument.current,
+            knownMap: shownKnownMap
           },
     orders,
     bannerFor: regionBanner,

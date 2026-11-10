@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  aKnownMap,
+  aKnownMapHex,
   aParsedReport,
   aReportHeaderInfo,
   aReportRegion,
@@ -29,6 +31,64 @@ const DOCUMENT = [
   "#end",
   ""
 ].join("\n");
+
+/** A plains hex last seen on turn 9, with a shaft and a foreign unit standing there then. */
+const REMEMBERED = aReportRegion({
+  regionId: "1:19,5",
+  coordinate: { x: 19, y: 5, z: 1 },
+  terrain: "plain",
+  province: "Borg",
+  settlement: { name: "Ibiz", size: "village" },
+  exits: [
+    {
+      direction: "North",
+      terrain: "forest",
+      coordinate: { x: 19, y: 3, z: 1 },
+      province: "Borg",
+      settlement: null
+    }
+  ],
+  structures: [
+    {
+      structureId: "4",
+      name: "Shaft",
+      kind: "Shaft",
+      baseKind: "Shaft",
+      qualifiers: [],
+      vessels: [],
+      description: null,
+      needs: null
+    }
+  ],
+  units: []
+});
+
+/** The map the HUD draws for `aTurn`: the report's two regions, one remembered, one only named. */
+function aMap() {
+  return aKnownMap({
+    currentTurn: 12,
+    hexes: [
+      aKnownMapHex({ coordinate: { x: 1, y: 1, z: 1 }, terrain: "plain", province: "Coast", lastSeenTurn: 12 }),
+      aKnownMapHex({ coordinate: { x: 2, y: 1, z: 1 }, terrain: "forest", province: "Woods", lastSeenTurn: 12 }),
+      aKnownMapHex({ coordinate: { x: 19, y: 3, z: 1 }, terrain: "forest", province: "Borg", knowledge: "named", lastSeenTurn: 9 }),
+      aKnownMapHex({
+        coordinate: { x: 19, y: 5, z: 1 },
+        terrain: "plain",
+        province: "Borg",
+        knowledge: "stale",
+        lastSeenTurn: 9,
+        region: REMEMBERED,
+        settlement: { name: "Ibiz", size: "village" },
+        rememberedUnits: [
+          {
+            unit: aReportUnit({ unitId: "777", name: "Guards", own: false, factionId: "5", factionName: "Borgs", men: 20 }),
+            lastSeenTurn: 9
+          }
+        ]
+      })
+    ]
+  });
+}
 
 /** What `get_turn_overview` names the turn `aTurn` builds: game, faction and turn number. */
 const KEY = "game-1/3/12";
@@ -83,6 +143,7 @@ function aTurn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
     }),
     rawReport: "Testers (3) Report\nline two about silver\nline three\n",
     ordersDocument: DOCUMENT,
+    knownMap: aMap(),
     ...overrides
   };
 }
@@ -808,5 +869,117 @@ describe("where silver runs short", () => {
     const answer = json((await call(host, "get_silver_shortfalls")).text);
 
     expect(answer.regions).toEqual([]);
+  });
+});
+
+describe("regions the HUD remembers from earlier reports", () => {
+  it("answers a region this report does not show from the map, with the turn it was last seen", async () => {
+    const { host } = aHost(aTurn());
+
+    for (const args of [{ x: 19, y: 5 }, { x: 19, y: 5, z: 1 }, { regionId: "1:19,5" }]) {
+      const answer = await call(host, "get_region", args);
+      const region = json(answer.text);
+
+      expect(answer.isError).toBe(false);
+      expect(region.remembered).toBe(true);
+      expect(region.knowledge).toBe("stale");
+      expect(region.lastSeenTurn).toBe(9);
+      expect(region.currentTurn).toBe(12);
+      expect(region.terrain).toBe("plain");
+      expect(region.exits).toEqual(REMEMBERED.exits);
+      expect(region.structures.map((structure: { name: string }) => structure.name)).toEqual(["Shaft"]);
+      expect(region.settlement).toEqual({ name: "Ibiz", size: "village" });
+      expect(region.unitsLastSeen).toEqual([{ unitId: "777", name: "Guards", faction: "Borgs", men: 20, lastSeenTurn: 9 }]);
+    }
+  });
+
+  it("still answers a region in this report as the report shows it", async () => {
+    const { host } = aHost(aTurn());
+
+    const region = json((await call(host, "get_region", { x: 2, y: 1, z: 1 })).text);
+
+    expect(region.remembered).toBeUndefined();
+    expect(region.province).toBe("Woods");
+  });
+
+  it("says when a hex is only named by an exit, never described", async () => {
+    const { host } = aHost(aTurn());
+
+    const region = json((await call(host, "get_region", { x: 19, y: 3 })).text);
+
+    expect(region.knowledge).toBe("named");
+    expect(region.terrain).toBe("forest");
+    expect(region.lastSeenTurn).toBe(9);
+    expect(region.exits).toBeUndefined();
+    expect(region.note).toContain("exit");
+  });
+
+  it("refuses a region neither the report nor the map knows", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = await call(host, "get_region", { x: 40, y: 40 });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain("list_known_regions");
+  });
+
+  it("asks for the level when the report and the map hold the coordinates on different levels", async () => {
+    const turn = aTurn();
+    const map = aMap();
+    const below = aKnownMapHex({ coordinate: { x: 2, y: 1, z: 2 }, terrain: "tunnels", province: "Deep", knowledge: "named" });
+    const { host } = aHost({ ...turn, knownMap: { ...map, hexes: [...map.hexes, below] } });
+
+    const ambiguous = await call(host, "get_region", { x: 2, y: 1 });
+
+    expect(ambiguous.isError).toBe(true);
+    expect(ambiguous.text).toContain("1, 2");
+  });
+
+  it("lists every hex on the map, in the map's order, each with when it was last seen", async () => {
+    const { host } = aHost(aTurn());
+
+    const rows = json((await call(host, "list_known_regions")).text).regions;
+
+    expect(rows.map((row: { regionId: string }) => row.regionId)).toEqual(["1:1,1", "1:2,1", "1:19,3", "1:19,5"]);
+    expect(rows[3]).toEqual({
+      regionId: "1:19,5",
+      region: "plain (19,5,1) in Borg",
+      knowledge: "stale",
+      lastSeenTurn: 9,
+      settlement: "Ibiz (village)",
+      structures: ["Shaft: Shaft"],
+      unitsLastSeen: 1
+    });
+  });
+
+  it("lists the hexes in an area, or of one terrain", async () => {
+    const { host } = aHost(aTurn());
+    const ids = async (args: Record<string, unknown>) =>
+      json((await call(host, "list_known_regions", args)).text).regions.map((row: { regionId: string }) => row.regionId);
+
+    expect(await ids({ xMin: 10, xMax: 20, yMin: 4, yMax: 9 })).toEqual(["1:19,5"]);
+    expect(await ids({ terrain: "Forest" })).toEqual(["1:2,1", "1:19,3"]);
+    expect(await ids({ terrain: "forest", xMin: 10 })).toEqual(["1:19,3"]);
+    expect(await ids({ z: 2 })).toEqual([]);
+  });
+
+  it("stops a long list and says how many it left out", async () => {
+    const hexes = Array.from({ length: 503 }, (_, index) =>
+      aKnownMapHex({ coordinate: { x: index, y: 0, z: 1 }, terrain: "ocean", province: "Sea", knowledge: "named" })
+    );
+    const { host } = aHost(aTurn({ knownMap: aKnownMap({ hexes }) }));
+
+    const answer = json((await call(host, "list_known_regions")).text);
+
+    expect(answer.regions).toHaveLength(500);
+    expect(answer.leftOut).toBe(3);
+  });
+
+  it("says so while the HUD has no map", async () => {
+    const { host } = aHost(aTurn({ knownMap: null }));
+
+    const answer = await call(host, "list_known_regions");
+
+    expect(answer.isError).toBe(true);
   });
 });

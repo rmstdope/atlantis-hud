@@ -11,6 +11,9 @@
  */
 
 import type {
+  Coordinate,
+  KnownMap,
+  KnownMapHex,
   OrderDiagnostic,
   OrdersPreviewResponse,
   OrderValidationResult,
@@ -20,6 +23,7 @@ import type {
   UnitPreview,
   UnitSilver
 } from "@atlantis/core-client";
+import { regionIdOf } from "../hexMapModel";
 import type { OrderProcessing } from "../orderProcessing";
 import { editsSinceSeen, noteSeen, type AssistantSeen } from "./assistantSeen";
 import { silverShown } from "../unitTable";
@@ -34,6 +38,11 @@ export interface AssistantTurn {
   readonly parsed: ParsedReport;
   readonly rawReport: string;
   readonly ordersDocument: string;
+  /**
+   * Everything the HUD knows about the map, as the screen draws it: this report's regions and those
+   * remembered from earlier ones. `null` while it is not resolved, or could not be.
+   */
+  readonly knownMap: KnownMap | null;
 }
 
 /** What the shell lends the tools: the turn, and the two things only the shell can do with it. */
@@ -111,7 +120,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_region",
     description:
-      "One region in full: products, market (wanted and for sale), exits, structures, gate, and every unit in it. Name it by regionId or by x, y and z coordinates.",
+      "One region in full: products, market (wanted and for sale), exits, structures, gate, and every unit in it. Name it by regionId or by x, y and z coordinates. A region this report does not show is answered from the HUD's map of earlier reports, marked remembered: true, with the turn it was last seen (lastSeenTurn), what it held then, and the units last seen there - who may since have moved.",
     inputSchema: {
       type: "object",
       properties: {
@@ -134,6 +143,22 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
         x: { type: "number" },
         y: { type: "number" },
         z: { type: "number", description: "The level. Needed when x and y exist on more than one." }
+      }
+    }
+  },
+  {
+    name: "list_known_regions",
+    description:
+      "Every region the HUD's map knows - this report's and those remembered from earlier reports - one line each: id, terrain, coordinates, province, how it is known (current: this turn; stale: an earlier report; named: only an exit has named it), the turn it was last seen, settlement, structures and how many units were seen there. Narrow it to an area with z and xMin/xMax/yMin/yMax, or to one terrain. get_region gives one in full.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        z: { type: "number", description: "Only this level." },
+        xMin: { type: "number" },
+        xMax: { type: "number" },
+        yMin: { type: "number" },
+        yMax: { type: "number" },
+        terrain: { type: "string", description: "Only this terrain, e.g. \"plain\"." }
       }
     }
   },
@@ -222,6 +247,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
 
 const MAX_SEARCH_HITS = 200;
 const MAX_READ_LINES = 1000;
+const MAX_KNOWN_REGIONS = 500;
 
 class Refusal extends Error {}
 
@@ -250,9 +276,55 @@ function numberArg(args: Record<string, unknown>, name: string): number | undefi
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function regionLabel(region: ReportRegion): string {
+function regionLabel(region: { terrain: string; coordinate: Coordinate; province: string }): string {
   const { x, y, z } = region.coordinate;
   return `${region.terrain} (${x},${y},${z}) in ${region.province}`;
+}
+
+function hexIdOf(hex: KnownMapHex): string {
+  return hex.region?.regionId ?? regionIdOf(hex.coordinate);
+}
+
+/** A hex the report does not describe, as the map remembers it. */
+function rememberedRegion(hex: KnownMapHex, currentTurn: number | null) {
+  const known = {
+    remembered: true,
+    knowledge: hex.knowledge,
+    lastSeenTurn: hex.lastSeenTurn,
+    currentTurn,
+    regionId: hexIdOf(hex),
+    region: regionLabel(hex),
+    terrain: hex.terrain,
+    province: hex.province,
+    settlement: hex.settlement
+  };
+  const { region } = hex;
+  if (region === null) {
+    return { ...known, note: "No report has described this hex; only an exit of a neighbouring region has named it." };
+  }
+  return {
+    ...known,
+    exits: region.exits,
+    structures: region.structures,
+    gate: region.gate,
+    population: region.population,
+    race: region.race,
+    taxBase: region.taxBase,
+    wages: region.wages,
+    products: region.products,
+    wanted: region.wanted,
+    forSale: region.forSale,
+    unitsLastSeen: [
+      ...region.units.map((unit) => ({ unit, lastSeenTurn: hex.lastSeenTurn })),
+      ...hex.rememberedUnits
+    ].map(({ unit, lastSeenTurn }) => ({
+      unitId: unit.unitId,
+      name: unit.name,
+      faction: unit.factionName ?? unit.factionId ?? "unknown",
+      men: unit.men,
+      lastSeenTurn
+    }))
+  };
 }
 
 function skillsLine(unit: ReportUnit): string {
@@ -546,9 +618,6 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       );
     }
 
-    case "get_region":
-      return ok(findRegion(parsed, args));
-
     case "get_forecast": {
       const unitId = stringArg(args, "unitId");
       if (unitId === undefined && stringArg(args, "regionId") === undefined && numberArg(args, "x") === undefined) {
@@ -616,6 +685,73 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
         }))
         .filter((region) => region.units.length > 0);
       return ok({ regions, unclaimedSilver: validation.unclaimed_silver ?? null });
+    }
+
+    case "get_region": {
+      const regionId = stringArg(args, "regionId");
+      const x = numberArg(args, "x");
+      const y = numberArg(args, "y");
+      const z = numberArg(args, "z");
+      const hexes = turn.knownMap?.hexes ?? [];
+      const at = (coordinate: Coordinate) =>
+        coordinate.x === x && coordinate.y === y && (z === undefined || coordinate.z === z);
+      if (regionId === undefined && z === undefined) {
+        const levels = new Set([
+          ...parsed.regions.filter((candidate) => at(candidate.coordinate)).map((candidate) => candidate.coordinate.z),
+          ...hexes.filter((hex) => at(hex.coordinate)).map((hex) => hex.coordinate.z)
+        ]);
+        if (levels.size > 1) {
+          refuse(`(${x},${y}) is on several levels; say which with z: ${[...levels].sort((a, b) => a - b).join(", ")}.`);
+        }
+      }
+      const region = parsed.regions.find((candidate) =>
+        regionId !== undefined ? candidate.regionId === regionId : at(candidate.coordinate)
+      );
+      if (region) {
+        return ok(region);
+      }
+      const hex = hexes.find((candidate) => (regionId !== undefined ? hexIdOf(candidate) === regionId : at(candidate.coordinate)));
+      return ok(
+        hex
+          ? rememberedRegion(hex, turn.knownMap?.currentTurn ?? null)
+          : refuse(
+              "Neither this turn's report nor the HUD's map knows such a region. list_known_regions names every one the map knows."
+            )
+      );
+    }
+
+    case "list_known_regions": {
+      const map = turn.knownMap ?? refuse("The HUD has no map of this game yet; try again in a moment.");
+      const z = numberArg(args, "z");
+      const xMin = numberArg(args, "xMin") ?? -Infinity;
+      const xMax = numberArg(args, "xMax") ?? Infinity;
+      const yMin = numberArg(args, "yMin") ?? -Infinity;
+      const yMax = numberArg(args, "yMax") ?? Infinity;
+      const terrain = stringArg(args, "terrain")?.trim().toLowerCase();
+      const rows = map.hexes
+        .filter(
+          ({ coordinate, terrain: hexTerrain }) =>
+            (z === undefined || coordinate.z === z) &&
+            coordinate.x >= xMin &&
+            coordinate.x <= xMax &&
+            coordinate.y >= yMin &&
+            coordinate.y <= yMax &&
+            (terrain === undefined || hexTerrain.toLowerCase() === terrain)
+        )
+        .map((hex) => ({
+          regionId: hexIdOf(hex),
+          region: regionLabel(hex),
+          knowledge: hex.knowledge,
+          lastSeenTurn: hex.lastSeenTurn,
+          settlement: hex.settlement ? `${hex.settlement.name} (${hex.settlement.size})` : null,
+          structures: (hex.region?.structures ?? []).map((structure) => `${structure.name}: ${structure.kind}`),
+          unitsLastSeen: (hex.region?.units.filter((unit) => !unit.own).length ?? 0) + hex.rememberedUnits.length
+        }));
+      return ok({
+        currentTurn: map.currentTurn,
+        regions: rows.slice(0, MAX_KNOWN_REGIONS),
+        ...(rows.length > MAX_KNOWN_REGIONS ? { leftOut: rows.length - MAX_KNOWN_REGIONS } : {})
+      });
     }
 
     case "get_turn_events":
