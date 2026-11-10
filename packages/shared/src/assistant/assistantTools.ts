@@ -49,6 +49,7 @@ import {
   searchRulesText,
   type RulesReference
 } from "./rulesReference";
+import { editedOrders, ordersVersion, parseUnitWrites, type UnitWrite } from "./assistantWrites";
 import { silverShown } from "../unitTable";
 import { describeEstimate, describeLoadCheck, describeProblem } from "../workspace/PlannerPanel";
 
@@ -176,7 +177,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "list_units",
     description:
-      "The faction's own units this turn, one line each: id, name, region, men, items, skills (tag level (days)) and the orders currently written for it. Pass regionId to see one region only, includeForeign to include other factions' units.",
+      "The faction's own units this turn, one line each: id, name, region, men, items, skills (tag level (days)), the orders currently written for it and their version (hand it to write_orders). Pass regionId to see one region only, includeForeign to include other factions' units.",
     inputSchema: {
       type: "object",
       properties: {
@@ -188,7 +189,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_unit",
     description:
-      "One unit in full as the report shows it (flags, items, skills, movement, capacity, structure, description), with the orders currently written for it and every problem the HUD's validator finds in them. With turn, as that earlier turn's report showed it, with the orders the HUD kept for that turn and no problems (marked earlier: true).",
+      "One unit in full as the report shows it (flags, items, skills, movement, capacity, structure, description), with the orders currently written for it, their version (hand it to write_orders) and every problem the HUD's validator finds in them. With turn, as that earlier turn's report showed it, with the orders the HUD kept for that turn and no problems (marked earlier: true).",
     inputSchema: { type: "object", properties: { unitId: UNIT_ID, turn: TURN }, required: ["unitId"] }
   },
   {
@@ -249,7 +250,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "plan_route",
     description:
-      "The route the HUD's route planner - the one its Movement panel uses - finds for an own unit to a hex, over the map the HUD remembers: the order it becomes (MOVE ..., or SAIL ... for a fleet), exactly as the panel would write it; whether it walks, rides, flies or sails; movementPoints, the total cost; months, how many months it takes, with where each month ends; each step's terrain and cost, a road, an unexplored (estimated) hex; and the risk along it. When there is no route, problem and reason say why - not an error, a fact to plan around. Name the destination by regionId or x, y and z (z left out is the unit's own level). Pass carrying to plan for the unit as it will be loaded when it moves, after this month's GIVE and TAKE: item tag to how many it will hold, e.g. {\"HORS\": 4, \"LIVE\": 2}; each tag named replaces what the report shows, 0 drops it, the rest stay as reported. Writes nothing: give the order with set_unit_orders.",
+      "The route the HUD's route planner - the one its Movement panel uses - finds for an own unit to a hex, over the map the HUD remembers: the order it becomes (MOVE ..., or SAIL ... for a fleet), exactly as the panel would write it; whether it walks, rides, flies or sails; movementPoints, the total cost; months, how many months it takes, with where each month ends; each step's terrain and cost, a road, an unexplored (estimated) hex; and the risk along it. When there is no route, problem and reason say why - not an error, a fact to plan around. Name the destination by regionId or x, y and z (z left out is the unit's own level). Pass carrying to plan for the unit as it will be loaded when it moves, after this month's GIVE and TAKE: item tag to how many it will hold, e.g. {\"HORS\": 4, \"LIVE\": 2}; each tag named replaces what the report shows, 0 drops it, the rest stay as reported. Writes nothing: give the order with write_orders.",
     inputSchema: {
       type: "object",
       properties: {
@@ -311,7 +312,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "get_orders",
     description:
-      "The orders document as it stands in the player's editor, or with unitId just that unit's block (the lines below its 'unit' line). With turn, the orders the HUD kept for that earlier turn's report, as last saved - what the player wrote, which is usually what was sent - as JSON marked earlier: true, orders null when it kept none.",
+      "The orders document as it stands in the player's editor, with the version of every own unit's orders (hand it to write_orders); or with unitId just that unit's block (the lines below its 'unit' line) and its version. With turn, the orders the HUD kept for that earlier turn's report, as last saved - what the player wrote, which is usually what was sent - as JSON marked earlier: true, orders null when it kept none.",
     inputSchema: { type: "object", properties: { unitId: UNIT_ID, turn: TURN } }
   },
   {
@@ -321,9 +322,9 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     inputSchema: { type: "object", properties: {} }
   },
   {
-    name: "set_unit_orders",
+    name: "write_orders",
     description:
-      "Replace one own unit's orders with the given lines (everything below its 'unit' line; FORM ... END blocks for new units go here too). The player sees the change in their editor at once and it is saved. Answers with the problems the HUD's validator finds in that unit's orders afterwards - fix them before moving on.",
+      "Write the orders of one or more own units. Each unit names the version its orders were read with (from get_orders, get_unit, list_units or list_order_edits) and gives either orders - its complete block, everything below its 'unit' line, FORM ... END blocks for new units included - or single lines: remove (each the first line equal to it) and add (appended at the end of the block). When the player has changed a unit since that version, nothing at all is written and the refusal shows the orders as they now stand with their version: rethink against them before writing again. The player sees the change in their editor at once and it is saved. Answers each unit's new version and the problems the HUD's validator finds in its orders afterwards - fix them before moving on.",
     inputSchema: {
       type: "object",
       properties: {
@@ -331,19 +332,32 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
           type: "string",
           description: "The turnKey from get_turn_overview. A write for any other turn is refused."
         },
-        unitId: UNIT_ID,
-        orders: {
-          type: "string",
-          description: "The unit's complete orders, one order per line, without its 'unit' line."
+        units: {
+          type: "array",
+          description: "The units to write; all of them are written, or none.",
+          items: {
+            type: "object",
+            properties: {
+              unitId: UNIT_ID,
+              version: { type: "string", description: "The version the unit's orders were read with." },
+              orders: {
+                type: "string",
+                description: "The unit's complete orders, one order per line, without its 'unit' line. Leave out to edit single lines."
+              },
+              add: { type: "array", items: { type: "string" }, description: "Order lines to append at the end of the block." },
+              remove: { type: "array", items: { type: "string" }, description: "Order lines to take out, each as it reads now." }
+            },
+            required: ["unitId", "version"]
+          }
         }
       },
-      required: ["turnKey", "unitId", "orders"]
+      required: ["turnKey", "units"]
     }
   },
   {
     name: "list_order_edits",
     description:
-      "The own units whose orders changed since you last read them (get_orders, get_unit, list_units) or wrote them (set_unit_orders) - usually the player editing them - each with the orders as you last saw them (before) and as they stand now. Call it before advising on or writing orders you read earlier. Units you have not read this turn are not listed. This answer counts as reading the units it lists.",
+      "The own units whose orders changed since you last read them (get_orders, get_unit, list_units) or wrote them (write_orders) - usually the player editing them - each with the orders as you last saw them (before), as they stand now and their version now. Call it before advising on or writing orders you read earlier. Units you have not read this turn are not listed. This answer counts as reading the units it lists.",
     inputSchema: { type: "object", properties: {} }
   },
   {
@@ -1057,6 +1071,99 @@ function ownUnitOrders(host: AssistantHost, turn: AssistantTurn): Map<string, st
   );
 }
 
+/** A unit's orders with the version a write hands back. */
+function versioned(orders: string): { orders: string; version: string } {
+  return { orders, version: ordersVersion(orders) };
+}
+
+/** One unit of a write, checked: the block text it will hold, and how to put it in a document. */
+interface CheckedWrite {
+  readonly unitId: string;
+  readonly ids: ReadonlySet<string>;
+  readonly apply: (document: string) => string;
+}
+
+/**
+ * Writes every unit of a `write_orders` call, or none of them.
+ *
+ * Each unit is checked against the document as it stands now - which holds whatever the player has
+ * typed - before anything is written: one stale version, unknown line or foreign unit refuses the
+ * whole call, since a batch is usually one plan and half of it is worse than none. Then each unit
+ * is written through the host on its own, so the Assistant changes panel records each (ah-bcdri).
+ */
+async function writeOrders(host: AssistantHost, turn: AssistantTurn, args: Record<string, unknown>): Promise<AssistantAnswer> {
+  if (requiredString(args, "turnKey") !== turnKeyOf(turn)) {
+    refuse("The open turn has changed since this was worked out. Call get_turn_overview and read the turn again.");
+  }
+  let writes: UnitWrite[];
+  try {
+    writes = parseUnitWrites(args.units);
+  } catch (error: unknown) {
+    refuse(error instanceof Error ? error.message : String(error));
+  }
+  const document = turn.ordersDocument;
+  const changed: { unitId: string; name: string; orders: string; version: string }[] = [];
+  const checked: CheckedWrite[] = [];
+  for (const write of writes) {
+    const { unitId } = write;
+    const lines = write.orders !== undefined ? write.orders.split(/\r?\n/u) : [...(write.add ?? [])];
+    if (lines.some((line) => host.orders.isDocumentStructure(line))) {
+      refuse(`Unit ${unitId}: send only the unit's own orders: no 'unit' line, region banner, #atlantis or #end.`);
+    }
+    const found = findUnit(turn.parsed, unitId) ?? refuse(`This turn's report shows no unit ${unitId}.`);
+    if (!found.unit.own) {
+      refuse(`Unit ${unitId} is not the faction's own; only own units can be given orders.`);
+    }
+    const ids = unitIdsOf(found.region);
+    const current = host.orders.readUnitOrders(document, unitId, ids) ?? "";
+    if (ordersVersion(current) !== write.version) {
+      changed.push({ unitId, name: found.unit.name, ...versioned(current) });
+      continue;
+    }
+    let orders: string;
+    if (write.orders !== undefined) {
+      orders = write.orders;
+    } else {
+      const edited = editedOrders(current, write);
+      if (typeof edited !== "string") {
+        refuse(`Nothing was written: unit ${unitId}'s orders hold no line ${edited.missing.map((line) => JSON.stringify(line)).join(", ")} to remove.`);
+      }
+      orders = edited;
+    }
+    const banner = host.bannerFor(found.region.regionId);
+    const apply = (text: string) => host.orders.applyUnitOrders(text, unitId, orders, banner, ids);
+    const next = apply(document);
+    if (next === document && host.orders.readUnitOrders(next, unitId, ids) === null && orders !== "") {
+      refuse(`Unit ${unitId} has no block in the orders document and none could be made for it.`);
+    }
+    checked.push({ unitId, ids, apply });
+  }
+  if (changed.length > 0) {
+    noteShown(host, turn, changed.map((unit) => [unit.unitId, unit.orders] as const));
+    refuse(
+      "Nothing was written: the player changed these units' orders since you read them. Here they are as they now stand; rethink against them, and write again with these versions.\n" +
+        JSON.stringify({ changed })
+    );
+  }
+  let next = document;
+  for (const write of checked) {
+    host.writeOrders(write.apply, write.unitId);
+    next = write.apply(next);
+  }
+  const results = checked.map((write) => [write.unitId, host.orders.readUnitOrders(next, write.unitId, write.ids) ?? ""] as const);
+  noteShown(host, turn, results);
+  const validation = await host.validate(next);
+  return ok({
+    written: checked.map((write, index) => ({
+      unitId: write.unitId,
+      version: ordersVersion(results[index]?.[1] ?? ""),
+      problems: host.orders
+        .diagnosticsForUnit(next, write.unitId, validation.diagnostics, write.ids)
+        .map((diagnostic) => problemLine(diagnostic, "unit"))
+    }))
+  });
+}
+
 /** The stored turn `args.turn` names, or `null` when it names none or the open one. */
 async function earlierTurnOf(host: AssistantHost, turn: AssistantTurn, args: Record<string, unknown>): Promise<EarlierTurn | null> {
   if (args.turn === undefined) {
@@ -1179,7 +1286,7 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
               men: unit.men,
               items: itemsLine(unit),
               skills: skillsLine(unit),
-              ...(unit.own ? { orders: unitOrders(host, turn, unit.unitId, region) ?? "" } : {})
+              ...(unit.own ? versioned(unitOrders(host, turn, unit.unitId, region) ?? "") : {})
             }))
         );
       noteShown(host, turn, rows.flatMap((row) => (row.orders === undefined ? [] : [[row.unitId, row.orders] as const])));
@@ -1199,7 +1306,13 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
       if (found.unit.own) {
         noteShown(host, turn, [[unitId, orders ?? ""]]);
       }
-      return ok({ unit: found.unit, region: regionLabel(found.region), orders, problems });
+      return ok({
+        unit: found.unit,
+        region: regionLabel(found.region),
+        orders,
+        ...(found.unit.own ? { version: ordersVersion(orders ?? "") } : {}),
+        problems
+      });
     }
 
     case "list_regions": {
@@ -1424,45 +1537,22 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     case "get_orders": {
       const unitId = stringArg(args, "unitId");
       if (unitId === undefined) {
-        noteShown(host, turn, ownUnitOrders(host, turn));
-        return ok(turn.ordersDocument);
+        const own = ownUnitOrders(host, turn);
+        noteShown(host, turn, own);
+        const versions = Object.fromEntries([...own].map(([id, orders]) => [id, ordersVersion(orders)]));
+        return ok({ document: turn.ordersDocument, versions });
       }
       const found = findUnit(parsed, unitId) ?? refuse(`This turn's report shows no unit ${unitId}.`);
       const orders = unitOrders(host, turn, unitId, found.region) ?? "";
       if (found.unit.own) {
         noteShown(host, turn, [[unitId, orders]]);
+        return ok(versioned(orders));
       }
-      return ok(orders);
+      return ok({ orders });
     }
 
-    case "set_unit_orders": {
-      if (requiredString(args, "turnKey") !== turnKeyOf(turn)) {
-        refuse("The open turn has changed since this was worked out. Call get_turn_overview and read the turn again.");
-      }
-      const unitId = requiredString(args, "unitId");
-      const orders = typeof args.orders === "string" ? args.orders : refuse('"orders" must be text, one order per line.');
-      if (orders.split(/\r?\n/u).some((line) => host.orders.isDocumentStructure(line))) {
-        refuse("Send only the unit's own orders: no 'unit' line, region banner, #atlantis or #end.");
-      }
-      const found = findUnit(parsed, unitId) ?? refuse(`This turn's report shows no unit ${unitId}.`);
-      if (!found.unit.own) {
-        refuse(`Unit ${unitId} is not the faction's own; only own units can be given orders.`);
-      }
-      const ids = unitIdsOf(found.region);
-      const banner = host.bannerFor(found.region.regionId);
-      const apply = (document: string) => host.orders.applyUnitOrders(document, unitId, orders, banner, ids);
-      const next = apply(turn.ordersDocument);
-      if (next === turn.ordersDocument && host.orders.readUnitOrders(next, unitId, ids) === null) {
-        refuse(`Unit ${unitId} has no block in the orders document and none could be made for it.`);
-      }
-      host.writeOrders(apply, unitId);
-      noteShown(host, turn, [[unitId, host.orders.readUnitOrders(next, unitId, ids) ?? ""]]);
-      const validation = await host.validate(next);
-      const problems = host.orders
-        .diagnosticsForUnit(next, unitId, validation.diagnostics, ids)
-        .map((diagnostic) => problemLine(diagnostic, "unit"));
-      return ok({ written: true, problems });
-    }
+    case "write_orders":
+      return writeOrders(host, turn, args);
 
     case "list_order_edits": {
       const edits = editsSinceSeen(host.seen, turnKeyOf(turn), ownUnitOrders(host, turn));
@@ -1475,7 +1565,8 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
             name: found?.unit.name ?? "",
             regionId: found?.region.regionId ?? "",
             before: edit.before,
-            now: edit.now
+            now: edit.now,
+            version: ordersVersion(edit.now)
           };
         })
       });
