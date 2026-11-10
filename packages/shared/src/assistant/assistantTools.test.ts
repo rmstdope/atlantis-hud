@@ -2345,6 +2345,12 @@ describe("reading the open world's rules and data", () => {
     });
   });
 
+  it("tells the model a producer says how many one production makes", () => {
+    const readDataEntry = ASSISTANT_TOOLS.find((tool) => tool.name === "read_data_entry");
+
+    expect(readDataEntry?.description).toContain("(yield");
+  });
+
   it("says nothing of producers for an item no skill on the page produces", async () => {
     const answer = json((await call(trident(), "read_data_entry", { query: "MSWO" })).text);
 
