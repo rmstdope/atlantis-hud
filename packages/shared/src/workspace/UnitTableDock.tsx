@@ -227,8 +227,12 @@ const NO_UNITS: ReportUnit[] = [];
 export type UnitTableDockHandle = {
   /** Shows one faction's units: selects `Other factions` and pins it. */
   showForeignFaction(pin: FactionPin): void;
-  /** Shows one Army's units: makes it the source, as its rail entry does (ah-mlls.4). */
-  showArmy(armyId: string): void;
+  /**
+   * Shows one Army's units: makes it the source, as its rail entry does (ah-mlls.4). With
+   * `takeFocus: false` the cursor stays where it is - the Assistant changes panel's Army names
+   * (ah-mjiv1) - rather than moving to the first row.
+   */
+  showArmy(armyId: string, options?: { takeFocus?: boolean }): void;
 };
 
 type UnitTableDockProps = {
@@ -645,8 +649,11 @@ export const UnitTableDock = forwardRef<UnitTableDockHandle, UnitTableDockProps>
    * Army's rail entry makes. With no rows to land on, the keyboard goes to that rail entry rather
    * than staying behind on something the pane no longer shows.
    */
-  const showArmy = useCallback((armyId: string) => {
+  const showArmy = useCallback((armyId: string, options?: { takeFocus?: boolean }) => {
     setSource({ kind: "army", armyId });
+    if (options?.takeFocus === false) {
+      return;
+    }
     focusFirstWanted.current = () =>
       body.current
         ?.querySelector<HTMLElement>(`[data-testid="unit-source-army-${CSS.escape(armyId)}"]`)

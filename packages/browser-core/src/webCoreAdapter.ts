@@ -851,7 +851,9 @@ export function createWebCoreAdapter(
               name: army.name,
               members: army.members,
               createdAt: army.createdAt,
-              updatedAt: army.updatedAt
+              updatedAt: army.updatedAt,
+              // Absent from a backup written before the mark existed: those were all made by hand.
+              ...(army.madeByAssistant === true ? { madeByAssistant: true } : {})
             })
           )
         );

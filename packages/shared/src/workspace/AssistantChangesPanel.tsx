@@ -6,6 +6,7 @@ import {
   type AlignedOrderLine,
   type AssistantChangeView
 } from "../assistant/assistantChanges";
+import type { AssistantArmyChangeView } from "../assistant/assistantArmyChanges";
 import {
   RESIZE_CURSOR,
   RESIZE_EDGES,
@@ -30,6 +31,15 @@ const EDITED_EXPLANATION =
   "You changed these orders after the assistant wrote them. Revert is off so it cannot overwrite your edit.";
 const EDITED_REVERT_TITLE = "You have changed this unit since the assistant wrote it, so a revert would lose your edit.";
 
+/** An Army's edit sentences (ah-mjiv1): "made it" for one the assistant made, "changed it" otherwise. */
+function armyEditedExplanation(isNew: boolean): string {
+  return `You changed this army after the assistant ${isNew ? "made" : "changed"} it. Revert is off so it cannot overwrite your edit.`;
+}
+
+function armyEditedRevertTitle(isNew: boolean): string {
+  return `You have changed this army since the assistant ${isNew ? "made" : "changed"} it, so a revert would lose your edit.`;
+}
+
 const BUTTON =
   "rounded border border-edge bg-panel px-2 py-0.5 hover:enabled:border-brass hover:enabled:text-brass disabled:cursor-not-allowed disabled:border-edge/50 disabled:text-ink-dim focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass";
 
@@ -50,7 +60,20 @@ function useNarrowWindow(): boolean {
   );
 }
 
-function Cell({ text, kind, none, right }: { text: string | null; kind: "gone" | "added" | null; none: boolean; right: boolean }) {
+function Cell({
+  text,
+  kind,
+  none,
+  right,
+  noneText = "no orders"
+}: {
+  text: string | null;
+  kind: "gone" | "added" | null;
+  none: boolean;
+  right: boolean;
+  /** What an empty side reads: a unit's "no orders", an Army's "no army" or "no units". */
+  noneText?: string;
+}) {
   const tone = none
     ? "italic text-ink-dim"
     : kind === "gone" && text !== null
@@ -60,25 +83,41 @@ function Cell({ text, kind, none, right }: { text: string | null; kind: "gone" |
         : "";
   return (
     <div className={`min-h-[1.6em] whitespace-pre-wrap px-2 [overflow-wrap:anywhere] ${right ? "border-l border-edge" : ""} ${tone}`}>
-      {none ? "no orders" : text}
+      {none ? noneText : text}
     </div>
   );
 }
 
-function Comparison({ view }: { view: AssistantChangeView }) {
+function Comparison({
+  testId,
+  rows,
+  beforeEmpty,
+  afterEmpty,
+  beforeNone,
+  afterNone
+}: {
+  testId: string;
+  rows: readonly AlignedOrderLine[];
+  beforeEmpty: boolean;
+  afterEmpty: boolean;
+  beforeNone?: string;
+  afterNone?: string;
+}) {
   const caption = "border-b border-edge px-2 py-0.5 text-pane-sm font-semibold uppercase tracking-[0.04em] text-ink-dim";
+  // An empty side still needs a row to say so on.
+  const shown = rows.length === 0 ? [{ before: null, after: null, changed: false }] : rows;
   return (
     <div
-      data-testid={`assistant-change-comparison-${view.unitId}`}
+      data-testid={testId}
       className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] rounded-sm border border-edge bg-ground font-mono text-pane-sm leading-[1.6]"
     >
       <div className={caption}>Before</div>
       <div className={`${caption} border-l`}>After</div>
-      {view.rows.map((row: AlignedOrderLine, index) => (
+      {shown.map((row: AlignedOrderLine, index) => (
         // Rows have no identity of their own, and a change replaces all of them together.
         <div key={index} className="contents">
-          <Cell text={row.before} kind={row.changed ? "gone" : null} none={index === 0 && view.beforeEmpty} right={false} />
-          <Cell text={row.after} kind={row.changed ? "added" : null} none={index === 0 && view.afterEmpty} right />
+          <Cell text={row.before} kind={row.changed ? "gone" : null} none={index === 0 && beforeEmpty} right={false} noneText={beforeNone} />
+          <Cell text={row.after} kind={row.changed ? "added" : null} none={index === 0 && afterEmpty} right noneText={afterNone} />
         </div>
       ))}
     </div>
@@ -128,7 +167,12 @@ function Entry({
           Revert
         </button>
       </div>
-      <Comparison view={view} />
+      <Comparison
+        testId={`assistant-change-comparison-${view.unitId}`}
+        rows={view.rows}
+        beforeEmpty={view.beforeEmpty}
+        afterEmpty={view.afterEmpty}
+      />
       {view.edited ? (
         <p className="m-0 mt-1 text-pane-sm text-ink-soft">{EDITED_EXPLANATION}</p>
       ) : (
@@ -138,6 +182,66 @@ function Entry({
           </p>
         ))
       )}
+    </article>
+  );
+}
+
+/**
+ * One Army the assistant made or changed (ah-mjiv1): its name, which shows its units in the table, a
+ * summary, Keep and Revert, and its members Before and After.
+ */
+function ArmyEntry({
+  view,
+  onKeep,
+  onRevert,
+  onSelect
+}: {
+  view: AssistantArmyChangeView;
+  onKeep: (armyId: string) => void;
+  onRevert: (armyId: string) => void;
+  onSelect: (armyId: string) => void;
+}) {
+  return (
+    <article
+      data-testid={`assistant-army-change-${view.armyId}`}
+      data-unit={`army:${view.armyId}`}
+      className="border-b border-edge p-2 last:border-b-0"
+    >
+      <div data-entry-heading="" className="mb-1 flex flex-wrap items-baseline gap-2">
+        <button
+          type="button"
+          data-testid={`assistant-army-change-select-${view.armyId}`}
+          onClick={() => onSelect(view.armyId)}
+          className="font-semibold text-brass hover:text-brass-bright hover:underline focus-visible:outline focus-visible:outline-1 focus-visible:outline-brass"
+        >
+          {view.name}
+        </button>
+        <span className="text-ink-dim">{view.summary}</span>
+        <span className="flex-1" />
+        {view.edited ? <span className="whitespace-nowrap text-pane-sm text-ink-soft">✎ edited since</span> : null}
+        <button type="button" data-testid={`assistant-army-change-keep-${view.armyId}`} onClick={() => onKeep(view.armyId)} className={BUTTON}>
+          Keep
+        </button>
+        <button
+          type="button"
+          data-testid={`assistant-army-change-revert-${view.armyId}`}
+          disabled={view.edited}
+          title={view.edited ? armyEditedRevertTitle(view.isNew) : undefined}
+          onClick={() => onRevert(view.armyId)}
+          className={BUTTON}
+        >
+          Revert
+        </button>
+      </div>
+      <Comparison
+        testId={`assistant-army-change-comparison-${view.armyId}`}
+        rows={view.rows}
+        beforeEmpty={view.beforeEmpty}
+        afterEmpty={view.afterEmpty}
+        beforeNone="no army"
+        afterNone="no units"
+      />
+      {view.edited ? <p className="m-0 mt-1 text-pane-sm text-ink-soft">{armyEditedExplanation(view.isNew)}</p> : null}
     </article>
   );
 }
@@ -193,6 +297,10 @@ export function ResizeEdges({
 
 type ContentProps = {
   views: readonly AssistantChangeView[];
+  armyViews: readonly AssistantArmyChangeView[];
+  onKeepArmy: (armyId: string) => void;
+  onRevertArmy: (armyId: string) => void;
+  onSelectArmy: (armyId: string) => void;
   asking: boolean;
   barProps: Partial<DialogBarProps>;
   onKeepAll: () => void;
@@ -212,6 +320,10 @@ type ContentProps = {
 /** What the panel draws, kept apart from the measuring and focus hooks so it can be rendered without a DOM. */
 export function AssistantChangesContent({
   views,
+  armyViews,
+  onKeepArmy,
+  onRevertArmy,
+  onSelectArmy,
   asking,
   barProps,
   onKeepAll,
@@ -227,8 +339,11 @@ export function AssistantChangesContent({
   listRef,
   onListScroll
 }: ContentProps) {
-  const canGoBack = views.filter((view) => !view.edited).length;
-  const prompt = revertAllPrompt(canGoBack);
+  const units = views.filter((view) => !view.edited).length;
+  const armies = armyViews.filter((view) => !view.edited);
+  const newArmies = armies.filter((view) => view.isNew).length;
+  const canGoBack = units + armies.length;
+  const prompt = revertAllPrompt(units, newArmies, armies.length - newArmies);
   const showStrip = asking && canGoBack > 0;
   return (
     <>
@@ -239,7 +354,7 @@ export function AssistantChangesContent({
       >
         <strong className="font-semibold">Assistant changes</strong>
         <span data-testid="assistant-changes-count" className="tabular-nums text-ink-soft">
-          {countLabel(views.length)}
+          {countLabel(views.length, armyViews.length)}
         </span>
         <span className="flex-1" />
         <button type="button" data-testid="assistant-changes-keep-all" onClick={onKeepAll} className={BUTTON}>
@@ -296,6 +411,9 @@ export function AssistantChangesContent({
         {views.map((view) => (
           <Entry key={view.unitId} view={view} onKeep={onKeep} onRevert={onRevert} onSelectUnit={onSelectUnit} />
         ))}
+        {armyViews.map((view) => (
+          <ArmyEntry key={view.armyId} view={view} onKeep={onKeepArmy} onRevert={onRevertArmy} onSelect={onSelectArmy} />
+        ))}
       </div>
     </>
   );
@@ -351,24 +469,33 @@ function useHeldScroll(unitKey: string) {
  * dragged to outlives closing it. It registers no dismiss layer: it is no modal, and Esc means
  * something only while the cursor is already inside it.
  */
+/** What a Revert sends back: the units and the Armies (ah-mjiv1) going back. */
+export type RevertTargets = { units: readonly string[]; armies: readonly string[] };
+
 export function AssistantChangesPanel({
   views,
+  armyViews,
   open,
   panelRef,
   onClose,
   onKeepAll,
   onKeep,
+  onKeepArmy,
   onRevert,
-  onSelectUnit
+  onSelectUnit,
+  onSelectArmy
 }: {
   views: readonly AssistantChangeView[];
+  armyViews: readonly AssistantArmyChangeView[];
   open: boolean;
   panelRef: Ref<HTMLElement>;
   onClose: () => void;
   onKeepAll: () => void;
   onKeep: (unitId: string) => void;
-  onRevert: (unitIds: readonly string[]) => void;
+  onKeepArmy: (armyId: string) => void;
+  onRevert: (targets: RevertTargets) => void;
   onSelectUnit: (unitId: string, regionId: string) => void;
+  onSelectArmy: (armyId: string) => void;
 }) {
   const [asking, setAsking] = useState(false);
   const narrow = useNarrowWindow();
@@ -386,9 +513,15 @@ export function AssistantChangesPanel({
   });
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const revertAllRef = useRef<HTMLButtonElement | null>(null);
-  const { listRef, onListScroll } = useHeldScroll(views.map((view) => view.unitId).join(" "));
-  const canGoBack = views.filter((view) => !view.edited).map((view) => view.unitId);
-  const stillAsking = asking && canGoBack.length > 0;
+  const { listRef, onListScroll } = useHeldScroll(
+    [...views.map((view) => view.unitId), ...armyViews.map((view) => `army:${view.armyId}`)].join(" ")
+  );
+  const canGoBack: RevertTargets = {
+    units: views.filter((view) => !view.edited).map((view) => view.unitId),
+    armies: armyViews.filter((view) => !view.edited).map((view) => view.armyId)
+  };
+  const goingBack = canGoBack.units.length + canGoBack.armies.length;
+  const stillAsking = asking && goingBack > 0;
 
   useEffect(() => {
     if (stillAsking) {
@@ -469,7 +602,7 @@ export function AssistantChangesPanel({
         barProps={narrow ? {} : { ...drag.barProps, style: { ...drag.barProps.style, cursor: "move" } }}
         onKeepAll={onKeepAll}
         onRevertAll={() => {
-          if (canGoBack.length < 2) {
+          if (goingBack < 2) {
             keepFocusInPanel();
             onRevert(canGoBack);
           } else {
@@ -491,8 +624,18 @@ export function AssistantChangesPanel({
         }}
         onRevert={(unitId) => {
           keepFocusInPanel();
-          onRevert([unitId]);
+          onRevert({ units: [unitId], armies: [] });
         }}
+        armyViews={armyViews}
+        onRevertArmy={(armyId) => {
+          keepFocusInPanel();
+          onRevert({ units: [], armies: [armyId] });
+        }}
+        onKeepArmy={(armyId) => {
+          keepFocusInPanel();
+          onKeepArmy(armyId);
+        }}
+        onSelectArmy={onSelectArmy}
         onKeep={(unitId) => {
           keepFocusInPanel();
           onKeep(unitId);

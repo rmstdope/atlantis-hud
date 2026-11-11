@@ -317,8 +317,15 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
   };
   const planned: { unitId: string; destination: string; carryingJson: string }[] = [];
   let current = turn;
+  const armyWrites: { next: ArmyRecord; previous: ArmyRecord | null }[] = [];
   const host: AssistantHost & { typeByHand(document: string): void } = {
     armies: () => armyWorld.armies,
+    writeArmy: async (next, previous) => {
+      armyWrites.push({ next, previous });
+      if (Array.isArray(armyWorld.armies)) {
+        armyWorld.armies = [...armyWorld.armies.filter((army) => army.id !== next.id), next];
+      }
+    },
     studyPlanner: () => armyWorld.studyPlanner,
     battleSkills: () => ({ skills: armyWorld.skills, scanning: armyWorld.scanning, unreadTurns: armyWorld.unreadTurns }),
     writeFile: async (path, text) => {
@@ -354,7 +361,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     }
   };
-  return { host, written, files, planned };
+  return { host, written, files, planned, armyWrites };
 }
 
 async function call(host: AssistantHost, name: string, args: Record<string, unknown> = {}) {
@@ -1586,6 +1593,7 @@ describe("list_armies", () => {
       {
         armyId: "army-1",
         name: "Northern Host",
+        madeByAssistant: false,
         members: [
           {
             unitId: "100",
@@ -1605,6 +1613,7 @@ describe("list_armies", () => {
       {
         armyId: "army-2",
         name: "Coastal Watch",
+        madeByAssistant: false,
         members: [
           {
             unitId: "900",
@@ -1642,6 +1651,88 @@ describe("list_armies", () => {
       text: "The HUD could not read this game's Armies. Ask the player to open the game again.",
       isError: true
     });
+  });
+});
+
+describe("create_army", () => {
+  it("makes an Army of own and foreign units, saved through the host and marked as the assistant's", async () => {
+    const { host, armyWrites } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY] });
+
+    const answer = await call(host, "create_army", { name: "Coast assault", units: ["100", 900] });
+
+    expect(answer.isError, answer.text).toBe(false);
+    expect(armyWrites).toHaveLength(1);
+    expect(armyWrites[0]?.previous).toBeNull();
+    expect(armyWrites[0]?.next).toMatchObject({ gameId: "game-1", name: "Coast assault", madeByAssistant: true });
+    expect(armyWrites[0]?.next.members.map((member) => member.unitId)).toEqual(["100", "900"]);
+    expect(armyWrites[0]?.next.members[0]?.seenTurn).toBe(12);
+    const answered = json(answer.text);
+    expect(answered).toMatchObject({ armyId: armyWrites[0]?.next.id, name: "Coast assault", madeByAssistant: true });
+    expect(answered.members.map((member: { unitId: string }) => member.unitId)).toEqual(["100", "900"]);
+  });
+
+  it("refuses a taken name and an unknown unit, writing nothing", async () => {
+    const { host, armyWrites } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY] });
+
+    const taken = await call(host, "create_army", { name: "northern host", units: ["100"] });
+    const unknown = await call(host, "create_army", { name: "Raid", units: ["100", "555"] });
+
+    expect(taken).toMatchObject({ isError: true });
+    expect(taken.text).toContain('"Northern Host" is already an Army\'s name');
+    expect(unknown).toMatchObject({ isError: true });
+    expect(unknown.text).toContain("no unit 555");
+    expect(armyWrites).toEqual([]);
+  });
+
+  it("refuses units that are not a list of unit numbers", async () => {
+    const { host } = aHost(aTurn());
+
+    const answer = await call(host, "create_army", { name: "Raid", units: "100" });
+
+    expect(answer.isError).toBe(true);
+    expect(answer.text).toContain('"units" must be a list of unit numbers');
+  });
+});
+
+describe("change_army", () => {
+  const MINE = { ...anArmy("army-9", "Coast assault", [aMember({ unitId: "100" })]), madeByAssistant: true };
+
+  it("adds and removes members of an Army the assistant made, named by name or id", async () => {
+    const { host, armyWrites } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY, MINE] });
+
+    const answer = await call(host, "change_army", { army: "coast ASSAULT", add: ["101"], remove: ["100"] });
+
+    expect(answer.isError, answer.text).toBe(false);
+    expect(armyWrites[0]?.previous).toEqual(MINE);
+    expect(armyWrites[0]?.next.members.map((member) => member.unitId)).toEqual(["101"]);
+    expect(json(answer.text)).toMatchObject({ armyId: "army-9", madeByAssistant: true, members: [{ unitId: "101" }] });
+  });
+
+  it("refuses an Army the player built, and one it cannot find, writing nothing", async () => {
+    const { host, armyWrites } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY, MINE] });
+
+    const players = await call(host, "change_army", { army: "army-1", add: ["101"] });
+    const nobody = await call(host, "change_army", { army: "Nobody", add: ["101"] });
+    const unnamed = await call(host, "change_army", { add: ["101"] });
+
+    expect(players.isError).toBe(true);
+    expect(players.text).toContain("the player built");
+    expect(nobody.isError).toBe(true);
+    expect(nobody.text).toContain('No Army is called "Nobody"');
+    expect(unnamed.isError).toBe(true);
+    expect(unnamed.text).toContain("Name the Army");
+    expect(armyWrites).toEqual([]);
+  });
+});
+
+describe("list_armies and the assistant's own Armies", () => {
+  it("says which Armies the assistant made and may change", async () => {
+    const mine = { ...anArmy("army-9", "Coast assault", []), madeByAssistant: true };
+    const { host } = aHost(aTurn(), [], {}, { armies: [HOST_ARMY, mine] });
+
+    const listed = json((await call(host, "list_armies")).text);
+
+    expect(listed.map((army: { madeByAssistant: boolean }) => army.madeByAssistant)).toEqual([false, true]);
   });
 });
 

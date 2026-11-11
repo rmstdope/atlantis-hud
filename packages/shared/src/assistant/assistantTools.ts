@@ -32,7 +32,8 @@ import type {
 } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
 import type { ArmiesState } from "../armiesStore";
-import { memberIsStale } from "../armies";
+import { memberIsStale, unitsByIdIn } from "../armies";
+import { changeAssistantArmy, createAssistantArmy } from "./assistantArmies";
 import { battleFileOf, battleFileText, exportReadiness } from "../armyExport";
 import type { DerivedSkills } from "../battleSkills";
 import type { OrderProcessing } from "../orderProcessing";
@@ -105,6 +106,11 @@ export interface AssistantHost {
   readonly seen: AssistantSeen;
   /** The open game's Armies; `loading` until they are read, `failed` when they could not be. */
   armies(): readonly ArmyRecord[] | "loading" | "failed";
+  /**
+   * Saves an Army the assistant made or changed (ah-mjiv1) - `previous` is the Army as it stood,
+   * `null` for a new one - and lists the change for the player. Rejects when it could not be saved.
+   */
+  writeArmy(next: ArmyRecord, previous: ArmyRecord | null): Promise<void>;
   /**
    * What the study planner is drawn from as it stands now - `loading` until the game data and the
    * game's stored plans are in, `failed` when the plans could not be read.
@@ -416,7 +422,7 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
   {
     name: "list_armies",
     description:
-      "The Armies the player has saved in the HUD, each with its members as last seen: unit, faction, men, items, skills, whether it fights from behind, its combat spell, and whether it was missing from this turn's report. An Army is what export_battle_file writes out for a battle simulator.",
+      "The Armies saved in the HUD, each with its members as last seen: unit, faction, men, items, skills, whether it fights from behind, its combat spell, and whether it was missing from this turn's report; madeByAssistant marks the ones you made with create_army, the only ones change_army can change. An Army is what export_battle_file writes out for a battle simulator.",
     inputSchema: { type: "object", properties: {} }
   },
   {
@@ -434,6 +440,33 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
         }
       },
       required: ["path"]
+    }
+  },
+  {
+    name: "create_army",
+    description:
+      "Make a new Army from units this turn's report shows - the faction's own, and other factions' units for a defending or enemy side - ready for export_battle_file. The name must not be one another Army in the game already has. The player sees the new Army in their Armies at once, marked as yours, and can keep or revert it. Answers the Army as list_armies shows it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The new Army's name; not one another Army already has." },
+        units: { type: "array", items: { type: "string" }, description: "The unit numbers to put in it, e.g. [\"7076\", \"2101\"]." }
+      },
+      required: ["name", "units"]
+    }
+  },
+  {
+    name: "change_army",
+    description:
+      "Add units to or remove units from an Army you made (list_armies marks those madeByAssistant); an Army the player built cannot be changed - make your own with create_army. Units added must be in this turn's report; units removed must be in the Army. Nothing changes if any of it is refused. The player sees the change at once. Answers the Army as list_armies shows it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        army: { type: "string", description: "The Army's id or name." },
+        add: { type: "array", items: { type: "string" }, description: "Unit numbers to add." },
+        remove: { type: "array", items: { type: "string" }, description: "Unit numbers to take out." }
+      },
+      required: ["army"]
     }
   },
   {
@@ -832,6 +865,55 @@ function armyMemberRow(member: ArmyMemberRecord, currentTurn: number | null) {
     behind: member.flags.includes("behind"),
     combatSpell: member.combatSpell?.tag ?? null
   };
+}
+
+/** An Army as `list_armies` and the Army writes answer it. */
+function armyRow(army: ArmyRecord, currentTurn: number | null) {
+  return {
+    armyId: army.id,
+    name: army.name,
+    madeByAssistant: army.madeByAssistant === true,
+    members: army.members.map((member) => armyMemberRow(member, currentTurn))
+  };
+}
+
+/** A list of unit numbers an Army write names; empty when it is left out. */
+function unitIdList(args: Record<string, unknown>, name: string): string[] {
+  const value = args[name];
+  if (value === undefined || value === null) {
+    return [];
+  }
+  const ids = Array.isArray(value) ? value.map((entry: unknown) => textOfId(entry)) : null;
+  if (ids === null || ids.some((id) => id === undefined)) {
+    refuse(`"${name}" must be a list of unit numbers, e.g. ["7076", "2101"].`);
+  }
+  return ids as string[];
+}
+
+function textOfId(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim() !== "") {
+    return value.trim();
+  }
+  return typeof value === "number" && Number.isInteger(value) ? String(value) : undefined;
+}
+
+/** Runs one Army rule, turning the sentence it throws into a refusal. */
+function ruled<T>(rule: () => T): T {
+  try {
+    return rule();
+  } catch (error: unknown) {
+    refuse(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** Saves an Army write through the host, answering it as `list_armies` would. */
+async function savedArmyAnswer(host: AssistantHost, next: ArmyRecord, previous: ArmyRecord | null, turn: number) {
+  try {
+    await host.writeArmy(next, previous);
+  } catch (error: unknown) {
+    refuse(`The Army was not saved: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return ok(armyRow(next, turn));
 }
 
 function savedArmies(host: AssistantHost): readonly ArmyRecord[] {
@@ -1669,13 +1751,30 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
 
     case "list_armies": {
       const currentTurn = parsed.header.turnNumber;
-      return ok(
-        savedArmies(host).map((army) => ({
-          armyId: army.id,
-          name: army.name,
-          members: army.members.map((member) => armyMemberRow(member, currentTurn))
-        }))
+      return ok(savedArmies(host).map((army) => armyRow(army, currentTurn)));
+    }
+
+    case "create_army": {
+      const armies = savedArmies(host);
+      const name = stringArg(args, "name") ?? "";
+      const unitIds = unitIdList(args, "units");
+      const currentTurn = parsed.header.turnNumber ?? refuse("This turn's report has no turn number, so no Army can be made from it.");
+      const now = new Date().toISOString();
+      const next = ruled(() =>
+        createAssistantArmy({ armies, gameId: turn.gameId, name, unitIds, units: unitsByIdIn(parsed), turn: currentTurn, now })
       );
+      return savedArmyAnswer(host, next, null, currentTurn);
+    }
+
+    case "change_army": {
+      const armies = savedArmies(host);
+      const army = namedArmy(armies, args, "army") ?? refuse("Name the Army to change, by id or by name (from list_armies).");
+      const add = unitIdList(args, "add");
+      const remove = unitIdList(args, "remove");
+      const currentTurn = parsed.header.turnNumber ?? refuse("This turn's report has no turn number, so no Army can be changed from it.");
+      const now = new Date().toISOString();
+      const next = ruled(() => changeAssistantArmy({ army, add, remove, units: unitsByIdIn(parsed), turn: currentTurn, now }));
+      return savedArmyAnswer(host, next, army, currentTurn);
     }
 
     case "export_battle_file": {

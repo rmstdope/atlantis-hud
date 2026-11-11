@@ -7,4 +7,10 @@ import type { ArmyMemberRecord } from "./ArmyMemberRecord";
  * The stored row, which carries its game; `GameBackupArmy` above is the same Army inside a backup
  * document, where the game is the document's and so is not repeated per row.
  */
-export type ArmyRecord = { id: string, gameId: string, name: string, members: Array<ArmyMemberRecord>, createdAt: string, updatedAt: string, };
+export type ArmyRecord = { id: string, gameId: string, name: string, members: Array<ArmyMemberRecord>, createdAt: string, updatedAt: string, 
+/**
+ * Made through the assistant connection (ah-mjiv1): the assistant may change it for good, and
+ * the rail marks it. `false` for every Army the player made and every one stored before this
+ * field existed.
+ */
+madeByAssistant?: boolean, };

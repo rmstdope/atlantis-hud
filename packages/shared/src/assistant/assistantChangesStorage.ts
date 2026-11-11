@@ -8,12 +8,19 @@
  */
 
 import { optionalStorage, type ViewportStorage } from "../workspace/mapViewportStorage";
-import { NO_ASSISTANT_CHANGES, type AssistantChange, type AssistantChangesState } from "./assistantChanges";
+import {
+  NO_ASSISTANT_CHANGES,
+  listedCount,
+  type AssistantArmyChange,
+  type AssistantChange,
+  type AssistantChangesState
+} from "./assistantChanges";
 
 /** Whose list: a game, a faction in it, and the turn open. */
 export type AssistantChangesScope = { gameId: string; factionId: string; turn: number };
 
-type StoredList = AssistantChangesState & { turn: number };
+/** As kept: a list kept before Armies were listed (ah-mjiv1) has no `armies`, and reads as none. */
+type StoredList = Omit<AssistantChangesState, "armies"> & { armies?: AssistantArmyChange[]; turn: number };
 type StoredLists = Record<string, StoredList>;
 
 function storageKey(gameId: string): string {
@@ -31,6 +38,22 @@ function isChange(value: unknown): value is AssistantChange {
   );
 }
 
+function isSide(value: unknown): boolean {
+  const side = value as { name?: unknown; members?: unknown } | null;
+  return typeof side === "object" && side !== null && typeof side.name === "string" && Array.isArray(side.members);
+}
+
+function isArmyChange(value: unknown): value is AssistantArmyChange {
+  const change = value as Partial<AssistantArmyChange> | null;
+  return (
+    typeof change === "object" &&
+    change !== null &&
+    typeof change.armyId === "string" &&
+    (change.before === null || isSide(change.before)) &&
+    isSide(change.after)
+  );
+}
+
 function isList(value: unknown): value is StoredList {
   const list = value as Partial<StoredList> | null;
   return (
@@ -39,7 +62,8 @@ function isList(value: unknown): value is StoredList {
     typeof list.turn === "number" &&
     typeof list.open === "boolean" &&
     Array.isArray(list.changes) &&
-    list.changes.every(isChange)
+    list.changes.every(isChange) &&
+    (list.armies === undefined || (Array.isArray(list.armies) && list.armies.every(isArmyChange)))
   );
 }
 
@@ -84,7 +108,7 @@ export function loadAssistantChanges(
       writeLists(scope.gameId, lists, storage);
       return NO_ASSISTANT_CHANGES;
     }
-    return { open: list.open, changes: list.changes };
+    return { open: list.open, changes: list.changes, armies: list.armies ?? [] };
   } catch {
     return NO_ASSISTANT_CHANGES;
   }
@@ -101,10 +125,10 @@ export function saveAssistantChanges(
   }
   try {
     const lists = readListsToReplace(scope.gameId, storage);
-    if (state.changes.length === 0) {
+    if (listedCount(state) === 0) {
       delete lists[scope.factionId];
     } else {
-      lists[scope.factionId] = { turn: scope.turn, open: state.open, changes: state.changes };
+      lists[scope.factionId] = { turn: scope.turn, open: state.open, changes: state.changes, armies: state.armies };
     }
     writeLists(scope.gameId, lists, storage);
   } catch {

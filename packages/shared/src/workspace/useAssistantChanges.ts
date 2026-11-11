@@ -1,4 +1,4 @@
-import type { OrderDiagnostic, OpenedGame, ParsedReport } from "@atlantis/core-client";
+import type { ArmyRecord, OrderDiagnostic, OpenedGame, ParsedReport } from "@atlantis/core-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NO_ASSISTANT_CHANGES,
@@ -9,6 +9,7 @@ import {
   keepAssistantChange,
   recordAssistantWrite,
   settleAssistantChanges,
+  type AssistantArmyChange,
   type AssistantChangesState
 } from "../assistant/assistantChanges";
 import {
@@ -17,6 +18,14 @@ import {
   type AssistantChangesScope
 } from "../assistant/assistantChangesStorage";
 import type { OrderProcessing } from "../orderProcessing";
+import { sideOf } from "../assistant/assistantArmies";
+import {
+  assistantArmyViews,
+  keepAssistantArmyChange,
+  recordAssistantArmyWrite,
+  settleAssistantArmyChanges,
+  withArmyEntry
+} from "../assistant/assistantArmyChanges";
 import { draftKeyFor } from "../orderDraft";
 
 type Held = { key: string | null; scope: AssistantChangesScope | null; state: AssistantChangesState };
@@ -44,8 +53,13 @@ export function useAssistantChanges(input: {
   document: string;
   validated: { text: string; diagnostics: OrderDiagnostic[] };
   orders: OrderProcessing;
+  /**
+   * The open game's Armies (ah-mjiv1), or `null` while they are not loaded for it: an Army entry is
+   * neither drawn nor settled against a list that is not yet the game's.
+   */
+  armies: readonly ArmyRecord[] | null;
 }) {
-  const { enabled, game, parsed, document, validated, orders } = input;
+  const { enabled, game, parsed, document, validated, orders, armies } = input;
   const scope = scopeOf(enabled, game, parsed);
   const key = keyOf(scope);
   const [held, setHeld] = useState<Held>({ key: null, scope: null, state: NO_ASSISTANT_CHANGES });
@@ -64,6 +78,24 @@ export function useAssistantChanges(input: {
     () => (state.changes.length === 0 ? [] : assistantChangeViews({ state, document, parsed, problems, orders })),
     [state, document, parsed, problems, orders]
   );
+
+  const armyViews = useMemo(
+    () => (state.armies.length === 0 || armies === null ? [] : assistantArmyViews(state, armies)),
+    [state, armies]
+  );
+
+  useEffect(() => {
+    if (state.armies.length === 0 || armies === null) {
+      return;
+    }
+    setHeld((now) => {
+      if (now.key !== key) {
+        return now;
+      }
+      const settled = settleAssistantArmyChanges(now.state, armies);
+      return settled === now.state ? now : { ...now, state: settled };
+    });
+  }, [armies, key, state]);
 
   useEffect(() => {
     if (state.changes.length === 0) {
@@ -98,9 +130,36 @@ export function useAssistantChanges(input: {
     [orders, update]
   );
 
+  /**
+   * One write of the assistant's to an Army (ah-mjiv1); `previous` is `null` for a new one. Answers
+   * the undo for a write whose save then fails: the Army's entry as it was before this write.
+   */
+  const recordArmyWrite = useCallback(
+    (next: ArmyRecord, previous: ArmyRecord | null): (() => void) => {
+      const write = { armyId: next.id, replaced: previous === null ? null : sideOf(previous), wrote: sideOf(next) };
+      let prior: AssistantArmyChange | undefined;
+      let seen = false;
+      update((now) => {
+        if (!seen) {
+          prior = now.armies.find((change) => change.armyId === next.id);
+          seen = true;
+        }
+        return recordAssistantArmyWrite(now, write);
+      });
+      return () => update((now) => withArmyEntry(now, next.id, prior));
+    },
+    [update]
+  );
+
   const replace = useCallback((next: AssistantChangesState) => update(() => next), [update]);
   const keep = useCallback((unitId: string) => update((now) => keepAssistantChange(now, unitId)), [update]);
-  const keepAll = useCallback(() => update((now) => ({ ...now, changes: [] })), [update]);
+  const keepArmy = useCallback((armyId: string) => update((now) => keepAssistantArmyChange(now, armyId)), [update]);
+  const keepAll = useCallback(() => update((now) => ({ ...now, changes: [], armies: [] })), [update]);
+  /** Lists an Army's change again, as it was: for a Revert whose save failed. */
+  const restoreArmy = useCallback(
+    (change: AssistantArmyChange) => update((now) => withArmyEntry(now, change.armyId, change)),
+    [update]
+  );
 
   // The cursor goes with a deliberate open or close, never with one that happened by itself: it
   // waits here for the render that puts its target on screen.
@@ -135,12 +194,18 @@ export function useAssistantChanges(input: {
   return {
     state,
     views,
+    armyViews,
+    /** Whether anything at all is listed, units or Armies. */
+    listed: views.length + armyViews.length > 0,
     open: state.open,
-    chipLabel: !state.open && views.length > 0 ? assistantChipLabel(views) : null,
+    chipLabel: !state.open && views.length + armyViews.length > 0 ? assistantChipLabel(views, armyViews.length) : null,
     recordWrite,
+    recordArmyWrite,
     replace,
     keep,
+    keepArmy,
     keepAll,
+    restoreArmy,
     show,
     close,
     panelRef,

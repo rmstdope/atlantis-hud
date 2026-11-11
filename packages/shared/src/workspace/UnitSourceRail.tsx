@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { ArmyRecord } from "@atlantis/core-client";
 import type { RailEvent, RailMode } from "./railEditState";
 import { canCommit, keyToAction } from "./railEditState";
@@ -101,6 +102,7 @@ export function UnitSourceRail({
                 key={army.id}
                 testId={`unit-source-army-${army.id}`}
                 label={army.name}
+                assistantPill={army.madeByAssistant === true}
                 count={armyCount(army)}
                 selected={sameSource(source, { kind: "army", armyId: army.id })}
                 onSelect={() => onSource({ kind: "army", armyId: army.id })}
@@ -135,6 +137,8 @@ export function UnitSourceRail({
   );
 }
 
+const ASSISTANT_PILL_SENTENCE = "Made by the assistant, which can change it.";
+
 /**
  * One source in the rail.
  *
@@ -151,10 +155,16 @@ function RailEntry({
   onRename,
   dropArmyId = null,
   over = false,
-  full = false
+  full = false,
+  assistantPill = false
 }: {
   testId: string;
   label: string;
+  /**
+   * An Army the assistant made (ah-mjiv1), which it may change for good: a small "assistant" pill
+   * after the name. The name is cut short before the pill ever is.
+   */
+  assistantPill?: boolean;
   /** Null omits the count entirely - there is no hex to count. */
   count: number | null;
   selected: boolean;
@@ -173,6 +183,7 @@ function RailEntry({
   /** This Army would take nothing from the drag: dim, ticked, and no target at all. */
   full?: boolean;
 }) {
+  const pillDescription = useId();
   return (
     <button
       type="button"
@@ -180,6 +191,7 @@ function RailEntry({
       data-selected={selected}
       data-drop-army={dropArmyId ?? undefined}
       aria-pressed={selected}
+      aria-describedby={assistantPill ? pillDescription : undefined}
       onClick={onSelect}
       onDoubleClick={onRename}
       className={`flex w-full items-center gap-1.5 rounded px-[7px] py-[3px] text-left text-pane focus-visible:outline focus-visible:outline-1 focus-visible:outline-select ${
@@ -192,7 +204,23 @@ function RailEntry({
         full ? " opacity-40" : ""
       }`}
     >
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {/* With a pill the name only takes what it needs, so the pill sits right after it (the mockup's). */}
+      <span className={`min-w-0 truncate ${assistantPill ? "" : "flex-1"}`}>{label}</span>
+      {assistantPill ? (
+        <span
+          data-testid="army-assistant-pill"
+          title={ASSISTANT_PILL_SENTENCE}
+          className="flex-none rounded-full border border-brass/50 px-1.5 text-[0.75em] leading-normal text-brass"
+        >
+          assistant
+        </span>
+      ) : null}
+      {/* A title on a part of the button is not its description, so the sentence is said here too. */}
+      {assistantPill ? (
+        <span id={pillDescription} hidden>
+          {ASSISTANT_PILL_SENTENCE}
+        </span>
+      ) : null}
       {/* The same ✓ the Add to army menu gives an Army with nothing to add, so the rail and the
           menu say the same thing about the same Army in the same mark (W3). */}
       {full ? <span className="text-ok">✓</span> : null}

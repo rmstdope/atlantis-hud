@@ -184,7 +184,8 @@ import { useAssistant, type AssistantTransport } from "../assistant/assistantTra
 import { readyArmies } from "../assistant/assistantTools";
 import { readyStudyPlans } from "../assistant/assistantStudyPlans";
 import { revertAssistantChanges } from "../assistant/assistantChanges";
-import { AssistantChangesPanel } from "./AssistantChangesPanel";
+import { armyRevert } from "../assistant/assistantArmyChanges";
+import { AssistantChangesPanel, type RevertTargets } from "./AssistantChangesPanel";
 import { useAssistantChanges } from "./useAssistantChanges";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
 import { TurnPicker } from "./TurnPicker";
@@ -897,6 +898,7 @@ export function AppShell({
   const armiesStatus = useArmiesStore((state) => state.status);
   /** The same list `UnitTableDock` reads, for the export dialog's two pickers (`ah-1mpx.3`). */
   const armies = useArmiesStore((state) => state.armies);
+  const armiesGameId = useArmiesStore((state) => state.gameId);
   /**
    * The mages allies have shared (`ah-lyg6.1.2.2`).
    *
@@ -1729,13 +1731,22 @@ export function AppShell({
   const unitsById = useMemo(() => latestTurnUnitsById(model), [model]);
 
   // What the assistant has changed in this turn's orders, for the panel (ah-bcdri).
+  // The Armies the panel follows its Army entries against (ah-mjiv1): only once they are the open game's.
+  const gameArmies = useMemo(() => {
+    if (game === null) {
+      return null;
+    }
+    const ready = readyArmies({ gameId: armiesGameId, status: armiesStatus, armies }, game.manifest.metadata.gameId);
+    return typeof ready === "string" ? null : ready;
+  }, [game, armiesGameId, armiesStatus, armies]);
   const assistantChanges = useAssistantChanges({
     enabled: assistant !== undefined,
     game,
     parsed,
     document: ordersDocument,
     validated,
-    orders
+    orders,
+    armies: gameArmies
   });
 
   /**
@@ -2025,7 +2036,7 @@ export function AppShell({
           studyPlans,
           plannerGroups: plannerGroupRows,
           gates: gateMemory,
-          assistantChangesListed: assistantChanges.views.length > 0
+          assistantChangesListed: assistantChanges.listed
         },
         {
           // The dock's focus effect needs the rows rendered, as the dossier's "show their units"
@@ -2071,7 +2082,7 @@ export function AppShell({
         }
       ),
     [
-      assistantChanges.views.length,
+      assistantChanges.listed,
       assistantChanges.show,
       hexNotes,
       studyPlans,
@@ -4641,6 +4652,22 @@ export function AppShell({
     // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
     // kept. Only the open unit's editor takes its block again: a write to another unit leaves
     // whatever the player is typing alone, and the autosave writes the draft either way.
+    // Saved through the Armies store, like the rail's own edits, and listed for the player at once
+    // (ah-mjiv1). A save that fails rolls the store back, and the entry is put back as it was before
+    // this write, so the list never shows a change that did not happen.
+    writeArmy: async (next, previous) => {
+      if (game === null) {
+        throw new Error("no game is open.");
+      }
+      const saving = useArmiesStore.getState().put(client, game, next);
+      const undo = assistantChanges.recordArmyWrite(next, previous);
+      try {
+        await saving;
+      } catch (error) {
+        undo();
+        throw error;
+      }
+    },
     writeOrders: (update, unitId) => {
       const written = update(assistantDocument.current);
       assistantChanges.recordWrite(unitId, assistantDocument.current, written);
@@ -4657,8 +4684,41 @@ export function AppShell({
     }
   });
 
+  /**
+   * Puts Armies back as Before (ah-mjiv1): a new one deleted, a changed one given its members back.
+   * One the player edited since, or deleted, is left alone. A failed save rolls the store back and
+   * leaves the entry listed, so the player can try again.
+   */
+  const revertAssistantArmies = (armyIds: readonly string[]) => {
+    if (game === null || armyIds.length === 0) {
+      return;
+    }
+    const current = new Map((gameArmies ?? []).map((army) => [army.id, army]));
+    const store = useArmiesStore.getState();
+    for (const change of assistantChanges.state.armies.filter((one) => armyIds.includes(one.armyId))) {
+      const revert = armyRevert(change, current.get(change.armyId));
+      if (revert === null) {
+        continue;
+      }
+      const going = revert.kind === "delete" ? store.remove(client, game, revert.armyId) : store.put(client, game, revert.army);
+      assistantChanges.keepArmy(change.armyId);
+      going.catch((error: unknown) => {
+        console.warn("could not revert the assistant's Army", error);
+        assistantChanges.restoreArmy(change);
+      });
+    }
+  };
+
+  const revertAssistant = (targets: RevertTargets) => {
+    revertAssistantUnits(targets.units);
+    revertAssistantArmies(targets.armies);
+  };
+
   /** Puts Before back for the units that may go back, and leaves a hand-edited one alone (ah-bcdri). */
   const revertAssistantUnits = (unitIds: readonly string[]) => {
+    if (unitIds.length === 0) {
+      return;
+    }
     const listed = assistantChanges.state;
     const result = revertAssistantChanges(assistantDocument.current, listed, unitIds, orders);
     if (result.reverted.length === 0) {
@@ -6473,16 +6533,25 @@ export function AppShell({
         />
       ) : null}
 
-      {assistantChanges.views.length > 0 ? (
+      {assistantChanges.listed ? (
         <AssistantChangesPanel
           views={assistantChanges.views}
+          armyViews={assistantChanges.armyViews}
           open={assistantChanges.open}
           panelRef={assistantChanges.panelRef}
           onClose={assistantChanges.close}
           onKeepAll={assistantChanges.keepAll}
           onKeep={assistantChanges.keep}
-          onRevert={revertAssistantUnits}
+          onKeepArmy={assistantChanges.keepArmy}
+          onRevert={revertAssistant}
           onSelectUnit={(unitId, regionId) => goToUnit(unitId, null, regionId === "" ? undefined : regionId)}
+          // As picking it in the Armies list does; the cursor stays on the name in the panel.
+          onSelectArmy={(armyId) => {
+            if (useWorkspaceStore.getState().collapsed.units) {
+              useWorkspaceStore.getState().togglePanel("units");
+            }
+            unitDock.current?.showArmy(armyId, { takeFocus: false });
+          }}
         />
       ) : null}
 

@@ -23,7 +23,7 @@ use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
 use thiserror::Error;
 
 /// Current schema version expected by the persistence layer.
-pub const CURRENT_SCHEMA_VERSION: u32 = 17;
+pub const CURRENT_SCHEMA_VERSION: u32 = 18;
 /// The manifest file inside a game's directory. The directory is named after the game's id, so the
 /// file itself does not have to be, and a game can be found without parsing any filename.
 pub const GAME_MANIFEST_FILE_NAME: &str = "game.json";
@@ -52,13 +52,15 @@ const MIGRATION_0016_CAP_ATLACLIENT_SIGHTINGS: &str =
     include_str!("../migrations/0016_cap_atlaclient_sightings.sql");
 const MIGRATION_0017_MERGED_REPORT_UNITS: &str =
     include_str!("../migrations/0017_merged_report_units.sql");
+const MIGRATION_0018_ARMY_MADE_BY_ASSISTANT: &str =
+    include_str!("../migrations/0018_army_made_by_assistant.sql");
 
 struct Migration {
     version: u32,
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 17] = [
+const MIGRATIONS: [Migration; 18] = [
     Migration {
         version: 1,
         sql: MIGRATION_0001_INITIAL,
@@ -126,6 +128,10 @@ const MIGRATIONS: [Migration; 17] = [
     Migration {
         version: 17,
         sql: MIGRATION_0017_MERGED_REPORT_UNITS,
+    },
+    Migration {
+        version: 18,
+        sql: MIGRATION_0018_ARMY_MADE_BY_ASSISTANT,
     },
 ];
 
@@ -811,8 +817,9 @@ fn write_backup_collections(
                     name,
                     members_json,
                     created_at,
-                    updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    updated_at,
+                    made_by_assistant
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 army.id.as_str(),
                 game_id,
@@ -820,6 +827,7 @@ fn write_backup_collections(
                 serde_json::to_string(&army.members)?.as_str(),
                 army.created_at.as_str(),
                 army.updated_at.as_str(),
+                army.made_by_assistant,
             ],
         )?;
     }
@@ -1680,8 +1688,14 @@ impl GameScopedRows for GameBackupHexNote {
 
 impl GameScopedRows for GameBackupArmy {
     const TABLE: &'static str = "armies";
-    const SELECT_COLUMNS: &'static [&'static str] =
-        &["id", "name", "members_json", "created_at", "updated_at"];
+    const SELECT_COLUMNS: &'static [&'static str] = &[
+        "id",
+        "name",
+        "members_json",
+        "created_at",
+        "updated_at",
+        "made_by_assistant",
+    ];
 
     fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
         let members_json = row.get::<_, String>(2)?;
@@ -1691,6 +1705,7 @@ impl GameScopedRows for GameBackupArmy {
             members: serde_json::from_str(&members_json)?,
             created_at: row.get(3)?,
             updated_at: row.get(4)?,
+            made_by_assistant: row.get(5)?,
         })
     }
 }
@@ -1883,6 +1898,7 @@ impl GameScopedRows for Army {
         "members_json",
         "created_at",
         "updated_at",
+        "made_by_assistant",
     ];
 
     fn read_row(row: &rusqlite::Row<'_>) -> Result<Self, PersistenceError> {
@@ -1894,12 +1910,14 @@ impl GameScopedRows for Army {
             members: serde_json::from_str(&members_json)?,
             created_at: row.get(4)?,
             updated_at: row.get(5)?,
+            made_by_assistant: row.get(6)?,
         })
     }
 }
 
 impl IdKeyedCollection for Army {
-    const VALUE_COLUMNS: &'static [&'static str] = &["name", "members_json", "updated_at"];
+    const VALUE_COLUMNS: &'static [&'static str] =
+        &["name", "members_json", "updated_at", "made_by_assistant"];
     const INSERT_ONLY_COLUMNS: &'static [&'static str] = &["created_at"];
 
     fn id(&self) -> &str {
@@ -1915,6 +1933,7 @@ impl IdKeyedCollection for Army {
             Box::new(self.name.clone()),
             Box::new(serde_json::to_string(&self.members)?),
             Box::new(self.updated_at.clone()),
+            Box::new(self.made_by_assistant),
             Box::new(self.created_at.clone()),
         ])
     }
@@ -2367,10 +2386,11 @@ mod tests {
         let sql = id_keyed_upsert_sql::<Army>();
 
         assert!(sql.contains(
-            "INSERT INTO armies (id, game_id, name, members_json, updated_at, created_at)"
+            "INSERT INTO armies (id, game_id, name, members_json, updated_at, made_by_assistant, created_at)"
         ));
         assert!(sql.contains("ON CONFLICT(id) DO UPDATE SET"));
         assert!(sql.contains("members_json = excluded.members_json"));
+        assert!(sql.contains("made_by_assistant = excluded.made_by_assistant"));
         assert!(!sql.contains("created_at = excluded.created_at"));
         assert!(!sql.contains("game_id = excluded.game_id"));
     }
@@ -3449,8 +3469,8 @@ mod tests {
 
         assert_eq!(created.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            created.schema_version, 17,
-            "keeping a merged report's units added migration 17"
+            created.schema_version, 18,
+            "marking the Armies the assistant made added migration 18"
         );
     }
 
@@ -3597,6 +3617,7 @@ mod tests {
             members: vec![a_member("1", "Scouts", 71), a_member("204", "Pikes", 68)],
             created_at: "2026-08-01T09:00:00Z".to_string(),
             updated_at: "2026-08-01T09:00:00Z".to_string(),
+            made_by_assistant: false,
         };
         upsert_army(&created.database_path, &army).expect("army should persist");
 
@@ -3637,6 +3658,43 @@ mod tests {
         assert!(list_armies(&created.database_path, GAME_ID)
             .expect("list should succeed")
             .is_empty());
+    }
+
+    #[test]
+    fn an_army_the_assistant_made_keeps_its_mark_and_an_older_row_reads_as_the_players() {
+        // ah-mjiv1: the rail's "assistant" pill is this flag, saved with the Army for good.
+        let dir = tempdir().expect("tempdir");
+        let created =
+            create_game(dir.path(), &fixture_manifest()).expect("game creation should succeed");
+        let army = Army {
+            id: "army-made".to_string(),
+            game_id: GAME_ID.to_string(),
+            name: "Ibizzibith assault".to_string(),
+            members: vec![a_member("1", "Scouts", 71)],
+            created_at: "2026-08-01T09:00:00Z".to_string(),
+            updated_at: "2026-08-01T09:00:00Z".to_string(),
+            made_by_assistant: true,
+        };
+        upsert_army(&created.database_path, &army).expect("army should persist");
+        let connection = Connection::open(&created.database_path).expect("open should succeed");
+        connection
+            .execute(
+                "INSERT INTO armies (id, game_id, name, members_json, created_at, updated_at) \
+                 VALUES ('army-old', ?1, 'Home guard', '[]', ?2, ?2)",
+                params![GAME_ID, "2026-08-01T09:00:00Z"],
+            )
+            .expect("insert should succeed");
+
+        let listed = list_armies(&created.database_path, GAME_ID).expect("list should succeed");
+        let mark = |id: &str| {
+            listed
+                .iter()
+                .find(|one| one.id == id)
+                .map(|one| one.made_by_assistant)
+        };
+
+        assert_eq!(mark("army-made"), Some(true));
+        assert_eq!(mark("army-old"), Some(false));
     }
 
     #[test]
@@ -3683,6 +3741,7 @@ mod tests {
             members: vec![a_member("1", "Scouts", 71)],
             created_at: CREATED_AT.to_string(),
             updated_at: CREATED_AT.to_string(),
+            made_by_assistant: false,
         };
         let theirs = Army {
             id: "army-2".to_string(),
@@ -4121,6 +4180,7 @@ mod tests {
                      PRIMARY KEY (game_id, faction_id, unit_id)
                  );
                  ALTER TABLE merged_reports DROP COLUMN units_json;
+                 ALTER TABLE armies DROP COLUMN made_by_assistant;
                  DELETE FROM schema_migrations WHERE version >= 14;
                  INSERT INTO study_plans
                         (game_id, faction_id, unit_id, goals_json, comment, updated_at)
@@ -4161,6 +4221,7 @@ mod tests {
             .execute_batch(
                 "ALTER TABLE study_plans DROP COLUMN casts_json;
                  ALTER TABLE merged_reports DROP COLUMN units_json;
+                 ALTER TABLE armies DROP COLUMN made_by_assistant;
                  DELETE FROM schema_migrations WHERE version >= 13;
                  INSERT INTO study_plans
                         (game_id, faction_id, unit_id, goals_json, comment, updated_at)
@@ -4808,6 +4869,7 @@ mod tests {
             members: vec![a_member("1", "Scouts", 71), a_member("204", "Pikes", 68)],
             created_at: CREATED_AT.to_string(),
             updated_at: CREATED_AT.to_string(),
+            made_by_assistant: false,
         };
         upsert_army(&created.database_path, &army).expect("army should persist");
 
@@ -4909,6 +4971,7 @@ mod tests {
                         updated_at  = '2026-08-01 10:00:00';
                  DROP TABLE study_plans;
                  ALTER TABLE merged_reports DROP COLUMN units_json;
+                 ALTER TABLE armies DROP COLUMN made_by_assistant;
                  DELETE FROM schema_migrations WHERE version >= 6;",
             )
             .expect("rewind");
