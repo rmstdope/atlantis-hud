@@ -76,6 +76,10 @@ describe("changeAssistantArmy", () => {
     expect(() => change(mine, { remove: ["2101"] })).toThrow(/2101 is not in "Assault"/u);
   });
 
+  it("refuses to add a unit the Army already holds, rather than answering a change that changed nothing", () => {
+    expect(() => change(mine, { add: ["7076"] })).toThrow(/7076 is already in "Assault"/u);
+  });
+
   it("removes a member the report no longer shows", () => {
     const gone = { ...snapshotOf(BORG, TURN - 2, NOW), unitId: "555" };
 

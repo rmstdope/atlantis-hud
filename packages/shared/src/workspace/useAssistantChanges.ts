@@ -23,7 +23,8 @@ import {
   assistantArmyViews,
   keepAssistantArmyChange,
   recordAssistantArmyWrite,
-  settleAssistantArmyChanges
+  settleAssistantArmyChanges,
+  withArmyEntry
 } from "../assistant/assistantArmyChanges";
 import { draftKeyFor } from "../orderDraft";
 
@@ -129,11 +130,23 @@ export function useAssistantChanges(input: {
     [orders, update]
   );
 
-  /** One write of the assistant's to an Army (ah-mjiv1); `previous` is `null` for a new one. */
+  /**
+   * One write of the assistant's to an Army (ah-mjiv1); `previous` is `null` for a new one. Answers
+   * the undo for a write whose save then fails: the Army's entry as it was before this write.
+   */
   const recordArmyWrite = useCallback(
-    (next: ArmyRecord, previous: ArmyRecord | null) => {
+    (next: ArmyRecord, previous: ArmyRecord | null): (() => void) => {
       const write = { armyId: next.id, replaced: previous === null ? null : sideOf(previous), wrote: sideOf(next) };
-      update((now) => recordAssistantArmyWrite(now, write));
+      let prior: AssistantArmyChange | undefined;
+      let seen = false;
+      update((now) => {
+        if (!seen) {
+          prior = now.armies.find((change) => change.armyId === next.id);
+          seen = true;
+        }
+        return recordAssistantArmyWrite(now, write);
+      });
+      return () => update((now) => withArmyEntry(now, next.id, prior));
     },
     [update]
   );
@@ -144,8 +157,7 @@ export function useAssistantChanges(input: {
   const keepAll = useCallback(() => update((now) => ({ ...now, changes: [], armies: [] })), [update]);
   /** Lists an Army's change again, as it was: for a Revert whose save failed. */
   const restoreArmy = useCallback(
-    (change: AssistantArmyChange) =>
-      update((now) => ({ ...now, armies: [...now.armies.filter((one) => one.armyId !== change.armyId), change] })),
+    (change: AssistantArmyChange) => update((now) => withArmyEntry(now, change.armyId, change)),
     [update]
   );
 

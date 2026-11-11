@@ -113,6 +113,10 @@ export function changeAssistantArmy(input: {
   if (missing !== undefined) {
     throw new Error(`Unit ${missing} is not in "${army.name}"; nothing was changed.`);
   }
+  const already = add.find((unitId) => members.has(unitId));
+  if (already !== undefined) {
+    throw new Error(`Unit ${already} is already in "${army.name}"; nothing was changed.`);
+  }
   const added = shownUnits(add, units);
   const lessened = remove.reduce((one, unitId) => withoutMember(one, unitId, now), army);
   return added.reduce((one, unit) => withMember(one, unit, turn, now), { ...lessened, updatedAt: now });

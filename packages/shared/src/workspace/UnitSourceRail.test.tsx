@@ -62,6 +62,10 @@ describe("the units dock's source rail", () => {
       /class="[^"]*truncate[^"]*">Ibizzibith assault<\/span><span data-testid="army-assistant-pill"[^>]*title="Made by the assistant, which can change it."[^>]*>assistant<\/span>/u
     );
     expect(mine).not.toContain("tabindex");
+    // The sentence is the button's accessible description, not only a hover title.
+    const described = /aria-describedby="([^"]+)"/u.exec(mine)?.[1];
+    expect(described).toBeDefined();
+    expect(markup).toMatch(new RegExp(`id="${described}"[^>]*>Made by the assistant, which can change it.<`, "u"));
     expect(entryFor(markup, "army-b")).not.toContain("army-assistant-pill");
   });
 

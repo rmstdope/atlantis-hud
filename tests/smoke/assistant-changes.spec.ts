@@ -255,6 +255,42 @@ test(
     await page.getByTestId(`assistant-army-change-revert-${armyId}`).click();
     await expect(page.getByTestId(`unit-source-army-${armyId}`)).toHaveCount(0);
     await expect(panel(page)).toHaveCount(0);
+
+    // An Army the player built is read-only to the assistant.
+    await page.getByTestId("rail-new-army").click();
+    await page.getByTestId("rail-name-field").fill("Home guard");
+    await page.getByTestId("rail-name-field").press("Enter");
+    await expect(page.getByTestId("unit-source-rail").locator("button", { hasText: "Home guard" })).toBeVisible();
+    const refused = await call(page, "change_army", { army: "Home guard", add: [units[0] as string] });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain("the player built");
+    await expect(panel(page)).toHaveCount(0);
+
+    // A changed Army lists only the member that went, folds the rest, and Revert puts it back.
+    const raid = JSON.parse((await call(page, "create_army", { name: "River raid", units })).text) as { armyId: string };
+    await page.getByTestId(`assistant-army-change-keep-${raid.armyId}`).click();
+    await expect(panel(page)).toHaveCount(0);
+    const changed = await call(page, "change_army", { army: raid.armyId, remove: [units[1] as string] });
+    expect(changed.isError, changed.text).toBe(false);
+    const raidEntry = page.getByTestId(`assistant-army-change-${raid.armyId}`);
+    await expect(raidEntry).toContainText("2 → 1 unit");
+    await expect(raidEntry).toContainText("… 1 more unchanged");
+    await expect(page.getByTestId(`unit-source-army-${raid.armyId}`)).toContainText("1");
+    await page.getByTestId(`assistant-army-change-revert-${raid.armyId}`).click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(page.getByTestId(`unit-source-army-${raid.armyId}`)).toContainText("2");
+    await expect(page.getByTestId(`unit-source-army-${raid.armyId}`).getByTestId("army-assistant-pill")).toBeVisible();
+
+    // An Army the player deletes leaves the list.
+    await call(page, "change_army", { army: raid.armyId, remove: [units[1] as string] });
+    await expect(page.getByTestId(`assistant-army-change-${raid.armyId}`)).toBeVisible();
+    await page.getByTestId("assistant-changes-close").click();
+    await page.getByTestId(`unit-source-army-${raid.armyId}`).click();
+    await page.getByTestId("army-delete").click();
+    await page.getByTestId("army-delete-yes").click();
+    await expect(page.getByTestId(`unit-source-army-${raid.armyId}`)).toHaveCount(0);
+    await expect(chip(page)).toHaveCount(0);
+    await expect(panel(page)).toHaveCount(0);
   }
 );
 

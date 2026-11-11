@@ -4652,15 +4652,21 @@ export function AppShell({
     // Applied as a functional update, like the editor's own writes, so a keystroke still queued is
     // kept. Only the open unit's editor takes its block again: a write to another unit leaves
     // whatever the player is typing alone, and the autosave writes the draft either way.
-    // Saved through the Armies store, like the rail's own edits, and listed for the player at once;
-    // a save that fails rolls the store back, and the entry then settles away by itself (ah-mjiv1).
+    // Saved through the Armies store, like the rail's own edits, and listed for the player at once
+    // (ah-mjiv1). A save that fails rolls the store back, and the entry is put back as it was before
+    // this write, so the list never shows a change that did not happen.
     writeArmy: async (next, previous) => {
       if (game === null) {
         throw new Error("no game is open.");
       }
       const saving = useArmiesStore.getState().put(client, game, next);
-      assistantChanges.recordArmyWrite(next, previous);
-      await saving;
+      const undo = assistantChanges.recordArmyWrite(next, previous);
+      try {
+        await saving;
+      } catch (error) {
+        undo();
+        throw error;
+      }
     },
     writeOrders: (update, unitId) => {
       const written = update(assistantDocument.current);

@@ -9,6 +9,7 @@ import {
   assistantArmyViews,
   keepAssistantArmyChange,
   memberLine,
+  withArmyEntry,
   recordAssistantArmyWrite,
   settleAssistantArmyChanges
 } from "./assistantArmyChanges";
@@ -86,6 +87,19 @@ describe("keepAssistantArmyChange", () => {
 
     expect(keepAssistantArmyChange(listed, "a1").armies).toEqual([]);
     expect(keepAssistantArmyChange(listed, "a2")).toBe(listed);
+  });
+});
+
+describe("withArmyEntry", () => {
+  it("puts one Army's entry back as it was before a write whose save failed, or takes it off when there was none", () => {
+    const first = wrote("a1", null, side("Raid", [RIDERS]));
+    const [entry] = first.armies;
+    const second = wrote("a1", side("Raid", [RIDERS]), side("Raid", [RIDERS, ARCHERS]), first);
+    const backToBefore = wrote("a1", side("Raid", [RIDERS]), side("Raid", [RIDERS]), wrote("a1", side("Raid", [RIDERS]), side("Raid", [ARCHERS])));
+
+    expect(withArmyEntry(second, "a1", entry).armies).toEqual([entry]);
+    expect(withArmyEntry(first, "a1", undefined).armies).toEqual([]);
+    expect(withArmyEntry(backToBefore, "a1", { armyId: "a1", before: side("Raid", [RIDERS]), after: side("Raid", [ARCHERS]) }).armies).toHaveLength(1);
   });
 });
 

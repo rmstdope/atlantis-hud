@@ -36,6 +36,19 @@ export function keepAssistantArmyChange(state: AssistantChangesState, armyId: st
   return armies.length === state.armies.length ? state : { ...state, armies };
 }
 
+/**
+ * `armyId`'s entry set to `entry`, or taken off when it is `undefined`: for undoing a write or a
+ * Revert whose save failed, so the list says again what it said before.
+ */
+export function withArmyEntry(
+  state: AssistantChangesState,
+  armyId: string,
+  entry: AssistantArmyChange | undefined
+): AssistantChangesState {
+  const others = state.armies.filter((change) => change.armyId !== armyId);
+  return { ...state, armies: entry === undefined ? others : [...others, entry] };
+}
+
 /** Takes off every Army the player deleted or put back to Before; the same state if there are none. */
 export function settleAssistantArmyChanges(state: AssistantChangesState, current: readonly ArmyRecord[]): AssistantChangesState {
   const byId = new Map(current.map((army) => [army.id, army]));
