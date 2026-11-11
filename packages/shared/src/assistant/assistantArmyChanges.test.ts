@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aReportUnit, type ArmyMemberRecord, type ArmyRecord } from "@atlantis/core-client";
 import { snapshotOf } from "../armies";
 import { NO_ASSISTANT_CHANGES, type AssistantChangesState } from "./assistantChanges";
-import { sideOf, type ArmySide } from "./assistantArmies";
+import type { ArmySide } from "./assistantArmies";
 import {
   armyRevert,
   armySummary,
