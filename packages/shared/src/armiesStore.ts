@@ -46,6 +46,11 @@ export type ArmiesState = {
     name: string,
     now: string
   ) => Promise<void>;
+  /**
+   * Adds or replaces one whole Army optimistically, then saves; on failure puts the list back and
+   * rethrows. For the assistant's writes (ah-mjiv1), which build the Army they want themselves.
+   */
+  put: (client: CoreClient, game: OpenedGame, army: ArmyRecord) => Promise<void>;
   /** Removes optimistically, then deletes; on failure puts it back and rethrows. */
   remove: (client: CoreClient, game: OpenedGame, armyId: string) => Promise<void>;
   /** Adds a unit, or refreshes its snapshot when it is already a member. */
@@ -156,6 +161,21 @@ export const useArmiesStore = create<ArmiesState>()((set, get) => ({
 
   rename: async (client, game, armyId, name, now) => {
     await replaceAndSave(set, get, client, game, armyId, (army) => renameArmy(army, name, now));
+  },
+
+  put: async (client, game, army) => {
+    const before = get().armies.find((one) => one.id === army.id);
+    const withIt = (armies: ArmyRecord[]) => sortArmies([...armies.filter((one) => one.id !== army.id), army]);
+    set((state) => ({ armies: withIt(state.armies) }));
+    try {
+      await saveArmy(client, game, army);
+    } catch (error) {
+      set((state) => {
+        const others = state.armies.filter((one) => one.id !== army.id);
+        return { armies: before === undefined ? others : sortArmies([...others, before]) };
+      });
+      throw error;
+    }
   },
 
   remove: async (client, game, armyId) => {

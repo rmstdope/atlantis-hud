@@ -125,6 +125,34 @@ describe("the Armies store", () => {
     });
   });
 
+  describe("put (ah-mjiv1)", () => {
+    it("adds a new Army in name order, and replaces one already there, saving it whole", async () => {
+      const c = client();
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [army({ id: "z", name: "Zulu" })] });
+
+      await useArmiesStore.getState().put(c, game(), army({ id: "a", name: "Alpha", madeByAssistant: true }));
+      await useArmiesStore.getState().put(c, game(), army({ id: "z", name: "Zulu", members: [aMember()] }));
+
+      expect(useArmiesStore.getState().armies.map((one) => [one.id, one.members.length])).toEqual([
+        ["a", 0],
+        ["z", 1]
+      ]);
+      expect(c.saveArmy).toHaveBeenCalledWith("g.sqlite", army({ id: "a", name: "Alpha", madeByAssistant: true }));
+    });
+
+    it("puts the list back as it was and rethrows when the save fails", async () => {
+      const before = [army({ id: "z", name: "Zulu" })];
+      useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: before });
+      const c = client({ saveArmy: vi.fn().mockRejectedValue(new Error("disk full")) });
+
+      await expect(useArmiesStore.getState().put(c, game(), army({ id: "a", name: "Alpha" }))).rejects.toThrow("disk full");
+      await expect(useArmiesStore.getState().put(c, game(), army({ id: "z", name: "Zulu", members: [aMember()] }))).rejects.toThrow(
+        "disk full"
+      );
+      expect(useArmiesStore.getState().armies).toEqual(before);
+    });
+  });
+
   describe("rename, remove, addUnit and removeUnit", () => {
     it("renames optimistically and puts the old name back when the save fails", async () => {
       useArmiesStore.setState({ gameId: "aug-2026", status: "ready", armies: [army()] });

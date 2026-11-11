@@ -197,6 +197,68 @@ test(
 );
 
 test(
+  "an Army the assistant makes is marked in the rail, listed in the panel, and can be taken back (ah-mjiv1)",
+  { tag: DESKTOP_SHELL_TAG },
+  async ({ page }) => {
+    await openOnMage(page);
+    const units = await ownUnits(page, 2);
+    await ordersInput(page).click();
+
+    const made = await call(page, "create_army", { name: "Ibizzibith assault", units });
+    expect(made.isError, made.text).toBe(false);
+    const { armyId } = JSON.parse(made.text) as { armyId: string };
+    const railEntry = page.getByTestId(`unit-source-army-${armyId}`);
+    const armyEntry = page.getByTestId(`assistant-army-change-${armyId}`);
+
+    // It lands at once, marked, listed, and without taking the cursor.
+    await expect(railEntry).toBeVisible();
+    const pill = railEntry.getByTestId("army-assistant-pill");
+    await expect(pill).toHaveText("assistant");
+    await expect(pill).toHaveAttribute("title", "Made by the assistant, which can change it.");
+    await expect(count(page)).toHaveText("1 army");
+    await expect(armyEntry).toContainText("new army · 2 units");
+    await expect(armyEntry).toContainText("no army");
+    await expect(ordersInput(page)).toBeFocused();
+
+    // A taken name is refused, and nothing more is listed.
+    const taken = await call(page, "create_army", { name: "ibizzibith ASSAULT", units });
+    expect(taken.isError).toBe(true);
+    await expect(page.getByTestId(/^unit-source-army-/)).toHaveCount(1);
+
+    // A rename by hand is an edit: Revert goes off. Renamed back, it returns.
+    await railEntry.dblclick();
+    const field = page.getByTestId("rail-name-field");
+    await field.fill("Assault");
+    await field.press("Enter");
+    await expect(armyEntry).toContainText("✎ edited since");
+    await expect(page.getByTestId(`assistant-army-change-revert-${armyId}`)).toBeDisabled();
+    // The floating panel sits over the rail in this window; closed, the chip counts the Army.
+    await page.getByTestId("assistant-changes-close").click();
+    await expect(chip(page)).toHaveText("Assistant: 1");
+    await railEntry.dblclick();
+    await field.fill("Ibizzibith assault");
+    await field.press("Enter");
+    await chip(page).click();
+    await expect(armyEntry).not.toContainText("edited since");
+
+    // Pressing its name shows its units in the table, and the panel stays.
+    await page.getByTestId(`assistant-army-change-select-${armyId}`).click();
+    await expect(railEntry).toHaveAttribute("data-selected", "true");
+    await expect(panel(page)).toBeVisible();
+
+    // The pill and the entry come back after a reload.
+    await page.reload();
+    await expect(page.getByTestId(`unit-source-army-${armyId}`).getByTestId("army-assistant-pill")).toBeVisible();
+    await expect(page.getByTestId(`assistant-army-change-${armyId}`)).toContainText("new army · 2 units");
+
+    // Revert deletes a new Army, and the panel goes with its last entry.
+    await page.getByTestId(`assistant-army-change-revert-${armyId}`).click();
+    await expect(page.getByTestId(`unit-source-army-${armyId}`)).toHaveCount(0);
+    await expect(panel(page)).toHaveCount(0);
+  }
+);
+
+test(
   "a closed panel stays closed, comes back as it was left, and moves or docks with the window",
   { tag: DESKTOP_SHELL_TAG },
   async ({ page }) => {
