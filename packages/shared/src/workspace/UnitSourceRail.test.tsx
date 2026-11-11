@@ -54,6 +54,17 @@ const entryFor = (markup: string, id: string) =>
   new RegExp(`<button[^>]*data-testid="unit-source-${id}"[\\s\\S]*?</button>`).exec(markup)?.[0] ?? "";
 
 describe("the units dock's source rail", () => {
+  it("marks an Army the assistant made with the assistant pill after its name (ah-mjiv1)", () => {
+    const markup = draw({ armies: [{ ...army("a", "Ibizzibith assault"), madeByAssistant: true }, army("b", "Home guard")] });
+    const mine = entryFor(markup, "army-a");
+
+    expect(mine).toMatch(
+      /class="[^"]*truncate[^"]*">Ibizzibith assault<\/span><span data-testid="army-assistant-pill"[^>]*title="Made by the assistant, which can change it."[^>]*>assistant<\/span>/u
+    );
+    expect(mine).not.toContain("tabindex");
+    expect(entryFor(markup, "army-b")).not.toContain("army-assistant-pill");
+  });
+
   it("prints the count it is given for an Army, not the stored membership", () => {
     const three = { ...army("a", "Coastal Watch"), members: [1, 2, 3].map((n) => ({ unitId: String(n) })) } as ArmyRecord;
     const entry = entryFor(draw({ armies: [three], armyCount: () => 1 }), "army-a");
