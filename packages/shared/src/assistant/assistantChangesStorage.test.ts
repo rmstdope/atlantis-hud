@@ -15,12 +15,36 @@ function memoryStorage(): ViewportStorage & { data: Map<string, string> } {
 
 const LIST: AssistantChangesState = {
   open: false,
-  changes: [{ unitId: "100", before: "work", after: "tax" }]
+  changes: [{ unitId: "100", before: "work", after: "tax" }],
+  armies: []
+};
+
+const ARMY_LIST: AssistantChangesState = {
+  open: true,
+  changes: [],
+  armies: [{ armyId: "a1", before: null, after: { name: "Raid", members: [] } }]
 };
 
 const TURN_71 = { gameId: "g1", factionId: "3", turn: 71 };
 
 describe("assistant changes storage", () => {
+  it("brings back a list of Armies only (ah-mjiv1)", () => {
+    const storage = memoryStorage();
+    saveAssistantChanges(TURN_71, ARMY_LIST, storage);
+
+    expect(loadAssistantChanges(TURN_71, storage)).toEqual(ARMY_LIST);
+  });
+
+  it("reads a list kept before Armies were listed as one with no Armies", () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      "atlantis-hud-assistant-changes-v1-g1",
+      JSON.stringify({ "3": { turn: 71, open: false, changes: [{ unitId: "100", before: "work", after: "tax" }] } })
+    );
+
+    expect(loadAssistantChanges(TURN_71, storage)).toEqual(LIST);
+  });
+
   it("brings the list back as it was left, panel closed included", () => {
     const storage = memoryStorage();
     saveAssistantChanges(TURN_71, LIST, storage);
@@ -54,7 +78,7 @@ describe("assistant changes storage", () => {
     const storage = memoryStorage();
     saveAssistantChanges(TURN_71, LIST, storage);
 
-    saveAssistantChanges(TURN_71, { open: true, changes: [] }, storage);
+    saveAssistantChanges(TURN_71, { open: true, changes: [], armies: [] }, storage);
 
     expect(storage.data.size).toBe(0);
   });

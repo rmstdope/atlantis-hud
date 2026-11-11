@@ -74,7 +74,7 @@ describe("recordAssistantWrite", () => {
   });
 
   it("opens the panel when the list goes from empty to something", () => {
-    const closed: AssistantChangesState = { open: false, changes: [] };
+    const closed: AssistantChangesState = { open: false, changes: [], armies: [] };
 
     expect(written("100", "work", "move N", closed).open).toBe(true);
   });
@@ -82,7 +82,8 @@ describe("recordAssistantWrite", () => {
   it("leaves a closed panel closed while further writes land", () => {
     const closed: AssistantChangesState = {
       open: false,
-      changes: [{ unitId: "100", before: "work", after: "move N" }]
+      changes: [{ unitId: "100", before: "work", after: "move N" }],
+      armies: []
     };
 
     expect(written("101", "tax", "work", closed).open).toBe(false);
@@ -96,7 +97,8 @@ describe("keepAssistantChange", () => {
       { unitId: "100", before: "work", after: "move N" },
       { unitId: "101", before: "tax", after: "work" },
       { unitId: "102", before: "", after: "study FORC" }
-    ]
+    ],
+    armies: []
   };
 
   it("takes the named unit off the list and leaves the others in order", () => {
@@ -126,6 +128,7 @@ describe("keepAssistantChange", () => {
 describe("settleAssistantChanges", () => {
   const state: AssistantChangesState = {
     open: true,
+    armies: [],
     changes: [
       { unitId: "100", before: "work", after: "move N" },
       { unitId: "101", before: "tax", after: "work" }
@@ -157,6 +160,7 @@ describe("revertAssistantChanges", () => {
   const document = DOCUMENT.replace("work", "move N");
   const state: AssistantChangesState = {
     open: true,
+    armies: [],
     changes: [
       { unitId: "100", before: "work", after: "move N" },
       { unitId: "101", before: "produce", after: "tax" }
@@ -184,6 +188,7 @@ describe("revertAssistantChanges", () => {
   it("leaves a unit that had no orders empty", () => {
     const empty: AssistantChangesState = {
       open: true,
+      armies: [],
       changes: [{ unitId: "101", before: "", after: "tax" }]
     };
 
@@ -239,6 +244,7 @@ describe("assistantChangeViews", () => {
 
   const listed = (...ids: string[]): AssistantChangesState => ({
     open: true,
+    armies: [],
     changes: ids.map((unitId) => ({ unitId, before: "work", after: "tax" }))
   });
 
@@ -318,6 +324,7 @@ describe("assistantChangeViews", () => {
   it("flags which side reads as no orders", () => {
     const state: AssistantChangesState = {
       open: true,
+      armies: [],
       changes: [{ unitId: "100", before: "", after: "tax" }]
     };
     const [view] = views(state, document({ 100: "tax" }));
@@ -356,5 +363,39 @@ describe("the words", () => {
       question: "Revert 1 unit? The assistant's orders for it will be gone.",
       confirm: "Revert 1 unit"
     });
+  });
+
+  it("counts units and Armies together (ah-mjiv1)", () => {
+    expect(countLabel(0, 1)).toBe("1 army");
+    expect(countLabel(0, 2)).toBe("2 armies");
+    expect(countLabel(1, 3)).toBe("1 unit · 3 armies");
+    expect(countLabel(3, 1)).toBe("3 units · 1 army");
+    expect(countLabel(3, 0)).toBe("3 units");
+  });
+
+  it("counts Armies in the chip, and problems only from units", () => {
+    expect(assistantChipLabel([{ edited: false, problems: ["a"] }], 3)).toBe("Assistant: 4 · ⚠ 1");
+  });
+
+  it("asks the Revert all question for units and Armies, each clause only when it applies", () => {
+    expect(revertAllPrompt(1, 1, 1)).toEqual({
+      question:
+        "Revert 1 unit and 2 armies? The assistant's orders for the unit will be gone, the new army deleted, and the changed army put back as it was.",
+      confirm: "Revert 3 changes"
+    });
+    expect(revertAllPrompt(0, 2, 0)).toEqual({ question: "Revert 2 armies? The new armies will be deleted.", confirm: "Revert 2 armies" });
+    expect(revertAllPrompt(0, 0, 2)).toEqual({
+      question: "Revert 2 armies? The changed armies will be put back as they were.",
+      confirm: "Revert 2 armies"
+    });
+    expect(revertAllPrompt(0, 1, 1)).toEqual({
+      question: "Revert 2 armies? The new army will be deleted, and the changed army put back as it was.",
+      confirm: "Revert 2 armies"
+    });
+    expect(revertAllPrompt(2, 1, 0)).toEqual({
+      question: "Revert 2 units and 1 army? The assistant's orders for the units will be gone, and the new army deleted.",
+      confirm: "Revert 3 changes"
+    });
+    expect(revertAllPrompt(3, 0, 0).question).toBe("Revert 3 units? The assistant's orders for them will be gone.");
   });
 });

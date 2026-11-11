@@ -295,7 +295,7 @@ describe("deleting a game", () => {
   it("forgets the assistant changes listed for it", async () => {
     stubGlobalStorage();
     const scope = { gameId: "gone", factionId: "3", turn: 71 };
-    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }] });
+    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }], armies: [] });
 
     await deleteGame(fakeClient(), "gone", null, NOW, vi.fn());
 
@@ -427,7 +427,7 @@ describe("resetting a game", () => {
   it("forgets the assistant changes listed for the emptied game", async () => {
     stubGlobalStorage();
     const scope = { gameId: "emptied", factionId: "3", turn: 71 };
-    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }] });
+    saveAssistantChanges(scope, { open: true, changes: [{ unitId: "1", before: "", after: "tax" }], armies: [] });
     expect(loadAssistantChanges(scope).changes).toHaveLength(1);
 
     await resetGame(fakeClient(), "emptied", null, NOW, vi.fn());

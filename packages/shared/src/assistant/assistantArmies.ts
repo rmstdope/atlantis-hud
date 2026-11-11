@@ -82,7 +82,7 @@ export function createAssistantArmy(input: {
   }
   distinct(unitIds, "");
   const members = shownUnits(unitIds, units);
-  const army = { ...newArmy({ gameId, name, now }), madeByAssistant: true };
+  const army: ArmyRecord = { ...newArmy({ gameId, name, now }), madeByAssistant: true };
   return members.reduce((one, unit) => withMember(one, unit, turn, now), army);
 }
 

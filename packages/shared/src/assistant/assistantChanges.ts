@@ -12,6 +12,7 @@
 import type { OrderDiagnostic, ParsedReport, ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { SURFACE } from "../hexMapModel";
 import type { OrderProcessing } from "../orderProcessing";
+import type { ArmySide } from "./assistantArmies";
 
 /** One unit the assistant has changed. */
 export type AssistantChange = {
@@ -22,13 +23,28 @@ export type AssistantChange = {
   after: string;
 };
 
+/** One Army the assistant has made or changed (ah-mjiv1); the rules are `assistantArmyChanges`. */
+export type AssistantArmyChange = {
+  armyId: string;
+  /** The Army before the assistant's first write, or the player's edit it wrote over; `null` for a new one. */
+  before: ArmySide | null;
+  /** What the assistant last left it as. */
+  after: ArmySide;
+};
+
 export type AssistantChangesState = {
   /** Whether the panel is showing. Closing only hides it; the list stays. */
   open: boolean;
   changes: AssistantChange[];
+  armies: AssistantArmyChange[];
 };
 
-export const NO_ASSISTANT_CHANGES: AssistantChangesState = { open: true, changes: [] };
+export const NO_ASSISTANT_CHANGES: AssistantChangesState = { open: true, changes: [], armies: [] };
+
+/** How many entries the panel lists, units and Armies together. */
+export function listedCount(state: AssistantChangesState): number {
+  return state.changes.length + state.armies.length;
+}
 
 /**
  * One write folded in. `replaced` is what the unit's orders were at that moment.
@@ -45,7 +61,7 @@ export function recordAssistantWrite(
   const before = existing === undefined || replaced !== existing.after ? replaced : existing.before;
   const others = state.changes.filter((change) => change.unitId !== unitId);
   const changes = before === wrote ? others : [...others, { unitId, before, after: wrote }];
-  return { open: state.changes.length === 0 ? true : state.open, changes };
+  return { ...state, open: listedCount(state) === 0 ? true : state.open, changes };
 }
 
 /**
@@ -270,8 +286,20 @@ export function assistantChangeViews(input: {
     });
 }
 
-export function countLabel(count: number): string {
+function unitsLabel(count: number): string {
   return `${count} unit${count === 1 ? "" : "s"}`;
+}
+
+function armiesLabel(count: number): string {
+  return `${count} ${count === 1 ? "army" : "armies"}`;
+}
+
+/** The panel's count: units, Armies, or both, each named only when there are any (ah-mjiv1). */
+export function countLabel(units: number, armies = 0): string {
+  if (armies === 0) {
+    return unitsLabel(units);
+  }
+  return units === 0 ? armiesLabel(armies) : `${unitsLabel(units)} · ${armiesLabel(armies)}`;
 }
 
 export function problemMark(count: number): string {
@@ -279,17 +307,47 @@ export function problemMark(count: number): string {
 }
 
 /** The header chip's words. The number after the mark is units with problems, not hand-edited ones. */
-export function assistantChipLabel(views: ReadonlyArray<Pick<AssistantChangeView, "edited" | "problems">>): string {
+export function assistantChipLabel(
+  views: ReadonlyArray<Pick<AssistantChangeView, "edited" | "problems">>,
+  armies = 0
+): string {
   const withProblems = views.filter((view) => !view.edited && view.problems.length > 0).length;
-  return `Assistant: ${views.length}${withProblems > 0 ? ` · ⚠ ${withProblems}` : ""}`;
+  return `Assistant: ${views.length + armies}${withProblems > 0 ? ` · ⚠ ${withProblems}` : ""}`;
 }
 
-/** The Revert all strip's question and its button, for this many units going back. */
-export function revertAllPrompt(count: number): { question: string; confirm: string } {
-  const units = countLabel(count);
-  const pronoun = count === 1 ? "it" : "them";
+/**
+ * The Revert all strip's question and its button, for this many units, new Armies and changed Armies
+ * going back. Each clause is said only when it applies, so the player is told an Army will be deleted.
+ */
+export function revertAllPrompt(units: number, newArmies = 0, changedArmies = 0): { question: string; confirm: string } {
+  const armies = newArmies + changedArmies;
+  if (armies === 0) {
+    const pronoun = units === 1 ? "it" : "them";
+    return {
+      question: `Revert ${unitsLabel(units)}? The assistant's orders for ${pronoun} will be gone.`,
+      confirm: `Revert ${unitsLabel(units)}`
+    };
+  }
+  // Each clause as a subject and what happens to it; the first takes "will be".
+  const clauses: [string, string][] = [];
+  if (units > 0) {
+    clauses.push([`The assistant's orders for the unit${units === 1 ? "" : "s"}`, "gone"]);
+  }
+  if (newArmies > 0) {
+    clauses.push([newArmies === 1 ? "the new army" : "the new armies", "deleted"]);
+  }
+  if (changedArmies > 0) {
+    clauses.push([
+      changedArmies === 1 ? "the changed army" : "the changed armies",
+      `put back as ${changedArmies === 1 ? "it was" : "they were"}`
+    ]);
+  }
+  const said = clauses.map(([subject, fate], index) => (index === 0 ? `${subject} will be ${fate}` : `${subject} ${fate}`));
+  const sentence = said.length === 1 ? said[0] : `${said.slice(0, -1).join(", ")}, and ${said[said.length - 1]}`;
+  const capitalisedSentence = `${sentence?.charAt(0).toUpperCase() ?? ""}${sentence?.slice(1) ?? ""}`;
+  const what = units === 0 ? armiesLabel(armies) : `${unitsLabel(units)} and ${armiesLabel(armies)}`;
   return {
-    question: `Revert ${units}? The assistant's orders for ${pronoun} will be gone.`,
-    confirm: `Revert ${units}`
+    question: `Revert ${what}? ${capitalisedSentence}.`,
+    confirm: units === 0 ? `Revert ${armiesLabel(armies)}` : `Revert ${units + armies} changes`
   };
 }
