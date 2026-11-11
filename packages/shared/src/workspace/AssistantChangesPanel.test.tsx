@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { alignOrderLines, type AssistantChangeView } from "../assistant/assistantChanges";
+import type { AssistantArmyChangeView } from "../assistant/assistantArmyChanges";
 import { AssistantChangesContent, ResizeEdges } from "./AssistantChangesPanel";
 
 function view(overrides: Partial<AssistantChangeView> = {}): AssistantChangeView {
@@ -18,10 +19,31 @@ function view(overrides: Partial<AssistantChangeView> = {}): AssistantChangeView
   };
 }
 
-function render(views: AssistantChangeView[], asking = false): string {
+function armyView(overrides: Partial<AssistantArmyChangeView> = {}): AssistantArmyChangeView {
+  return {
+    armyId: "a1",
+    name: "Ibizzibith assault",
+    summary: "new army · 2 units",
+    isNew: true,
+    edited: false,
+    rows: [
+      { before: null, after: "Borg (7076) · 1 man", changed: true },
+      { before: null, after: "Recruits (2101) · 29 men", changed: true }
+    ],
+    beforeEmpty: true,
+    afterEmpty: false,
+    ...overrides
+  };
+}
+
+function render(views: AssistantChangeView[], asking = false, armyViews: AssistantArmyChangeView[] = []): string {
   return renderToStaticMarkup(
     <AssistantChangesContent
       views={views}
+      armyViews={armyViews}
+      onKeepArmy={vi.fn()}
+      onRevertArmy={vi.fn()}
+      onSelectArmy={vi.fn()}
       asking={asking}
       barProps={{}}
       onKeepAll={vi.fn()}
@@ -161,5 +183,74 @@ describe("ResizeEdges", () => {
 describe("an entry's heading line", () => {
   it("is marked, so the panel's smallest height can be measured from it", () => {
     expect(render([view()])).toContain("data-entry-heading");
+  });
+});
+
+describe("an Army entry (ah-mjiv1)", () => {
+  it("comes after every unit entry, with its name, summary, Keep and Revert", () => {
+    const html = render([view()], false, [armyView()]);
+
+    expect(html.indexOf('data-testid="assistant-change-1234"')).toBeLessThan(html.indexOf('data-testid="assistant-army-change-a1"'));
+    expect(html).toMatch(/data-testid="assistant-army-change-select-a1"[^>]*>Ibizzibith assault</u);
+    expect(html).toContain("new army · 2 units");
+    expect(html).toContain('data-testid="assistant-army-change-keep-a1"');
+    expect(html).toContain('data-testid="assistant-army-change-revert-a1"');
+    expect(html).toContain("1 unit · 1 army");
+  });
+
+  it("compares the members: no army against every member of a new Army", () => {
+    const html = render([], false, [armyView()]);
+
+    expect(html).toContain("no army");
+    expect(html).toContain("Borg (7076) · 1 man");
+    expect(html).toContain("Recruits (2101) · 29 men");
+    expect(html).toContain("1 army");
+  });
+
+  it("reads an emptied Army's After side as no units", () => {
+    const html = render([], false, [
+      armyView({ isNew: false, summary: "1 → 0 units", beforeEmpty: false, afterEmpty: true, rows: [{ before: "Borg (7076) · 1 man", after: null, changed: true }] })
+    ]);
+
+    expect(html).toContain("1 → 0 units");
+    expect(html).toContain("no units");
+    expect(html).not.toContain("no army");
+  });
+
+  it("marks a new Army edited by hand, with Revert off and the made-it sentences", () => {
+    const html = render([], false, [armyView({ edited: true })]);
+
+    expect(html).toContain("✎ edited since");
+    expect(html).toMatch(/data-testid="assistant-army-change-revert-a1"[^>]*disabled=""/u);
+    expect(html).toContain('title="You have changed this army since the assistant made it, so a revert would lose your edit."');
+    expect(html).toContain("You changed this army after the assistant made it. Revert is off so it cannot overwrite your edit.");
+  });
+
+  it("says changed rather than made for an edited Army that was not new", () => {
+    const html = render([], false, [armyView({ edited: true, isNew: false, beforeEmpty: false })]);
+
+    expect(html).toContain("since the assistant changed it, so a revert would lose your edit.");
+    expect(html).toContain("You changed this army after the assistant changed it. Revert is off so it cannot overwrite your edit.");
+  });
+
+  it("asks one Revert all question for units and Armies, leaving out the edited ones", () => {
+    const html = render([view()], true, [
+      armyView(),
+      armyView({ armyId: "a2", name: "River raid", isNew: false, beforeEmpty: false, summary: "4 → 4 units" }),
+      armyView({ armyId: "a3", name: "Guards", edited: true })
+    ]);
+
+    expect(html).toContain(
+      "Revert 1 unit and 2 armies? The assistant's orders for the unit will be gone, the new army deleted, and the changed army put back as it was."
+    );
+    expect(html).toContain(">Revert 3 changes<");
+    expect(html).toContain("1 unit · 3 armies");
+  });
+
+  it("switches Revert all off only when every entry, unit or Army, is edited by hand", () => {
+    expect(render([view({ edited: true })], false, [armyView()])).not.toMatch(/data-testid="assistant-changes-revert-all"[^>]*disabled=""/u);
+    expect(render([view({ edited: true })], false, [armyView({ edited: true })])).toMatch(
+      /data-testid="assistant-changes-revert-all"[^>]*disabled=""/u
+    );
   });
 });
