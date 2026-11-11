@@ -1,0 +1,82 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Assistant Armies Marked</title><style>:root{color-scheme:dark;--page:#10151c;--ground:#1b212a;--panel:#222933;--raised:#2a323d;--edge:#46525f;--edge-soft:#333d49;--ink:#d4dce6;--soft:#a8b4c2;--dim:#99a4b2;--brass:#e0b25a;--bright:#eebe63;--warn:#d9a441;--select:#5aa9de;--gone:#e8949426;--added:#4fb78326;--added-ink:#8fd6ae;--gone-ink:#f0b4b4;--ui:system-ui,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.5 var(--ui)}
+.page{padding:24px 16px 48px;max-width:76rem;margin:0 auto;display:grid;gap:14px}
+h1{font-size:20px;line-height:1.3;margin:0}
+.lede{color:var(--soft);margin:4px 0 0;max-width:72ch}
+.lede b{color:var(--ink)}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:2px 9px}
+.btn:hover{border-color:var(--brass);color:var(--brass)}
+.hud{position:relative;display:grid;grid-template-rows:auto 1fr 15rem;height:42rem;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--ground);font-size:12.5px}
+.bar{display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--panel);border-bottom:1px solid var(--edge)}
+.bar b{color:var(--brass)}.bar .turn{color:var(--soft)}.gap{flex:1}
+.chip{border:1px solid var(--brass);color:var(--brass);background:var(--raised);border-radius:999px;padding:0 10px}
+.map{background:repeating-linear-gradient(60deg,#2f5d3a 0 40px,#7a7440 40px 80px,#5c5c66 80px 120px);opacity:.55}
+.dock{display:flex;border-top:1px solid var(--edge);background:var(--panel);min-height:0}
+.srail{width:172px;flex:none;border-right:1px solid var(--edge);background:#2a323db3;overflow:auto;padding:6px}
+.grp{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:10px 0 4px 6px}
+.s{display:flex;align-items:center;gap:6px;padding:3px 7px;border-radius:4px;color:var(--soft);font-size:13px}
+.s.on{background:#5aa9de26;color:var(--ink);box-shadow:inset 2px 0 0 var(--select)}
+.s .ct{margin-left:auto;color:var(--dim);font-size:12px}
+.s.add{color:var(--dim)}
+.table{flex:1;overflow:auto;padding:6px 10px;font-size:12.5px}
+.table table{border-collapse:collapse;width:100%}.table th{color:var(--dim);font-weight:600;text-align:left;border-bottom:1px solid var(--edge);padding:2px 6px}.table td{padding:2px 6px;border-bottom:1px solid var(--edge-soft)}
+.foreign{color:#e89494}
+.changes{position:absolute;left:14px;top:46px;width:min(40rem,calc(100% - 28px));max-height:24rem;display:grid;grid-template-rows:auto 1fr;background:var(--raised);border:1px solid var(--edge);border-radius:4px;box-shadow:0 10px 30px #0009}
+.head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--edge)}
+.head .count{color:var(--soft)}.x{background:none;border:0;color:var(--dim)}
+.list{overflow:auto}
+.unit{padding:8px;border-bottom:1px solid var(--edge-soft)}
+.uhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin-bottom:5px}
+.name{background:none;border:0;padding:0;color:var(--brass);font-weight:600}
+.where{color:var(--dim)}
+.sbs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:1px solid var(--edge-soft);border-radius:3px;background:var(--ground);font:12px/1.6 var(--mono)}
+.cap{font:600 11px/1.5 var(--ui);letter-spacing:.04em;text-transform:uppercase;color:var(--dim);padding:2px 8px;border-bottom:1px solid var(--edge-soft)}
+.cap+.cap,.r{border-left:1px solid var(--edge-soft)}
+.l{padding:0 8px;min-height:1.6em;white-space:pre-wrap;overflow-wrap:anywhere}
+.l.add{background:var(--added);color:var(--added-ink)}.l.gone{background:var(--gone);color:var(--gone-ink)}.l.none{color:var(--dim);font-style:italic}
+.mark{font-size:10.5px;color:var(--brass);border:1px solid #e0b25a80;border-radius:999px;padding:0 6px;line-height:1.5}
+.note{color:var(--soft);font-size:13px;max-width:72ch}
+@media (max-width:760px){.hud{height:auto;grid-template-rows:auto 8rem auto}.dock{flex-direction:column}.srail{width:auto;border-right:0;border-bottom:1px solid var(--edge)}.changes{position:static;width:auto;max-height:none;border-radius:0}}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:6px 8px;background:var(--panel);border-bottom:1px solid var(--edge)}
+.flag{font-size:11.5px;color:var(--soft);white-space:nowrap}.why{margin:5px 0 0;color:var(--soft);font-size:11.5px}
+.btn:disabled{color:var(--dim);border-color:var(--edge-soft);cursor:not-allowed}
+.changes{grid-template-rows:auto auto 1fr;max-height:26rem}
+</style></head><body><div class="page">
+<header><h1>Collapsed — unchanged members of a changed army fold into one line</h1><p class="lede">Look at <b>River raid</b>: only the members that came or went are listed, plus one line, “… 2 more unchanged”. A new army lists all of its members.</p></header>
+<div class="hud">
+<div class="bar"><b>Atlantis HUD</b><span class="turn">Month 7, Year 2 · Turn 19</span><span class="gap"></span></div>
+<div class="map"></div>
+<div class="dock"><div class="srail"><div class="s">This hex <span class="ct">4</span></div><div class="s">All my units <span class="ct">41</span></div><div class="s">Foreign units <span class="ct">12</span></div><div class="grp">Armies</div><div class="s">Home guard <span class="ct">6</span></div><div class="s on">Ibizzibith assault <span class="mark" title="Made by the assistant, which can change it.">assistant</span><span class="ct">9</span></div><div class="s">Ibizzibith guards <span class="mark" title="Made by the assistant, which can change it.">assistant</span><span class="ct">1</span></div><div class="s">River raid <span class="mark" title="Made by the assistant, which can change it.">assistant</span><span class="ct">4</span></div><div class="s add">+ New Army</div></div>
+<div class="table"><table><tr><th>Unit</th><th>Faction</th><th>Men</th><th>Where</th></tr><tr><td>Borg (7076)</td><td>Borg (19)</td><td>1</td><td>Forest (21,7)</td></tr><tr><td>Recruits (2101)</td><td>Borg (19)</td><td>29</td><td>Forest (21,7)</td></tr><tr><td>Fire mage (2140)</td><td>Borg (19)</td><td>1</td><td>Forest (21,7)</td></tr><tr><td>…</td><td></td><td></td><td></td></tr></table></div></div>
+<section class="changes" aria-label="Assistant changes">
+<div class="head"><strong>Assistant changes</strong><span class="count">1 unit · 3 armies</span><span class="gap"></span><button class="btn">Keep all</button><button class="btn">Revert all</button><button class="x" aria-label="Close the panel">✕</button></div>
+<div class="confirm"><span>Revert 1 unit and 2 armies? The assistant's orders for the unit will be gone, the new army deleted, and the changed army put back as it was.</span><span class="gap"></span><button class="btn">Revert 3 changes</button><button class="btn">Cancel</button></div>
+<div class="list">
+<article class="unit"><div class="uhead"><button class="name">Scouts (1234)</button><span class="where">Plain (19,5)</span><span class="gap"></span><button class="btn">Keep</button><button class="btn">Revert</button></div>
+<div class="sbs"><div class="cap">Before</div><div class="cap">After</div><div class="l">avoid 1</div><div class="l r">avoid 1</div><div class="l gone">work</div><div class="l add r">move N N</div></div></article>
+<article class="unit"><div class="uhead"><button class="name">Ibizzibith assault</button><span class="where">new army · 9 units</span><span class="gap"></span><button class="btn">Keep</button><button class="btn">Revert</button></div>
+<div class="sbs"><div class="cap">Before</div><div class="cap">After</div>
+<div class="l none">no army</div><div class="l add r">Borg (7076) · 1 man</div>
+<div class="l"></div><div class="l add r">Recruits (2101) · 29 men</div>
+<div class="l"></div><div class="l add r">Fire mage (2140) · 1 man</div>
+<div class="l"></div><div class="l add r">Fire mage (2141) · 1 man</div>
+<div class="l"></div><div class="l add r">Fire mage (2142) · 1 man</div>
+<div class="l"></div><div class="l add r">Earth mage (2143) · 1 man</div>
+<div class="l"></div><div class="l add r">Earth mage (2144) · 1 man</div>
+<div class="l"></div><div class="l add r">Wolf mage (2150) · 1 man</div>
+<div class="l"></div><div class="l add r">Tactician (2160) · 1 man</div></div></article>
+<article class="unit"><div class="uhead"><button class="name">Ibizzibith guards</button><span class="where">new army · 2 units</span><span class="gap"></span><span class="flag">✎ edited since</span><button class="btn">Keep</button><button class="btn" disabled title="You have changed this army since the assistant made it, so a revert would lose your edit.">Revert</button></div>
+<div class="sbs"><div class="cap">Before</div><div class="cap">After</div>
+<div class="l none">no army</div><div class="l add r">City Guard (88), The Guardsmen (1) · 120 men</div>
+<div class="l"></div><div class="l add r">Guard mage (89), The Guardsmen (1) · 1 man</div></div>
+<p class="why">You changed this army after the assistant made it. Revert is off so it cannot overwrite your edit.</p></article>
+<article class="unit"><div class="uhead"><button class="name">River raid</button><span class="where">4 → 4 units</span><span class="gap"></span><button class="btn">Keep</button><button class="btn">Revert</button></div>
+<div class="sbs"><div class="cap">Before</div><div class="cap">After</div>
+<div class="l">Riders (2301) · 12 men</div><div class="l r">Riders (2301) · 12 men</div>
+<div class="l gone">Archers (2302) · 8 men</div><div class="l add r">Longbows (2310) · 10 men</div>
+<div class="l">… 2 more unchanged</div><div class="l r">… 2 more unchanged</div></div></article>
+</div></section>
+</div>
+<p class="note">In the panel: <b>Ibizzibith assault</b> is new. <b>Ibizzibith guards</b> is new, but the player has since removed a guard by hand, so it is marked edited and Revert is off. The assistant may still change it, and if it does, Before becomes the player's version and Revert comes back. <b>River raid</b> was made by the assistant on an earlier turn and changed today. Revert all reverts only Ibizzibith assault, River raid and Scouts, so it asks about 1 unit and 2 armies.</p>
+<p class="note">Cost: the entry stays short even for a 37-unit army, but the player can't see the whole army there without pressing its name.</p></div></body></html>
