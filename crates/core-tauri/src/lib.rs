@@ -2537,6 +2537,7 @@ plain (12,34) in Coast of Dawn, contains Dawnhaven [town], 1200 peasants (humans
             }],
             created_at: "2026-08-07T12:00:00Z".to_string(),
             updated_at: "2026-08-07T12:00:00Z".to_string(),
+            made_by_assistant: false,
         };
         let saved = command_save_army(&created.database_path, army.clone()).expect("save army");
         assert_eq!(saved, army);

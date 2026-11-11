@@ -326,6 +326,9 @@ pub struct GameBackupArmy {
     pub members: Vec<ArmyMember>,
     pub created_at: String,
     pub updated_at: String,
+    /// See `Army::made_by_assistant`. Absent from every backup written before it existed.
+    #[serde(default)]
+    pub made_by_assistant: bool,
 }
 
 /// A named group of units, scoped to the game and outliving any one turn.
@@ -346,6 +349,12 @@ pub struct Army {
     pub members: Vec<ArmyMember>,
     pub created_at: String,
     pub updated_at: String,
+    /// Made through the assistant connection (ah-mjiv1): the assistant may change it for good, and
+    /// the rail marks it. `false` for every Army the player made and every one stored before this
+    /// field existed.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub made_by_assistant: bool,
 }
 
 /// One mage an ally shared, as the sheet that carried him described him.
@@ -1159,8 +1168,11 @@ mod tests {
             }],
             created_at: "2026-08-07T12:00:00Z".to_string(),
             updated_at: "2026-08-07T12:00:00Z".to_string(),
+            made_by_assistant: true,
         };
         let json = serde_json::to_string(&army).expect("serialises");
+
+        assert!(json.contains("\"madeByAssistant\":true"));
 
         assert!(json.contains("\"gameId\""));
         assert!(json.contains("\"createdAt\""));
@@ -1468,6 +1480,22 @@ mod tests {
     }
 
     #[test]
+    fn a_backup_army_written_before_the_assistant_mark_reads_as_the_players() {
+        let json = serde_json::json!({
+            "id": "army-1",
+            "name": "Escort",
+            "members": [],
+            "createdAt": "2026-01-05T00:00:00Z",
+            "updatedAt": "2026-01-05T00:00:00Z"
+        })
+        .to_string();
+
+        let army: GameBackupArmy = serde_json::from_str(&json).expect("decodes");
+
+        assert!(!army.made_by_assistant);
+    }
+
+    #[test]
     fn armies_survive_encode_and_decode() {
         let army = GameBackupArmy {
             id: "army-1".to_string(),
@@ -1497,6 +1525,7 @@ mod tests {
             }],
             created_at: "2026-01-05T00:00:00Z".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
+            made_by_assistant: true,
         };
         let mut content = content_with(vec![], vec![], vec![], vec![], vec![]);
         content.collections.armies = vec![army.clone()];
@@ -2164,6 +2193,7 @@ mod tests {
             members: vec![member],
             created_at: "2026-01-05T00:00:00Z".to_string(),
             updated_at: "2026-01-05T00:00:00Z".to_string(),
+            made_by_assistant: false,
         }];
         content.collections.allied_mages = vec![AlliedMage {
             faction_id: "21".to_string(),

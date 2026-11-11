@@ -1494,7 +1494,8 @@ describe("exporting and importing games", () => {
       updatedAt: "2026-08-08T00:00:00Z"
     });
 
-    await adapter.saveArmy(opened.databasePath, anArmy("army-1", "alpha"));
+    // Made by the assistant (ah-mjiv1), so the restore has to carry the mark too.
+    await adapter.saveArmy(opened.databasePath, { ...anArmy("army-1", "alpha"), madeByAssistant: true });
     await adapter.saveAlliedMages(opened.databasePath, "alpha", [aMage("9001")], []);
 
     const backupJson = (await adapter.exportGame("alpha", NOW)) as string;
@@ -1566,7 +1567,7 @@ describe("exporting and importing games", () => {
       }
     ]);
     expect(await imported.listArmies(restored.databasePath, "alpha")).toEqual([
-      anArmy("army-1", "alpha")
+      { ...anArmy("army-1", "alpha"), madeByAssistant: true }
     ]);
     expect(await imported.listAlliedMages(restored.databasePath, "alpha")).toEqual([aMage("9001")]);
   });
