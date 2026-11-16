@@ -1107,7 +1107,7 @@ export function withoutFactionPassword(text: string): string {
  * `#atlantis` and then either a faction number with the rest of the line up to (never including)
  * `\r`, or a quoted string straight after it.
  */
-const ANY_FACTION_HEADER = /(#atlantis\b)(?:([ \t]+\d+)(?=[ \t\r]|$)([^\r\n]*)|[ \t]*"[^"\r\n]*"?)/gimu;
+const ANY_FACTION_HEADER = /(#atlantis\b)(?:([ \t]+\d+)(?=[ \t\r"]|$)([^\r\n]*)|[ \t]*"[^"\r\n]*"?)/gimu;
 
 /**
  * The header line, with what must survive a rewrite of it.

@@ -609,6 +609,7 @@ describe("withoutFactionPassword", () => {
     expect(withoutFactionPassword("#atlantis 7 sesame\n")).toBe('#atlantis 7 "<password hidden>"\n');
     expect(withoutFactionPassword('#atlantis "sesame"\n')).toBe('#atlantis "<password hidden>"\n');
     expect(withoutFactionPassword('#ATLANTIS 27 "foobar"')).toBe('#ATLANTIS 27 "<password hidden>"');
+    expect(withoutFactionPassword('#atlantis 3"sesame"')).toBe('#atlantis 3 "<password hidden>"');
   });
 
   it("finds the directive anywhere on a line, as in a numbered report line", () => {

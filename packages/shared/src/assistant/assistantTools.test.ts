@@ -2493,6 +2493,8 @@ describe("the faction password never reaches the assistant", () => {
   const LOCKED = ['#atlantis 3 "sesame"', "", ";*** plain (1,1) in Coast ***", "", "unit 100", "work", "", "unit 101", "", "#end", ""].join("\n");
   const REPORT = 'Testers (3) Report\nOrders Template (Long Format):\n\n#atlantis 3 "sesame"\n\nunit 100\n#end\n';
   const HIDDEN = '#atlantis 3 "<password hidden>"';
+  /** Orders whose unit 100 block carries a pasted header line, so a per-unit answer would show it. */
+  const PASTED = LOCKED.replace("work", 'work\n; pasted: #atlantis 3 "sesame"');
 
   /** Turn 11 kept the player's orders; turn 9 kept none and its report's template holds the line. */
   function lockedEarlierTurns(): EarlierTurnSource {
@@ -2512,9 +2514,9 @@ describe("the faction password never reaches the assistant", () => {
       list: async () => [],
       load: async (turnNumber) =>
         turnNumber === 11
-          ? { turnNumber, parsed: report(11, null), ordersDocument: LOCKED }
+          ? { turnNumber, parsed: report(11, null), ordersDocument: PASTED }
           : turnNumber === 9
-            ? { turnNumber, parsed: report(9, LOCKED), ordersDocument: null }
+            ? { turnNumber, parsed: report(9, PASTED), ordersDocument: null }
             : null
     };
   }
@@ -2572,8 +2574,10 @@ describe("the faction password never reaches the assistant", () => {
     const kept = await call(host, "get_orders", { turn: 11, unitId: "100" });
     const template = await call(host, "get_orders", { turn: 9, unitId: "100" });
 
-    expect(json(kept.text).orders).toBe("work");
-    expect(json(template.text).orders).toBe("work");
+    expect(kept.text).not.toContain("sesame");
+    expect(json(kept.text).orders).toBe(`work\n; pasted: ${HIDDEN}`);
+    expect(template.text).not.toContain("sesame");
+    expect(json(template.text).orders).toBe(`work\n; pasted: ${HIDDEN}`);
   });
 
   it("hides it in any refusal and in a failure the host reports", async () => {
