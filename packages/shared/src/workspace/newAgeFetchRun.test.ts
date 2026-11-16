@@ -302,7 +302,8 @@ describe("runNewAgeFetch", () => {
       const { askedTurns, calls, effects } = harness({
         arrival: async () => askNewer,
         historyTurns: async () => ({ kind: "ok", value: [79, 80, 81, 82, 83] }),
-        heldTurns: () => ({ stored: [{ turnNumber: 80 }], workingTurn: 80 })
+        // Nothing listed as stored: the turn on screen is still never fetched again.
+        heldTurns: () => ({ stored: [], workingTurn: 80 })
       });
 
       const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);

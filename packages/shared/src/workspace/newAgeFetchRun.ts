@@ -172,7 +172,10 @@ export async function runNewAgeFetch(
   if (earlierTurns(turns.value, reference).length === 0) {
     return finish({ kind: "noneEarlier" });
   }
-  const missing = missingTurns(turns.value, holding.stored, reference);
+  // The turn on screen is held whether or not the picker has listed it yet: counting back from a
+  // held turn would otherwise fetch it again.
+  const onScreen = holding.workingTurn === null ? [] : [{ turnNumber: holding.workingTurn }];
+  const missing = missingTurns(turns.value, [...holding.stored, ...onScreen], reference);
   if (missing.length === 0) {
     return finish({ kind: "nothingMissing" });
   }

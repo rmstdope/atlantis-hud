@@ -65,11 +65,12 @@ import {
   type KnownMemory,
   type MemoryOutcome
 } from "../gameMemory";
-import { isOlderTurn } from "../reportLoadDecision";
+import { isOlderTurn, judgeReportUsable } from "../reportLoadDecision";
 import { classifyReportImport, type ReportImportSource } from "../mapExportImport";
 import {
   factionLabelOf,
   firstUnitIn,
+  historyOnlyRoute,
   loadTurn,
   openingSelection,
   reportParser,
@@ -251,6 +252,9 @@ import {
   FETCH_CONTROL_LABEL,
   FETCH_REFUSED_MID_RUN,
   fetchedReportName,
+  newAgeKeepStatus,
+  newAgeOpenStatus,
+  type NewAgeAskPhase,
   type NewAgeFetchPhase,
   type NewAgeFetchScope
 } from "./newAgeFetchView";
@@ -273,6 +277,7 @@ import { NewOriginsFetchDialog } from "./NewOriginsFetchDialog";
 import { runNewOriginsFetch } from "./newOriginsFetchRun";
 import {
   FETCHED_REPORT_NAME,
+  decideArrival,
   loadedStatus,
   stillShowing,
   UNREACHABLE,
@@ -2478,7 +2483,15 @@ export function AppShell({
   }, [parsed]);
 
   const loadReport = useCallback(
-    (text: string, fileName: string): Promise<ReportLoadOutcome | undefined> =>
+    (
+      text: string,
+      fileName: string,
+      /**
+       * `historyOnly`: a report that would take the screen is stored for history instead - the
+       * earlier turns of a New Age run that is holding its newest turn for a question (ah-1y7yi).
+       */
+      { historyOnly = false }: { historyOnly?: boolean } = {}
+    ): Promise<ReportLoadOutcome | undefined> =>
       runReported<ReportLoadOutcome | undefined>(
         async () => {
           // Whatever was being written belongs to the turn that is about to be replaced. Saved
@@ -2502,7 +2515,7 @@ export function AppShell({
           const held = await heldMagesFor(source);
 
           const viewer = viewerRef.current;
-          const route = routeReport(
+          const routed = routeReport(
             viewer,
             source,
             fileName,
@@ -2513,6 +2526,9 @@ export function AppShell({
               heldTurnByFaction: heldTurnsByFaction(held)
             }
           );
+          const route = historyOnly
+            ? historyOnlyRoute(routed, viewer?.header.turnNumber ?? null)
+            : routed;
 
           if (route.kind === "reject") {
             // Thrown rather than reported here, so `runReported`'s `could not read <file>: …`
@@ -5015,6 +5031,17 @@ export function AppShell({
   const fetchAbort = useRef<AbortController | null>(null);
   /** Set when the dialog is dismissed mid-run; the run reads it at each boundary. */
   const fetchAbandoned = useRef(false);
+  /**
+   * The turn a New Age run held back while the dialog asks Keep / Open (ah-1y7yi), held here rather
+   * than on the phase so the view module stays a module about words - `originsPending`'s rule.
+   * Cleared by `dismissFetch`, so Escape, the backdrop and a game or world switch all drop it.
+   */
+  const newAgePending = useRef<{
+    report: ParsedReport;
+    text: string;
+    phase: NewAgeAskPhase;
+    worldName: string;
+  } | null>(null);
 
   /** Where the New Origins fetch dialog has got to, or null when it is closed. */
   const [originsPhase, setOriginsPhase] = useState<NewOriginsFetchPhase | null>(null);
@@ -5238,6 +5265,7 @@ export function AppShell({
     fetchAbandoned.current = true;
     fetchAbort.current?.abort();
     fetchAbort.current = null;
+    newAgePending.current = null;
     setFetchPhase(null);
   }, []);
 
@@ -5365,8 +5393,12 @@ export function AppShell({
    * this writes over it once the load has returned. Only for a fetch: a dropped file is unchanged.
    */
   const openFetchedReport = useCallback(
-    async (report: ParsedReport, text: string): Promise<ReportLoadOutcome | undefined> => {
-      const outcome = await loadReport(text, FETCHED_REPORT_NAME);
+    async (
+      report: ParsedReport,
+      text: string,
+      name: string = FETCHED_REPORT_NAME
+    ): Promise<ReportLoadOutcome | undefined> => {
+      const outcome = await loadReport(text, name);
       if (outcome !== "loaded" || report.header.turnNumber === null) {
         // `loadReport` refused it and has already said why in red; do not paint over that.
         return outcome;
@@ -5421,6 +5453,61 @@ export function AppShell({
       settleAssistantFetch(stored === true ? keptOutcome(phase) : { kind: "notLoaded" });
     }
   }, [originsPhase, storeReportOnly, settleAssistantFetch]);
+
+  /** `Open turn 84` and `Load it again` on a New Age world (ah-1y7yi). */
+  const openNewAgePending = useCallback(async () => {
+    const pending = newAgePending.current;
+    newAgePending.current = null;
+    setFetchPhase(null);
+    if (pending === null) {
+      return;
+    }
+    const landed = await openFetchedReport(
+      pending.report,
+      pending.text,
+      fetchedReportName(pending.worldName)
+    );
+    const line = landed === "loaded" ? newAgeOpenStatus(pending.phase) : null;
+    if (line !== null) {
+      setStatus(line);
+    }
+    settleAssistantFetch(landedOutcome(landed, currentWorkingTurn()));
+  }, [openFetchedReport, settleAssistantFetch, currentWorkingTurn]);
+
+  /**
+   * `Keep turn 83` stores the held turn for history; `Keep what I have` stores nothing. The earlier
+   * turns of an "All reports" run were stored before the question, whatever the answer.
+   */
+  const keepNewAgePending = useCallback(async () => {
+    const pending = newAgePending.current;
+    newAgePending.current = null;
+    setFetchPhase(null);
+    if (pending === null) {
+      return;
+    }
+    const { phase } = pending;
+    if (phase.kind === "askSame") {
+      const line = newAgeKeepStatus(phase);
+      if (line !== null) {
+        setStatus(line);
+      }
+      settleAssistantFetch(keptOutcome(phase));
+      return;
+    }
+    // Reported like any other load, so a failed write says why in red - `keepPendingReport`'s rule.
+    const stored = await runReported(
+      () => storeReportOnly(pending.report, pending.text, phase.currentTurn),
+      (message) => setStatus(failedStatus(message)),
+      { prefix: `could not store turn ${phase.incomingTurn}` }
+    );
+    // `storeReportOnly` has written `turn 84 stored for history; still showing turn 83.`; a run of
+    // several turns counts them all instead.
+    const line = stored === true ? newAgeKeepStatus(phase) : null;
+    if (line !== null) {
+      setStatus(line);
+    }
+    settleAssistantFetch(stored === true ? keptOutcome(phase) : { kind: "notLoaded" });
+  }, [storeReportOnly, settleAssistantFetch]);
 
   /**
    * One press of Fetch on a New Origins game: post the site's own download form with what the
@@ -5545,10 +5632,39 @@ export function AppShell({
       let reachedTurns = false;
       /** What `loadReport` did with this turn's own report, for the assistant's answer. */
       let landed: ReportLoadOutcome | undefined;
+      /** This turn's report, parsed, when the run holds it back for Keep / Open (ah-1y7yi). */
+      let incoming: ParsedReport | null = null;
 
       const outcome = await runNewAgeFetch(scope, { factionNumber, password }, worldName, {
         login: (id, secret) => api.login(id, secret, controller.signal),
         report: (token) => api.report(token, controller.signal),
+        // Asks before the screen is replaced, exactly as New Origins does: `decideArrival` is that
+        // fetch's own rule. Anything it does not ask about - and a report that will not parse or is
+        // unusable - goes through `loadReport`, which routes or refuses it as it always has.
+        arrival: async (reportText) => {
+          let report: ParsedReport;
+          try {
+            report = await parseReport(reportText);
+          } catch {
+            return { kind: "store" };
+          }
+          if (!judgeReportUsable(report).ok) {
+            return { kind: "store" };
+          }
+          // From `viewerRef`, not the render's `parsed`: the turn on screen now, not at the press.
+          const viewer = viewerRef.current;
+          const arrival = decideArrival(
+            viewer === null
+              ? null
+              : { factionId: viewer.header.factionId, turnNumber: viewer.header.turnNumber },
+            { factionId: report.header.factionId, turnNumber: report.header.turnNumber }
+          );
+          if (arrival.kind === "askNewer" || arrival.kind === "askSame") {
+            incoming = report;
+            return arrival;
+          }
+          return { kind: "store" };
+        },
         historyTurns: (token) => api.historyTurns(token, controller.signal),
         historyReport: (token, turnNumber) =>
           api.historyReport(token, turnNumber, controller.signal),
@@ -5558,7 +5674,9 @@ export function AppShell({
           const name =
             turnNumber === null ? fetchedReportName(worldName) : fetchedTurnName(worldName, turnNumber);
           if (turnNumber !== null) {
-            return (await loadReport(reportText, name)) !== undefined;
+            // Never onto the screen: while this turn is held for a question, a turn between the
+            // screen and it is newer than the screen, and must be stored for history (ah-1y7yi).
+            return (await loadReport(reportText, name, { historyOnly: true })) !== undefined;
           }
           newAgeStoringRun.current = controller;
           try {
@@ -5625,6 +5743,16 @@ export function AppShell({
         setFetchPhase(null);
       } else if (aftermath.dialog.kind === "reopen") {
         setFetchPhase(aftermath.dialog.phase);
+      } else if (aftermath.dialog.kind === "ask") {
+        if (incoming !== null && outcome.kind === "held") {
+          newAgePending.current = {
+            report: incoming,
+            text: outcome.reportText,
+            phase: aftermath.dialog.phase,
+            worldName
+          };
+        }
+        setFetchPhase(aftermath.dialog.phase);
       }
       if (aftermath.status !== null) {
         setStatus(aftermath.status);
@@ -5675,7 +5803,8 @@ export function AppShell({
       game,
       newAgeFromBrowser,
       settleAssistantFetch,
-      answerAssistantFetch
+      answerAssistantFetch,
+      parseReport
     ]
   );
 
@@ -7397,6 +7526,8 @@ export function AppShell({
           onFetch={(factionNumber, password, scope) =>
             void fetchFromNewAge(factionNumber, password, scope)
           }
+          onKeep={() => void keepNewAgePending()}
+          onOpen={() => void openNewAgePending()}
           onDismiss={dismissNewAgeFetchDialog}
         />
       )}
