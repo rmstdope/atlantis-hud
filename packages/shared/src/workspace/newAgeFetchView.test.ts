@@ -179,4 +179,9 @@ describe("newAgeFetchView - asking before the screen is replaced (ah-1y7yi)", ()
       "2 turns stored for history; still showing turn 21."
     );
   });
+
+  it("uses the agreed same-turn lines when nothing earlier was stored, failures or not", () => {
+    expect(newAgeKeepStatus(same(0, 1))).toEqual({ tone: "notice", text: "still showing turn 21." });
+    expect(newAgeOpenStatus(same(0, 1))).toBeNull();
+  });
 });

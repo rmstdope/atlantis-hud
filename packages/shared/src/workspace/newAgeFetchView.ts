@@ -178,11 +178,6 @@ export function newAgeSameTurnQuestion(worldName: string, turnNumber: number): s
   return `${worldName} still has turn ${turnNumber} — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.`;
 }
 
-/** The turn on screen while the question is up, whichever question it is. */
-function turnOnScreen(phase: NewAgeAskPhase): number {
-  return phase.kind === "askNewer" ? phase.currentTurn : phase.turnNumber;
-}
-
 /**
  * The status line after `Keep turn N` / `Keep what I have`, or `null` when the line the store
  * itself writes - `turn 22 stored for history; still showing turn 21.` - is already the right one.
@@ -191,15 +186,26 @@ function turnOnScreen(phase: NewAgeAskPhase): number {
  * words, so the line agrees with the question that was just answered.
  */
 export function newAgeKeepStatus(phase: NewAgeAskPhase): StatusLine | null {
-  const counted = phase.earlierStored > 0 || phase.notFetched > 0;
   if (phase.kind === "askNewer") {
-    return counted
+    // The newer-turn question named the failures, so the line after it counts them too.
+    return phase.earlierStored > 0 || phase.notFetched > 0
       ? runSummary(phase.earlierStored + 1, phase.notFetched, phase.currentTurn)
       : null;
   }
-  return counted
+  return sameTurnRunSummary(phase) ?? noticeStatus(stillShowing(phase.turnNumber));
+}
+
+/**
+ * The run's own line after the same-turn question, or `null` for the agreed one. Only when earlier
+ * turns were stored: with none, `runSummary` would read "no turns could be fetched" in red and,
+ * after Load it again, cover the line saying the reload happened.
+ */
+function sameTurnRunSummary(
+  phase: Extract<NewAgeAskPhase, { kind: "askSame" }>
+): StatusLine | null {
+  return phase.earlierStored > 0
     ? runSummary(phase.earlierStored, phase.notFetched, phase.turnNumber)
-    : noticeStatus(stillShowing(phase.turnNumber));
+    : null;
 }
 
 /**
@@ -208,10 +214,7 @@ export function newAgeKeepStatus(phase: NewAgeAskPhase): StatusLine | null {
  * turns uncounted, so they are reported here, after the answer.
  */
 export function newAgeOpenStatus(phase: NewAgeAskPhase): StatusLine | null {
-  if (phase.kind === "askNewer" || (phase.earlierStored === 0 && phase.notFetched === 0)) {
-    return null;
-  }
-  return runSummary(phase.earlierStored, phase.notFetched, turnOnScreen(phase));
+  return phase.kind === "askNewer" ? null : sameTurnRunSummary(phase);
 }
 
 /**

@@ -138,7 +138,6 @@ describe("NewAgeFetchDialog when the assistant asked (ah-9vmbx.3)", () => {
     expect(markup).not.toContain('data-testid="assistant-fetch-line"');
     expect(markup).not.toContain("The assistant never sees it");
   });
-
 });
 
 describe("NewAgeFetchDialog, asking before the screen is replaced (ah-1y7yi)", () => {
@@ -174,7 +173,7 @@ describe("NewAgeFetchDialog, asking before the screen is replaced (ah-1y7yi)", (
   });
 
   it("counts the earlier turns of an All reports run", () => {
-    const markup = draw({ ...askNewer, incomingTurn: 86, earlierStored: 2 } as NewAgeFetchPhase);
+    const markup = draw({ ...askNewer, incomingTurn: 86, earlierStored: 2 });
 
     expect(markup).toContain(
       "Turn 86 has arrived, along with 2 earlier turns, which are stored for history."

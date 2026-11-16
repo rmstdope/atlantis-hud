@@ -293,6 +293,34 @@ test("on New Age a newer turn asks first too, and Keep tells the assistant it wa
   );
 });
 
+test("on New Age, Escape while it asks keeps the turn on screen and tells the assistant it was declined", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await emptyNewAgeGame(page);
+  await page.evaluate((report) => {
+    window.__newAgeReport = report;
+  }, TURN_70);
+  await page.getByTestId("fetch-control").click();
+  await page.getByTestId("newage-faction-number").fill("95");
+  await page.getByTestId("newage-password").fill("right");
+  await page.getByTestId("newage-fetch-confirm").click();
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  await page.evaluate((report) => {
+    window.__newAgeReport = report;
+  }, TURN_71);
+
+  const id = await ask(page, "fetch_report");
+  await page.getByTestId("newage-faction-number").fill("95");
+  await page.getByTestId("newage-password").fill("hunter2");
+  await page.getByTestId("newage-fetch-confirm").click();
+  await expect(page.getByTestId("newage-fetch-keep")).toBeFocused();
+
+  await escapeUntilGone(page, "newage-fetch-panel");
+
+  await expect(page.getByTestId("import-status")).toHaveText("Fetch declined — the assistant has been told.");
+  expect((await answerOf(page, id)).text).toContain("declined");
+  await expect(page.getByTestId("turn-chip")).toContainText(String(OLDER_TURN));
+});
+
 test("a request made over the command palette opens once the palette closes, and another one then adds nothing", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await emptyNewAgeGame(page);
   await page.keyboard.press("ControlOrMeta+k");
