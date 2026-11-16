@@ -2478,7 +2478,7 @@ export function AppShell({
 
   const loadReport = useCallback(
     (text: string, fileName: string): Promise<ReportLoadOutcome | undefined> =>
-      runReported<ReportLoadOutcome>(
+      runReported<ReportLoadOutcome | undefined>(
         async () => {
           // Whatever was being written belongs to the turn that is about to be replaced. Saved
           // before anything else, because the state below is what tells the flush which draft it is.
@@ -2556,8 +2556,11 @@ export function AppShell({
             // ref must be left alone too.
             viewerRef.current = report;
             void checkOpened([{ fileName, report }], null);
+            return "loaded";
           }
-          return "loaded";
+          // `applyReport` said why in red; nothing reached the screen, so a caller must not claim
+          // it did - neither the fetch's green line nor the assistant's answer (ah-9vmbx.3).
+          return undefined;
         },
         (message) => setStatus(failedStatus(message)),
         { busy: setBusy, prefix: `could not read ${fileName}` }
@@ -5290,6 +5293,11 @@ export function AppShell({
    * it - the report lands - so the run answers the assistant with what landed, not the Cancel.
    */
   const newAgeStoringThisTurn = useRef(false);
+  /**
+   * The request whose Cancel was held back because its report was landing. The run that was
+   * landing it answers exactly this request, with what landed - or that nothing did.
+   */
+  const heldDecline = useRef<object | null>(null);
   /** What the open Fetch dialog adds for the assistant, or null for the player's own Fetch. */
   const [assistantFetch, setAssistantFetch] = useState<AssistantFetchPrompt | null>(null);
 
@@ -5596,10 +5604,18 @@ export function AppShell({
         worldName
       });
 
-      if (stillOurs || landed !== undefined) {
-        // A run dismissed before this turn's report arrived was answered by its dismissal; one
-        // dismissed while the report was landing is answered here, with what landed.
+      if (stillOurs) {
         settleAssistantFetch(newAgeRunOutcome(outcome, landed, currentWorkingTurn()));
+      } else if (heldDecline.current !== null) {
+        // Dismissed while this turn's report was landing: the request whose Cancel was held back
+        // hears what landed, or that it did not. A run dismissed earlier was answered by its
+        // dismissal, and a later request is never answered from this run.
+        if (assistantFetchRequest.current === heldDecline.current) {
+          answerAssistantFetch(
+            newAgeRunOutcome(outcome, landed, currentWorkingTurn()) ?? { kind: "notLoaded" }
+          );
+        }
+        heldDecline.current = null;
       }
       if (aftermath.dialog.kind === "close") {
         setFetchPhase(null);
@@ -5654,7 +5670,8 @@ export function AppShell({
       client,
       game,
       newAgeFromBrowser,
-      settleAssistantFetch
+      settleAssistantFetch,
+      answerAssistantFetch
     ]
   );
 
@@ -5968,8 +5985,11 @@ export function AppShell({
 
   /** Cancel, Escape or the backdrop on a Fetch dialog: the assistant's own hears it was declined. */
   const declineAssistantFetch = useCallback(() => {
+    const request = assistantFetchRequest.current;
     // This turn's report is already landing and Cancel cannot stop it: the run answers with that.
-    if (assistantFetchRequest.current?.shown && !newAgeStoringThisTurn.current) {
+    if (request?.shown && newAgeStoringThisTurn.current) {
+      heldDecline.current = request;
+    } else if (request?.shown) {
       answerAssistantFetch({ kind: "declined" });
       setStatus(noticeStatus(ASSISTANT_FETCH_DECLINED));
     }

@@ -33,6 +33,8 @@ declare global {
     __assistantWithdraw?: (id: number) => void;
     /** What New Origins' download form answers next. */
     __originsReport?: string;
+    /** What the New Age world's report endpoint answers next. */
+    __newAgeReport?: string;
   }
 }
 
@@ -68,6 +70,7 @@ test.beforeEach(async ({ page }) => {
       window.__assistantWithdraw = (id) => controllers.get(id)?.abort();
 
       window.__originsReport = origins;
+      window.__newAgeReport = newAge;
       (window as unknown as { __ATLANTIS_DESKTOP_PLUGINS__: unknown }).__ATLANTIS_DESKTOP_PLUGINS__ = {
         async httpRequest(request: { method: string; url: string; body?: string }) {
           if (request.url.includes("/auth/login")) {
@@ -83,7 +86,7 @@ test.beforeEach(async ({ page }) => {
           if (request.url.includes("download-report")) {
             return { status: 200, body: window.__originsReport ?? "" };
           }
-          return { status: 200, body: newAge };
+          return { status: 200, body: window.__newAgeReport ?? "" };
         }
       };
     },
@@ -290,10 +293,27 @@ test("a request the assistant gives up on while it waits its turn never opens", 
     "The player did not answer the fetch request in Atlantis HUD. Nothing was fetched."
   );
 
+  // The click's commit and its effects flush before the click resolves, so a dialog wrongly
+  // still queued would already be on screen here.
   await page.getByTestId("newage-fetch-cancel").click();
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
-  // Give a wrongly queued dialog the moment it would need to appear.
-  await page.waitForTimeout(500);
-  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
   await expect(page.getByTestId("import-status")).not.toContainText("declined");
+});
+
+test("a fetched report the HUD cannot read is answered as not loaded, never as loaded", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await emptyNewAgeGame(page);
+  await page.evaluate(() => {
+    window.__newAgeReport = "This is not an Atlantis report.";
+  });
+
+  const id = await ask(page, "fetch_report");
+  await page.getByTestId("newage-faction-number").fill("95");
+  await page.getByTestId("newage-password").fill("hunter2");
+  await page.keyboard.press("Enter");
+
+  expect(await answerOf(page, id)).toEqual({
+    text: "A report was fetched but Atlantis HUD could not load it; the player was shown why. The turn on screen is unchanged.",
+    isError: true
+  });
+  await expect(page.getByTestId("import-status")).toContainText("could not read");
 });
