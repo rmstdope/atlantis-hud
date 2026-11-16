@@ -256,3 +256,44 @@ test("on New Origins a newer turn still asks first, and Keep tells the assistant
     isError: false
   });
 });
+
+test("a request made over the command palette opens once the palette closes, and another one then adds nothing", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await emptyNewAgeGame(page);
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByTestId("command-palette")).toBeVisible();
+
+  const first = await ask(page, "fetch_report");
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+
+  // Only the dismiss stack sees the palette close: no Fetch or Send phase moves.
+  await escapeUntilGone(page, "command-palette");
+  await expect(page.getByTestId("assistant-fetch-line")).toHaveText(ASKING);
+  await expect(page.getByTestId("newage-password")).toBeFocused();
+
+  const second = await answerOf(page, await ask(page, "fetch_report"));
+  expect(second.isError).toBe(true);
+  expect(second.text).toContain("already waiting");
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(1);
+
+  await page.getByTestId("newage-fetch-cancel").click();
+  expect((await answerOf(page, first)).text).toContain("declined");
+});
+
+test("a request the assistant gives up on while it waits its turn never opens", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await emptyNewAgeGame(page);
+  await page.getByTestId("fetch-control").click();
+  await expect(page.getByTestId("newage-fetch-panel")).toBeVisible();
+
+  const id = await ask(page, "fetch_report");
+  await page.evaluate((call) => window.__assistantWithdraw!(call), id);
+  expect((await answerOf(page, id)).text).toBe(
+    "The player did not answer the fetch request in Atlantis HUD. Nothing was fetched."
+  );
+
+  await page.getByTestId("newage-fetch-cancel").click();
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+  // Give a wrongly queued dialog the moment it would need to appear.
+  await page.waitForTimeout(500);
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+  await expect(page.getByTestId("import-status")).not.toContainText("declined");
+});

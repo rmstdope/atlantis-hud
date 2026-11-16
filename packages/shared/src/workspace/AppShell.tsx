@@ -2352,7 +2352,7 @@ export function AppShell({
         // Should not be reachable - a report cannot be imported at all without an open game - but
         // claiming success here would tell the player a turn is stored when nothing was written.
         setStatus(failedStatus("there is no open game to store it in"));
-        return;
+        return false;
       }
       const settledRuleset = rulesetTextOf(await rulesetForThisLoad());
       const now = new Date().toISOString();
@@ -2369,6 +2369,7 @@ export function AppShell({
       setMemory({ remembered: stored.remembered, knownMap: stored.knownMap });
       setMergedReports(stored.merged);
       setStatus(stored.status);
+      return true;
     },
     [client, game, parsed, rawReport, rulesetForThisLoad]
   );
@@ -5284,6 +5285,11 @@ export function AppShell({
     unsubscribe: () => void;
     shown: boolean;
   } | null>(null);
+  /**
+   * Set while a New Age run is putting this turn's report into the game. A Cancel then cannot stop
+   * it - the report lands - so the run answers the assistant with what landed, not the Cancel.
+   */
+  const newAgeStoringThisTurn = useRef(false);
   /** What the open Fetch dialog adds for the assistant, or null for the player's own Fetch. */
   const [assistantFetch, setAssistantFetch] = useState<AssistantFetchPrompt | null>(null);
 
@@ -5399,8 +5405,14 @@ export function AppShell({
     if (phase.kind === "askNewer") {
       // `storeOlderTurn` never checks age; it names the incoming turn and the current one, which
       // is exactly `turn 84 stored for history; still showing turn 83.`
-      await storeReportOnly(pending.report, pending.text, phase.currentTurn);
-      settleAssistantFetch(keptOutcome(phase));
+      // Reported like any other load, so a failed write says why in red rather than rejecting
+      // into nothing - and the assistant hears it was not stored rather than waiting for ever.
+      const stored = await runReported(
+        () => storeReportOnly(pending.report, pending.text, phase.currentTurn),
+        (message) => setStatus(failedStatus(message)),
+        { prefix: `could not store turn ${phase.incomingTurn}` }
+      );
+      settleAssistantFetch(stored === true ? keptOutcome(phase) : { kind: "notLoaded" });
     }
   }, [originsPhase, storeReportOnly, settleAssistantFetch]);
 
@@ -5537,16 +5549,18 @@ export function AppShell({
         // `loadReport` is the same door a dropped file goes through, and it reports its own reason
         // on the status line - so a report it would not take is a `false` rather than a rejection.
         store: async (turnNumber, reportText) => {
-          const result = await loadReport(
-            reportText,
-            turnNumber === null
-              ? fetchedReportName(worldName)
-              : fetchedTurnName(worldName, turnNumber)
-          );
-          if (turnNumber === null) {
-            landed = result;
+          const name =
+            turnNumber === null ? fetchedReportName(worldName) : fetchedTurnName(worldName, turnNumber);
+          if (turnNumber !== null) {
+            return (await loadReport(reportText, name)) !== undefined;
           }
-          return result !== undefined;
+          newAgeStoringThisTurn.current = true;
+          try {
+            landed = await loadReport(reportText, name);
+          } finally {
+            newAgeStoringThisTurn.current = false;
+          }
+          return landed !== undefined;
         },
         heldTurns: () => ({
           stored: storedTurnsRef.current,
@@ -5582,8 +5596,9 @@ export function AppShell({
         worldName
       });
 
-      if (stillOurs) {
-        // A run dismissed or replaced while in flight has already been answered by its dismissal.
+      if (stillOurs || landed !== undefined) {
+        // A run dismissed before this turn's report arrived was answered by its dismissal; one
+        // dismissed while the report was landing is answered here, with what landed.
         settleAssistantFetch(newAgeRunOutcome(outcome, landed, currentWorkingTurn()));
       }
       if (aftermath.dialog.kind === "close") {
@@ -5953,7 +5968,8 @@ export function AppShell({
 
   /** Cancel, Escape or the backdrop on a Fetch dialog: the assistant's own hears it was declined. */
   const declineAssistantFetch = useCallback(() => {
-    if (assistantFetchRequest.current?.shown) {
+    // This turn's report is already landing and Cancel cannot stop it: the run answers with that.
+    if (assistantFetchRequest.current?.shown && !newAgeStoringThisTurn.current) {
       answerAssistantFetch({ kind: "declined" });
       setStatus(noticeStatus(ASSISTANT_FETCH_DECLINED));
     }
