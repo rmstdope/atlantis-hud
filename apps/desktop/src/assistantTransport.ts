@@ -1,7 +1,8 @@
 /**
  * The desktop's way for an assistant to reach the HUD's tools: the MCP server the Rust shell runs
  * (`src-tauri/src/assistant.rs`), which emits each call as `assistant://call` and takes the answer
- * back through `assistant_answer`.
+ * back through `assistant_answer`. A call the client gave up on arrives as `assistant://withdrawn`,
+ * which aborts that call's signal.
  *
  * Undefined in a plain browser, where there is no shell and so no server.
  */
@@ -25,24 +26,45 @@ export function desktopAssistantTransport(): AssistantTransport | undefined {
     async connect(tools, onCall) {
       const { invoke } = await import("@tauri-apps/api/core");
       const { listen } = await import("@tauri-apps/api/event");
-      const stop = await listen<AssistantCall>("assistant://call", (event) => {
+      // One per call still being answered, so a withdrawal reaches the call it names and no other.
+      const inFlight = new Map<number, AbortController>();
+      const stopCalls = await listen<AssistantCall>("assistant://call", (event) => {
         const call = event.payload;
-        void onCall(call)
+        const controller = new AbortController();
+        inFlight.set(call.id, controller);
+        void onCall(call, controller.signal)
           .catch((error: unknown) => ({
             text: `The HUD failed to answer: ${error instanceof Error ? error.message : String(error)}`,
             isError: true
           }))
-          .then((answer) => invoke("assistant_answer", { id: call.id, answer }))
+          .then((answer) => {
+            inFlight.delete(call.id);
+            return invoke("assistant_answer", { id: call.id, answer });
+          })
           .catch(() => {
             // The shell could not take the answer, so the relay's timeout fails the call.
           });
       });
+      const stopWithdrawals = await listen<number>("assistant://withdrawn", (event) => {
+        inFlight.get(event.payload)?.abort();
+        inFlight.delete(event.payload);
+      });
       await invoke("assistant_register_tools", { tools });
-      return stop;
+      return () => {
+        stopCalls();
+        stopWithdrawals();
+      };
     },
     async connection() {
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke("assistant_connection");
+    },
+    requestAttention() {
+      void import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke("assistant_request_attention"))
+        .catch(() => {
+          // Nothing bounces; the prompt is on screen all the same.
+        });
     },
     async writeFile(path, text) {
       const { invoke } = await import("@tauri-apps/api/core");

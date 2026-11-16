@@ -28,13 +28,19 @@ export interface AssistantConnection {
 
 export interface AssistantTransport {
   /**
-   * Registers `tools` and hands every call to `onCall`, sending back what it answers. Resolves to
-   * the function that stops listening.
+   * Registers `tools` and hands every call to `onCall`, sending back what it answers. `signal`
+   * aborts when the assistant gives up on that call or disconnects. Resolves to the function that
+   * stops listening.
    */
   connect(
     tools: readonly AssistantToolDefinition[],
-    onCall: (call: AssistantCall) => Promise<AssistantAnswer>
+    onCall: (call: AssistantCall, signal: AbortSignal) => Promise<AssistantAnswer>
   ): Promise<() => void>;
+  /**
+   * Asks for the player's attention the operating system's way, when the window is behind another
+   * (`send_orders` waits on them). Never takes focus; absent where a shell cannot.
+   */
+  requestAttention?(): void;
   /** Where the assistant connects. */
   connection(): Promise<AssistantConnection>;
   /**
@@ -73,7 +79,9 @@ export function useAssistant(transport: AssistantTransport | undefined, host: Om
     let stop: (() => void) | null = null;
     let unmounted = false;
     void transport
-      .connect(ASSISTANT_TOOLS, (call) => answerToolCall({ ...latest.current, seen: seen.current }, call.name, call.arguments))
+      .connect(ASSISTANT_TOOLS, (call, signal) =>
+        answerToolCall({ ...latest.current, seen: seen.current }, call.name, call.arguments, signal)
+      )
       .then((stopListening) => {
         if (unmounted) {
           stopListening();
