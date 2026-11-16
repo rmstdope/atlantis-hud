@@ -10,12 +10,20 @@ import {
   fetchDialogTitle,
   fetchWorkingLine,
   newAgeFetchIsReady,
+  newAgeNewerTurnQuestion,
+  newAgeSameTurnQuestion,
   type NewAgeFetchPhase,
   type NewAgeFetchScope
 } from "./newAgeFetchView";
 import { ASSISTANT_FETCH_NOTE, type AssistantFetchPrompt } from "../assistant/assistantFetch";
 import { AssistantFetchLine } from "./AssistantFetchLine";
 import { credentialNote, PASSWORD_REQUIRED_HINT, signInMetaLine } from "./newAgeSignInView";
+import {
+  KEEP_WHAT_I_HAVE,
+  LOAD_IT_AGAIN,
+  keepTurnLabel,
+  openTurnLabel
+} from "./newOriginsFetchView";
 
 /**
  * Asks for a faction number and a password, fetches with them, and stays up until the work is done.
@@ -23,6 +31,10 @@ import { credentialNote, PASSWORD_REQUIRED_HINT, signInMetaLine } from "./newAge
  * There is no session: the credentials live in this component's own state and die with it, which
  * is the whole of what this bead means. Nothing the world sent is rendered - the dialog receives a
  * `phase` whose message is one of the sentences `newAgeSignInView.ts` chose, never a reply body.
+ *
+ * When what arrived would replace the turn on screen it becomes the question, as the New Origins
+ * dialog does (ah-1y7yi): the question and Keep / Open in place of everything else, Keep focused
+ * so a reflexive Enter keeps what the player has.
  */
 export function NewAgeFetchDialog({
   rulesetLabel,
@@ -34,6 +46,8 @@ export function NewAgeFetchDialog({
   initialScope = "thisTurn",
   assistant,
   onFetch,
+  onKeep,
+  onOpen,
   onDismiss
 }: {
   /** `New Age: Arcanum` - the heading. */
@@ -58,6 +72,10 @@ export function NewAgeFetchDialog({
    */
   assistant?: AssistantFetchPrompt;
   onFetch: (factionNumber: string, password: string, scope: NewAgeFetchScope) => void;
+  /** `Keep turn 83` / `Keep what I have`. */
+  onKeep: () => void;
+  /** `Open turn 84` / `Load it again`. */
+  onOpen: () => void;
   /** Cancel and Escape both abandon whatever is running, so this promises nothing. */
   onDismiss: () => void;
 }) {
@@ -67,6 +85,7 @@ export function NewAgeFetchDialog({
   // construction rather than by an effect (the navigator, round 3).
   const [scope, setScope] = useState<NewAgeFetchScope>(initialScope);
   const fieldRef = useRef<HTMLInputElement | null>(null);
+  const keepRef = useRef<HTMLButtonElement | null>(null);
   // Whatever held focus when this mounted, so it can be given back on unmount - the rule
   // `ChipPopover` follows. This codebase has no focus trap and this dialog adds none.
   const openerRef = useRef<Element | null>(
@@ -93,6 +112,15 @@ export function NewAgeFetchDialog({
       fieldRef.current?.focus();
     }
   }, [phase]);
+
+  const asking = phase.kind === "askNewer" || phase.kind === "askSame";
+
+  // Focus on Keep the moment the question appears: Open replaces unsent changes, so it takes a Tab.
+  useEffect(() => {
+    if (asking) {
+      keepRef.current?.focus();
+    }
+  }, [asking]);
 
   const canFetch = newAgeFetchIsReady(factionNumber, password, phase);
   const working = fetchWorkingLine(phase, worldName);
@@ -132,7 +160,13 @@ export function NewAgeFetchDialog({
           {signInMetaLine(host, turnNumber)}
         </p>
 
-        {working === null ? (
+        {phase.kind === "askNewer" || phase.kind === "askSame" ? (
+          <p data-testid="newage-fetch-question" className="text-ink-soft">
+            {phase.kind === "askNewer"
+              ? newAgeNewerTurnQuestion(phase)
+              : newAgeSameTurnQuestion(worldName, phase.turnNumber)}
+          </p>
+        ) : working === null ? (
           <>
             <NewAgeSignInFields
               factionNumber={factionNumber}
@@ -201,15 +235,37 @@ export function NewAgeFetchDialog({
 
         {/* Fetch above Cancel once the footer stacks, so the primary action stays nearest the field. */}
         <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
-          <button
-            type="button"
-            data-testid="newage-fetch-cancel"
-            onClick={onDismiss}
-            className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
-          >
-            Cancel
-          </button>
-          {working === null ? (
+          {phase.kind === "askNewer" || phase.kind === "askSame" ? (
+            <>
+              <button
+                ref={keepRef}
+                type="button"
+                data-testid="newage-fetch-keep"
+                onClick={onKeep}
+                className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+              >
+                {phase.kind === "askNewer" ? keepTurnLabel(phase.currentTurn) : KEEP_WHAT_I_HAVE}
+              </button>
+              <button
+                type="button"
+                data-testid="newage-fetch-open"
+                onClick={onOpen}
+                className="rounded border border-brass px-2 py-0.5 text-brass hover:bg-brass/10"
+              >
+                {phase.kind === "askNewer" ? openTurnLabel(phase.incomingTurn) : LOAD_IT_AGAIN}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              data-testid="newage-fetch-cancel"
+              onClick={onDismiss}
+              className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+            >
+              Cancel
+            </button>
+          )}
+          {working === null && !asking ? (
             <button
               type="submit"
               data-testid="newage-fetch-confirm"

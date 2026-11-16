@@ -365,7 +365,7 @@ test("owns the fault when the list of earlier turns cannot be understood", { tag
   expect(historyCalls).toEqual([]);
 });
 
-test("says calmly when every earlier turn is already loaded", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+test("fetches nothing twice when every earlier turn is already loaded", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await clearGames(page);
   await arcanumGame(page);
   await replyWith(page, { status: 200, body: TURN_72 });
@@ -387,9 +387,17 @@ test("says calmly when every earlier turn is already loaded", { tag: DESKTOP_SHE
 
   await fetchWith(page, { scope: "history" });
 
-  await expect(page.getByTestId("import-status")).toHaveText(
-    `every earlier turn was already loaded; still showing turn ${T72_TURN}.`
-  );
+  // The world hands back the turn already on screen, so the same-turn question is asked once the
+  // run is over (ah-1y7yi); with nothing new stored, keeping says only what is still showing.
+  await expect(page.getByTestId("newage-fetch-keep")).toHaveText("Keep what I have");
+  await page.getByTestId("newage-fetch-keep").click();
+  await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${T72_TURN}.`);
+
+  // Nothing earlier was fetched a second time.
+  const historyCalls = (await httpCalls(page))
+    .map((call) => call[2])
+    .filter((url) => url.includes("/files/history/") && !url.includes("/turns"));
+  expect(historyCalls).toHaveLength(2);
 });
 
 test("switching game closes the fetch dialog, and coming back does not reopen it", { tag: DESKTOP_SHELL_TAG }, async ({
@@ -423,4 +431,119 @@ test("switching game closes the fetch dialog, and coming back does not reopen it
   await expect(page.getByTestId("game-indicator")).toContainText("Second Arcanum game");
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
   await expect(page.getByTestId("fetch-control")).toHaveText("Fetch");
+});
+
+/**
+ * Asking before a fetched turn replaces the one on screen (ah-1y7yi). Each walk first fetches turn
+ * 70 into the empty game - nothing on screen, so no question - and then fetches again.
+ */
+async function turn70OnScreen(page: import("@playwright/test").Page) {
+  await clearGames(page);
+  await arcanumGame(page);
+  await replyWith(page, { status: 200, body: TURN_70 });
+  await fetchWith(page);
+  // Turn 70 reads cleanly under Arcanum's rules, so no ruleset check is raised for it.
+  await expect(page.getByTestId("import-status")).toContainText("region");
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+}
+
+const NEWER_QUESTION = `Turn ${T72_TURN} has arrived. Opening it replaces turn ${T70_TURN} on screen, and anything you have changed since it was loaded.`;
+
+test("asks before a newer turn replaces what is on screen, and stores it when kept", { tag: DESKTOP_SHELL_TAG }, async ({
+  page
+}) => {
+  await turn70OnScreen(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await fetchWith(page);
+
+  await expect(page.getByTestId("newage-fetch-question")).toHaveText(NEWER_QUESTION);
+  await expect(page.getByTestId("newage-fetch-keep")).toHaveText(`Keep turn ${T70_TURN}`);
+  await expect(page.getByTestId("newage-fetch-open")).toHaveText(`Open turn ${T72_TURN}`);
+  await expect(page.getByTestId("newage-fetch-keep")).toBeFocused();
+  await expect(page.getByTestId("turn-chip")).toContainText(String(T70_TURN));
+
+  // Enter keeps: focus is on Keep.
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByTestId("import-status")).toHaveText(
+    `turn ${T72_TURN} stored for history; still showing turn ${T70_TURN}.`
+  );
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+  await expect(page.getByTestId("turn-chip")).toContainText(String(T70_TURN));
+});
+
+test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await turn70OnScreen(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await fetchWith(page);
+
+  await page.getByTestId("newage-fetch-open").click();
+
+  await expect(page.getByTestId("import-status")).toContainText(`turn ${T72_TURN} loaded — `);
+  await expect(page.getByTestId("turn-chip")).toContainText(String(T72_TURN));
+});
+
+test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await turn70OnScreen(page);
+  await fetchWith(page);
+
+  await expect(page.getByTestId("newage-fetch-question")).toHaveText(
+    `Arcanum still has turn ${T70_TURN} — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.`
+  );
+  await expect(page.getByTestId("newage-fetch-keep")).toHaveText("Keep what I have");
+  await page.getByTestId("newage-fetch-keep").click();
+  await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${T70_TURN}.`);
+
+  await fetchWith(page);
+  await expect(page.getByTestId("newage-fetch-open")).toHaveText("Load it again");
+  await page.getByTestId("newage-fetch-open").click();
+  await expect(page.getByTestId("import-status")).toContainText(`turn ${T70_TURN} loaded — `);
+});
+
+test("Escape while it asks keeps nothing and says nothing", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await turn70OnScreen(page);
+  const before = await page.getByTestId("import-status").textContent();
+  await replyWith(page, { status: 200, body: TURN_72 });
+  await fetchWith(page);
+  await expect(page.getByTestId("newage-fetch-question")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
+  await expect(page.getByTestId("import-status")).toHaveText(before ?? "");
+  await expect(page.getByTestId("turn-chip")).toContainText(String(T70_TURN));
+  // The newest turn was not kept: the picker lists only the turn on screen.
+  await page.getByTestId("turn-chip").click();
+  await expect(page.getByTestId("turn-picker")).toBeVisible();
+  await expect(page.getByTestId(`turn-row-${T72_TURN}`)).toHaveCount(0);
+});
+
+test("All reports asks once, after storing every earlier turn, and never lets one take the screen", { tag: DESKTOP_SHELL_TAG }, async ({
+  page
+}) => {
+  await turn70OnScreen(page);
+  await replyWith(page, { status: 200, body: TURN_72 });
+  // Turn 71 lies between the turn on screen (70) and the newest (72): newer than the screen, so it
+  // must be stored for history rather than opened.
+  await historyWith(page, {
+    turns: { status: 200, body: JSON.stringify({ available_turns: [T70_TURN, T71_TURN, T72_TURN] }) },
+    reports: { [T71_TURN]: { status: 200, body: TURN_71 } }
+  });
+
+  await fetchWith(page, { scope: "history" });
+
+  await expect(page.getByTestId("newage-fetch-question")).toHaveText(
+    `Turn ${T72_TURN} has arrived, along with 1 earlier turn, which is stored for history. Opening turn ${T72_TURN} replaces turn ${T70_TURN} on screen, and anything you have changed since it was loaded.`
+  );
+  await expect(page.getByTestId("turn-chip")).toContainText(String(T70_TURN));
+  await page.getByTestId("newage-fetch-keep").click();
+
+  await expect(page.getByTestId("import-status")).toHaveText(
+    `2 turns stored for history; still showing turn ${T70_TURN}.`
+  );
+  const historyCalls = (await httpCalls(page))
+    .map((call) => call[2])
+    .filter((url) => url.includes("/files/history/") && !url.includes("/turns"));
+  expect(historyCalls).toHaveLength(1);
+  expect(historyCalls[0]).toContain(`/history/${T71_TURN}/`);
 });

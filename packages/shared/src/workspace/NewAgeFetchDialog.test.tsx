@@ -18,6 +18,8 @@ const draw = (phase: NewAgeFetchPhase, initialScope?: NewAgeFetchScope, assistan
       suggestedFactionNumber="27"
       phase={phase}
       onFetch={() => {}}
+      onKeep={() => {}}
+      onOpen={() => {}}
       onDismiss={() => {}}
     />
   );
@@ -135,5 +137,63 @@ describe("NewAgeFetchDialog when the assistant asked (ah-9vmbx.3)", () => {
 
     expect(markup).not.toContain('data-testid="assistant-fetch-line"');
     expect(markup).not.toContain("The assistant never sees it");
+  });
+});
+
+describe("NewAgeFetchDialog, asking before the screen is replaced (ah-1y7yi)", () => {
+  const askNewer: NewAgeFetchPhase = {
+    kind: "askNewer",
+    currentTurn: 83,
+    incomingTurn: 84,
+    earlierStored: 0,
+    notFetched: 0
+  };
+
+  it("asks Keep turn N / Open turn M in place of the working line, with nothing else to press", () => {
+    const markup = draw(askNewer);
+
+    expect(markup).toContain(
+      "Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded."
+    );
+    expect(markup).toContain("Fetch from New Age: Arcanum");
+    expect(markup).toContain("atlantis-newage.com · turn 83");
+    expect(markup).toMatch(/data-testid="newage-fetch-keep"[^>]*>Keep turn 83</);
+    expect(markup).toMatch(/data-testid="newage-fetch-open"[^>]*>Open turn 84</);
+    // Keep first, so the stacked footer puts Open above it, as on New Origins.
+    expect(markup.indexOf("newage-fetch-keep")).toBeLessThan(markup.indexOf("newage-fetch-open"));
+    for (const gone of [
+      "newage-password",
+      "newage-fetch-scope-history",
+      "newage-fetch-cancel",
+      "newage-fetch-confirm",
+      "newage-fetch-working"
+    ]) {
+      expect(markup).not.toContain(`data-testid="${gone}"`);
+    }
+  });
+
+  it("counts the earlier turns of an All reports run", () => {
+    const markup = draw({ ...askNewer, incomingTurn: 86, earlierStored: 2 });
+
+    expect(markup).toContain(
+      "Turn 86 has arrived, along with 2 earlier turns, which are stored for history."
+    );
+  });
+
+  it("asks Keep what I have / Load it again for the same turn, naming the world", () => {
+    const markup = draw({ kind: "askSame", turnNumber: 83, earlierStored: 0, notFetched: 0 });
+
+    expect(markup).toContain(
+      "Arcanum still has turn 83 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since."
+    );
+    expect(markup).toMatch(/data-testid="newage-fetch-keep"[^>]*>Keep what I have</);
+    expect(markup).toMatch(/data-testid="newage-fetch-open"[^>]*>Load it again</);
+  });
+
+  it("keeps the assistant's line on top while it asks", () => {
+    const markup = draw(askNewer, undefined, "asking");
+
+    expect(markup).toContain('data-testid="assistant-fetch-line"');
+    expect(markup.indexOf("The assistant is asking")).toBeLessThan(markup.indexOf("Turn 84 has arrived"));
   });
 });

@@ -357,6 +357,19 @@ export type ReportRoute =
   | { kind: "mageSheet"; pending: PendingMageSheet };
 
 /**
+ * The same route for a report that must never take the screen: an earlier turn of a New Age
+ * "All reports" run (ah-1y7yi). That run now holds the newest turn back for a question, so a turn
+ * between the one on screen and the newest is newer than the screen - `routeReport` answers `load`
+ * for it, and loading it would replace the turn the player is about to be asked about. It is stored
+ * for history instead. With nothing on screen there is nothing to keep, and it loads as usual.
+ */
+export function historyOnlyRoute(route: ReportRoute, viewerTurn: number | null): ReportRoute {
+  return route.kind === "load" && viewerTurn !== null
+    ? { kind: "storeOnly", currentTurn: viewerTurn }
+    : route;
+}
+
+/**
  * Where a parsed report goes: a mage sheet and a map export first, then `judgeReportUsable` - the one answer to whether a report can be
  * imported at all, shared with the batch importer - then `decideReportLoad` and the foreign-report
  * prompt's snapshot, whose viewer identity is taken here, when the question is raised, never when it

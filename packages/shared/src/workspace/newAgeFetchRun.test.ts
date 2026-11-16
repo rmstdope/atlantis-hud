@@ -39,6 +39,7 @@ function harness(over: Partial<Effects> = {}) {
       stored.push([turnNumber, reportText]);
       return true;
     },
+    arrival: async () => ({ kind: "store" }),
     heldTurns: () => ({ stored: [], workingTurn: null }),
     onPhase: (phase) => phases.push(phase),
     abandoned: () => false,
@@ -125,7 +126,7 @@ describe("runNewAgeFetch", () => {
 
     expect(outcome).toEqual({
       kind: "done",
-      history: { kind: "ran", stored: [], failed: new Map(), refusedMidRun: true }
+      history: { kind: "ran", stored: [], failed: new Map(), refusedMidRun: true, unfetched: 0 }
     });
     expect(askedTurns).toEqual([]);
   });
@@ -263,6 +264,105 @@ describe("runNewAgeFetch", () => {
       message:
         "Could not reach atlantis-newage.com. Either it is down, or it does not accept requests from this web address.",
       retype: false
+    });
+  });
+
+  describe("holding a turn that would replace the screen (ah-1y7yi)", () => {
+    const askNewer = { kind: "askNewer", currentTurn: 80, incomingTurn: 83 } as const;
+
+    it("stores nothing for this turn and holds it for the question", async () => {
+      const { calls, effects } = harness({ arrival: async () => askNewer });
+
+      const outcome = await runNewAgeFetch("thisTurn", credentials, "Arcanum", effects);
+
+      expect(calls).toEqual(["login 27 hunter2", "report t0ken"]);
+      expect(outcome).toEqual({
+        kind: "held",
+        arrival: askNewer,
+        reportText: "this turn",
+        history: null
+      });
+    });
+
+    it("asks the arrival about this turn's own text", async () => {
+      const seen: string[] = [];
+      const { effects } = harness({
+        arrival: async (text) => {
+          seen.push(text);
+          return { kind: "store" };
+        }
+      });
+
+      await runNewAgeFetch("thisTurn", credentials, "Arcanum", effects);
+
+      expect(seen).toEqual(["this turn"]);
+    });
+
+    it("fetches every earlier turn against the held turn, those newer than the screen included", async () => {
+      const { askedTurns, calls, effects } = harness({
+        arrival: async () => askNewer,
+        historyTurns: async () => ({ kind: "ok", value: [79, 80, 81, 82, 83] }),
+        // Nothing listed as stored: the turn on screen is still never fetched again.
+        heldTurns: () => ({ stored: [], workingTurn: 80 })
+      });
+
+      const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+      expect(askedTurns).toEqual([79, 81, 82]);
+      expect(calls).not.toContain("store null");
+      expect(outcome).toEqual({
+        kind: "held",
+        arrival: askNewer,
+        reportText: "this turn",
+        history: { kind: "ran", stored: [79, 81, 82], failed: new Map(), refusedMidRun: false, unfetched: 0 }
+      });
+    });
+
+    it("holds the same turn and fetches what lies before it", async () => {
+      const askSame = { kind: "askSame", turnNumber: 80 } as const;
+      const { askedTurns, effects } = harness({
+        arrival: async () => askSame,
+        historyTurns: async () => ({ kind: "ok", value: [78, 79, 80] }),
+        heldTurns: () => ({ stored: [{ turnNumber: 80 }], workingTurn: 80 })
+      });
+
+      const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+      expect(askedTurns).toEqual([78, 79]);
+      expect(outcome.kind).toBe("held");
+    });
+
+    it("drops the held turn when the run is abandoned", async () => {
+      let listed = false;
+      const { effects } = harness({
+        arrival: async () => askNewer,
+        historyTurns: async () => {
+          listed = true;
+          return { kind: "ok", value: [81, 82] };
+        },
+        heldTurns: () => ({ stored: [{ turnNumber: 80 }], workingTurn: 80 }),
+        abandoned: () => listed
+      });
+
+      const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+      expect(outcome).toEqual({ kind: "abandoned" });
+    });
+
+    it("counts the turns a mid-run refusal left unfetched", async () => {
+      const { effects } = harness({
+        historyTurns: async () => ({ kind: "ok", value: [80, 81, 82] }),
+        heldTurns: () => ({ stored: [{ turnNumber: 83 }], workingTurn: 83 }),
+        historyReport: async (_token, turnNumber) =>
+          turnNumber === 80 ? { kind: "ok", value: "turn 80" } : { kind: "unauthorized" }
+      });
+
+      const outcome = await runNewAgeFetch("thisTurnAndHistory", credentials, "Arcanum", effects);
+
+      if (outcome.kind !== "done" || outcome.history?.kind !== "ran") {
+        throw new Error("expected a history run");
+      }
+      expect(outcome.history.unfetched).toBe(2);
     });
   });
 });

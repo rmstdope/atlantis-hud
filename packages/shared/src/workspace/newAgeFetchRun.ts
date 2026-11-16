@@ -30,7 +30,26 @@ export type NewAgeHistoryResult =
   /** It lists earlier turns, and the game already holds every one of them. */
   | { kind: "nothingMissing" }
   /** At least one turn was asked for. */
-  | { kind: "ran"; stored: number[]; failed: Map<string, string>; refusedMidRun: boolean };
+  | {
+      kind: "ran";
+      stored: number[];
+      failed: Map<string, string>;
+      refusedMidRun: boolean;
+      /** The turns a mid-run refusal left unasked: 0 unless `refusedMidRun`. */
+      unfetched: number;
+    };
+
+/**
+ * What `arrival` says about this turn's report, read before it is stored (ah-1y7yi).
+ *
+ * `store` is every case that asks nothing here: nothing on screen, an older turn, another
+ * faction's report - `loadReport` routes those itself, as it always has. The two ask kinds are the
+ * report that would replace the turn on screen, and is held back for the player's answer.
+ */
+export type NewAgeArrival = { kind: "store" } | NewAgeHeldArrival;
+export type NewAgeHeldArrival =
+  | { kind: "askNewer"; currentTurn: number; incomingTurn: number }
+  | { kind: "askSame"; turnNumber: number };
 
 export type NewAgeFetchOutcome =
   /** Nothing was fetched: the login itself failed. `message`/`retype` go straight to `ready`. */
@@ -39,12 +58,25 @@ export type NewAgeFetchOutcome =
   | { kind: "reportFailed"; reason: string }
   /** The turn landed; `history` is `null` for `thisTurn` and present otherwise. */
   | { kind: "done"; history: NewAgeHistoryResult | null }
+  /**
+   * The turn arrived and was NOT stored: it would replace the turn on screen, so the run ends at
+   * the question rather than awaiting it - the rule `runNewOriginsFetch` set, and for its reason.
+   * Every earlier turn was already stored; `history` says how that went.
+   */
+  | {
+      kind: "held";
+      arrival: NewAgeHeldArrival;
+      reportText: string;
+      history: NewAgeHistoryResult | null;
+    }
   /** Cancel or Escape, at a boundary. Whatever landed before it stays. */
   | { kind: "abandoned" };
 
 export type NewAgeFetchEffects = {
   login: (factionNumber: string, password: string) => Promise<NewAgeResult<NewAgeLogin>>;
   report: (token: string) => Promise<NewAgeResult<string>>;
+  /** Whether this turn's report may be stored, or must wait for the player (ah-1y7yi). */
+  arrival: (reportText: string) => Promise<NewAgeArrival>;
   historyTurns: (token: string) => Promise<NewAgeResult<number[]>>;
   historyReport: (token: string, turnNumber: number) => Promise<NewAgeResult<string>>;
   /**
@@ -93,13 +125,21 @@ export async function runNewAgeFetch(
     // No point asking which turns exist for a fetch that could not deliver the one asked for.
     return { kind: "reportFailed", reason: fetchFailureReason(report, NEW_AGE_HOST) };
   }
-  // The boolean is deliberately not read: a report the game would not keep has already had its own
-  // reason written to the status line by `loadReport`, and this turn still reached the world - so
-  // the run carries on to the listing rather than claiming the fetch itself failed.
-  await effects.store(null, report.value);
+  const arrival = await effects.arrival(report.value);
+  const held = arrival.kind === "store" ? null : arrival;
+  if (held === null) {
+    // The boolean is deliberately not read: a report the game would not keep has already had its
+    // own reason written to the status line by `loadReport`, and this turn still reached the world -
+    // so the run carries on to the listing rather than claiming the fetch itself failed.
+    await effects.store(null, report.value);
+  }
+  const finish = (history: NewAgeHistoryResult | null): NewAgeFetchOutcome =>
+    held === null
+      ? { kind: "done", history }
+      : { kind: "held", arrival: held, reportText: report.value, history };
 
   if (scope === "thisTurn") {
-    return { kind: "done", history: null };
+    return finish(null);
   }
 
   if (effects.abandoned()) {
@@ -111,25 +151,33 @@ export async function runNewAgeFetch(
   if (turns.kind === "unauthorized") {
     // The world stopped accepting the token between the report and the listing: the agreed
     // "stopped accepting mid-run" state, not a list that could not be fetched.
-    return {
-      kind: "done",
-      history: { kind: "ran", stored: [], failed: new Map(), refusedMidRun: true }
-    };
+    return finish({ kind: "ran", stored: [], failed: new Map(), refusedMidRun: true, unfetched: 0 });
   }
   if (turns.kind !== "ok") {
     // This turn landed, so a failed listing is a warning rather than a failed fetch.
-    return { kind: "done", history: { kind: "listFailed", failure: turns } };
+    return finish({ kind: "listFailed", failure: turns });
   }
 
   // Read now, not earlier: the turn just stored is the working turn, so it is excluded from the
-  // bulk list rather than downloaded a second time.
-  const held = effects.heldTurns();
-  if (earlierTurns(turns.value, held.workingTurn).length === 0) {
-    return { kind: "done", history: { kind: "noneEarlier" } };
+  // bulk list rather than downloaded a second time. A held turn is not stored, so the run counts
+  // back from it instead - turns between the screen and the held one are earlier turns too, and
+  // the shell stores them for history without letting them take the screen.
+  const holding = effects.heldTurns();
+  const reference =
+    held === null
+      ? holding.workingTurn
+      : held.kind === "askNewer"
+        ? held.incomingTurn
+        : held.turnNumber;
+  if (earlierTurns(turns.value, reference).length === 0) {
+    return finish({ kind: "noneEarlier" });
   }
-  const missing = missingTurns(turns.value, held.stored, held.workingTurn);
+  // The turn on screen is held whether or not the picker has listed it yet: counting back from a
+  // held turn would otherwise fetch it again.
+  const onScreen = holding.workingTurn === null ? [] : [{ turnNumber: holding.workingTurn }];
+  const missing = missingTurns(turns.value, [...holding.stored, ...onScreen], reference);
   if (missing.length === 0) {
-    return { kind: "done", history: { kind: "nothingMissing" } };
+    return finish({ kind: "nothingMissing" });
   }
 
   const outcome = await runHistoryFetch(missing, {
@@ -147,13 +195,11 @@ export async function runNewAgeFetch(
     return ABANDONED;
   }
 
-  return {
-    kind: "done",
-    history: {
-      kind: "ran",
-      stored: outcome.stored,
-      failed: outcome.failed,
-      refusedMidRun: outcome.remaining !== null
-    }
-  };
+  return finish({
+    kind: "ran",
+    stored: outcome.stored,
+    failed: outcome.failed,
+    refusedMidRun: outcome.remaining !== null,
+    unfetched: outcome.remaining?.length ?? 0
+  });
 }

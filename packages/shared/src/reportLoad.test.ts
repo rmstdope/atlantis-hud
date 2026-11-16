@@ -34,6 +34,7 @@ import {
 import {
   factionLabelOf,
   firstUnitIn,
+  historyOnlyRoute,
   loadTurn,
   openingSelection,
   reportParser,
@@ -897,5 +898,26 @@ describe("routeReport, given a mage sheet", () => {
       { ...NO_SHEETS, hasGame: false, viewerFactionId: null }
     );
     expect(noGame).toEqual({ kind: "reject", reason: MAGE_SHEET_NEEDS_A_GAME });
+  });
+});
+
+describe("historyOnlyRoute (ah-1y7yi)", () => {
+  it("stores a report that would take the screen for history instead", () => {
+    expect(historyOnlyRoute({ kind: "load" }, 21)).toEqual({ kind: "storeOnly", currentTurn: 21 });
+  });
+
+  it("loads as usual when no turn is on screen to keep", () => {
+    expect(historyOnlyRoute({ kind: "load" }, null)).toEqual({ kind: "load" });
+  });
+
+  it("leaves every other route alone", () => {
+    expect(historyOnlyRoute({ kind: "storeOnly", currentTurn: 30 }, 21)).toEqual({
+      kind: "storeOnly",
+      currentTurn: 30
+    });
+    expect(historyOnlyRoute({ kind: "reject", reason: "no" }, 21)).toEqual({
+      kind: "reject",
+      reason: "no"
+    });
   });
 });
