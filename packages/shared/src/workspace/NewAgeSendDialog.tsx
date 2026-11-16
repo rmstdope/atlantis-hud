@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import type { AssistantPrompt } from "../assistant/assistantSend";
+import { AssistantAskLines, AssistantStoppedLine } from "./AssistantSendLines";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { NewAgeSignInFields } from "./NewAgeSignInFields";
 import {
@@ -37,6 +39,7 @@ export function NewAgeSendDialog({
   host,
   suggestedFactionNumber,
   phase,
+  assistant,
   onSend,
   onDismiss
 }: {
@@ -49,6 +52,8 @@ export function NewAgeSendDialog({
   /** Prefills the faction number; the player can change it. */
   suggestedFactionNumber: string | null;
   phase: NewAgeSendPhase;
+  /** Present when the assistant asked for this send (ah-9vmbx.2); absent, this is today's dialog. */
+  assistant?: AssistantPrompt;
   /**
    * Both are asked for every send - there is no session to lean on. Cancel and Escape abort, so
    * this promises nothing about delivery.
@@ -65,7 +70,15 @@ export function NewAgeSendDialog({
     typeof document === "undefined" ? null : document.activeElement
   );
 
-  useEscapeToDismiss(onDismiss);
+  // The assistant's prompt cannot be refused while the orders are on their way, so the player and
+  // the assistant both learn what the world said.
+  const inFlight = assistant !== undefined && (phase.kind === "signingIn" || phase.kind === "sending");
+  const dismiss = () => {
+    if (!inFlight) {
+      onDismiss();
+    }
+  };
+  useEscapeToDismiss(dismiss);
 
   useEffect(() => {
     const opener = openerRef.current;
@@ -85,12 +98,13 @@ export function NewAgeSendDialog({
     }
   }, [phase]);
 
-  const settled = newAgeSendSettles(phase);
-  const canSend = newAgeSendIsReady(factionNumber, password, phase);
-  const outcome = newAgeSendOutcome(phase, turnNumber);
-  const errors = newAgeSendErrors(phase);
-  const warnings = newAgeSendWarnings(phase);
-  const worldMessage = newAgeSendWorldMessage(phase);
+  const stopped = assistant?.kind === "stopped";
+  const settled = stopped || newAgeSendSettles(phase);
+  const canSend = !stopped && newAgeSendIsReady(factionNumber, password, phase);
+  const outcome = stopped ? null : newAgeSendOutcome(phase, turnNumber);
+  const errors = stopped ? [] : newAgeSendErrors(phase);
+  const warnings = stopped ? [] : newAgeSendWarnings(phase);
+  const worldMessage = stopped ? null : newAgeSendWorldMessage(phase);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -104,7 +118,7 @@ export function NewAgeSendDialog({
       data-testid="newage-send-backdrop"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) {
-          onDismiss();
+          dismiss();
         }
       }}
       // The dialog mounts inside the header, which is the report drop target: a file dropped on
@@ -125,6 +139,8 @@ export function NewAgeSendDialog({
         <p data-testid="newage-send-meta" className="text-ink-soft">
           {metaLine(factionLabel, turnNumber, host)}
         </p>
+        <AssistantAskLines prompt={assistant} settled={settled} />
+        {stopped ? <AssistantStoppedLine /> : null}
 
         {settled ? null : (
           <NewAgeSignInFields
@@ -204,8 +220,9 @@ export function NewAgeSendDialog({
               <button
                 type="button"
                 data-testid="newage-send-cancel"
-                onClick={onDismiss}
-                className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+                disabled={inFlight}
+                onClick={dismiss}
+                className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass disabled:text-ink-dim disabled:hover:border-edge"
               >
                 Cancel
               </button>
