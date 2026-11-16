@@ -1083,6 +1083,25 @@ export function withFactionPassword(document: string, password: string): string 
 }
 
 /**
+ * The text with the password on every `#atlantis` directive in it hidden, for answers that leave the
+ * HUD (the assistant tools, `ah-9vmbx.1`) while the stored orders keep it (`ah-d7ih`).
+ *
+ * Matched anywhere on a line, not only at its start, so a numbered report line
+ * (`12: #atlantis 3 "pw"`) is caught as well as an orders document's header. The directive and the
+ * faction id it names stay; everything after the id - quoted or not, since `rules/password` sets one
+ * with a bare word - becomes `"<password hidden>"`. A line with nothing after the id, and every other
+ * byte of the text, `\r` included, is left exactly as it was.
+ */
+export function withoutFactionPassword(text: string): string {
+  return text.replace(ANY_FACTION_HEADER, (line, directive: string, id: string, rest: string) =>
+    rest.trim() === "" ? line : `${directive}${id.trimEnd()} "<password hidden>"`
+  );
+}
+
+/** `#atlantis`, its id as a bare token, and the rest of the line up to (never including) `\r`. */
+const ANY_FACTION_HEADER = /(#atlantis\b)([ \t]*[^\s"]*)([^\r\n]*)/giu;
+
+/**
  * The header line, with what must survive a rewrite of it.
  *
  * Anchored on a word boundary so `#atlantisfoo` is not mistaken for it, and the id is read only as
