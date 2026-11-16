@@ -2521,8 +2521,7 @@ describe("the faction password never reaches the assistant", () => {
 
   function aLockedHost() {
     const made = aHost(aTurn({ ordersDocument: LOCKED, rawReport: REPORT }));
-    made.host.earlierTurns = lockedEarlierTurns();
-    return made;
+    return { ...made, host: { ...made.host, earlierTurns: lockedEarlierTurns() } };
   }
 
   it("hides it in the open turn's whole orders document", async () => {
