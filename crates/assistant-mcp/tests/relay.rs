@@ -14,6 +14,7 @@ struct Server {
     url: String,
     relay: Arc<Relay>,
     calls: mpsc::UnboundedReceiver<ToolCall>,
+    withdrawn: mpsc::UnboundedReceiver<u64>,
     stop: CancellationToken,
 }
 
@@ -25,9 +26,16 @@ impl Drop for Server {
 
 async fn a_server(timeout: Duration) -> Server {
     let (sender, calls) = mpsc::unbounded_channel();
-    let relay = Relay::new(timeout, move |call| {
-        let _ = sender.send(call);
-    });
+    let (withdraw, withdrawn) = mpsc::unbounded_channel();
+    let relay = Relay::new(
+        timeout,
+        move |call| {
+            let _ = sender.send(call);
+        },
+        move |id| {
+            let _ = withdraw.send(id);
+        },
+    );
     relay
         .set_tools(&json!([
             {
@@ -52,6 +60,7 @@ async fn a_server(timeout: Duration) -> Server {
         url,
         relay,
         calls,
+        withdrawn,
         stop,
     }
 }
@@ -202,4 +211,150 @@ async fn an_answer_for_no_pending_call_is_reported_as_unclaimed() {
             is_error: false
         }
     ));
+}
+
+/// A tool call made on a client that gives up after `patience`, as an assistant that stops waiting
+/// or disconnects does.
+async fn abandoned_call(url: &str, patience: Duration) {
+    let outcome = reqwest::Client::new()
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("Authorization", format!("Bearer {TOKEN}"))
+        .timeout(patience)
+        .body(
+            json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                    "params": { "name": "get_unit", "arguments": {} } })
+            .to_string(),
+        )
+        .send()
+        .await;
+    assert!(outcome.is_err(), "the client gave up before an answer");
+}
+
+async fn next_withdrawn(server: &mut Server) -> u64 {
+    tokio::time::timeout(Duration::from_secs(5), server.withdrawn.recv())
+        .await
+        .expect("a withdrawal within five seconds")
+        .expect("the relay is still there")
+}
+
+#[tokio::test]
+async fn a_call_the_client_abandons_is_withdrawn() {
+    let mut server = a_server(Duration::from_secs(30)).await;
+
+    abandoned_call(&server.url, Duration::from_millis(300)).await;
+    let call = server.calls.recv().await.expect("the call was dispatched");
+
+    assert_eq!(next_withdrawn(&mut server).await, call.id);
+    assert!(
+        !server.relay.answer(
+            call.id,
+            ToolAnswer {
+                text: "too late".to_string(),
+                is_error: false
+            }
+        ),
+        "nothing waits for an answer any more"
+    );
+}
+
+#[tokio::test]
+async fn a_call_that_times_out_is_withdrawn() {
+    let mut server = a_server(Duration::from_millis(100)).await;
+
+    rpc(
+        &server.url,
+        "tools/call",
+        json!({ "name": "get_unit", "arguments": {} }),
+    )
+    .await;
+    let call = server.calls.recv().await.expect("the call was dispatched");
+
+    assert_eq!(next_withdrawn(&mut server).await, call.id);
+}
+
+#[tokio::test]
+async fn an_answered_call_is_never_withdrawn() {
+    let mut server = a_server(Duration::from_secs(5)).await;
+    let url = server.url.clone();
+
+    let pending = tokio::spawn(async move {
+        rpc(
+            &url,
+            "tools/call",
+            json!({ "name": "get_unit", "arguments": {} }),
+        )
+        .await
+    });
+    let call = server.calls.recv().await.expect("the call is dispatched");
+    server.relay.answer(
+        call.id,
+        ToolAnswer {
+            text: "Unit".to_string(),
+            is_error: false,
+        },
+    );
+    pending.await.expect("the request completes");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(server.withdrawn.try_recv().is_err(), "nothing was withdrawn");
+}
+
+#[tokio::test]
+async fn a_tool_allowed_longer_outlives_the_default_timeout() {
+    let mut server = a_server(Duration::from_millis(100)).await;
+    server
+        .relay
+        .allow_longer("get_unit", Duration::from_secs(10));
+    let url = server.url.clone();
+
+    let pending = tokio::spawn(async move {
+        rpc(
+            &url,
+            "tools/call",
+            json!({ "name": "get_unit", "arguments": {} }),
+        )
+        .await
+    });
+    let call = server.calls.recv().await.expect("the call is dispatched");
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(server.relay.answer(
+        call.id,
+        ToolAnswer {
+            text: "Sent".to_string(),
+            is_error: false
+        }
+    ));
+
+    let answer = pending.await.expect("the request completes");
+    assert_eq!(answer["result"]["content"][0]["text"], "Sent");
+}
+
+#[tokio::test]
+async fn registering_tools_again_ends_calls_still_waiting() {
+    let mut server = a_server(Duration::from_secs(30)).await;
+    let url = server.url.clone();
+
+    let pending = tokio::spawn(async move {
+        rpc(
+            &url,
+            "tools/call",
+            json!({ "name": "get_unit", "arguments": {} }),
+        )
+        .await
+    });
+    let call = server.calls.recv().await.expect("the call is dispatched");
+    // A reloaded window registers its tools afresh; the one that took the call is gone.
+    server
+        .relay
+        .set_tools(&json!([]))
+        .expect("tools register");
+
+    let answer = tokio::time::timeout(Duration::from_secs(5), pending)
+        .await
+        .expect("the call ends at once")
+        .expect("the request completes");
+    assert_eq!(answer["result"]["isError"], true);
+    assert_eq!(next_withdrawn(&mut server).await, call.id);
 }
