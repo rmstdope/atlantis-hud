@@ -16,6 +16,11 @@ import {
   fetchingStatus,
   fetchingTurnProgress,
   newAgeFetchIsReady,
+  newAgeKeepStatus,
+  newAgeNewerTurnQuestion,
+  newAgeOpenStatus,
+  newAgeSameTurnQuestion,
+  type NewAgeAskPhase,
   type NewAgeFetchPhase
 } from "./newAgeFetchView";
 
@@ -87,5 +92,88 @@ describe("newAgeFetchView", () => {
     expect(newAgeFetchIsReady("", "hunter2", ready)).toBe(false);
     expect(newAgeFetchIsReady("27a", "hunter2", ready)).toBe(false);
     expect(newAgeFetchIsReady("27", "hunter2", { kind: "signingIn" })).toBe(false);
+  });
+});
+
+describe("newAgeFetchView - asking before the screen is replaced (ah-1y7yi)", () => {
+  const newer = (earlierStored: number, notFetched: number): NewAgeAskPhase => ({
+    kind: "askNewer",
+    currentTurn: 21,
+    incomingTurn: 24,
+    earlierStored,
+    notFetched
+  });
+  const same = (earlierStored: number, notFetched: number): NewAgeAskPhase => ({
+    kind: "askSame",
+    turnNumber: 21,
+    earlierStored,
+    notFetched
+  });
+
+  it("asks the single-turn question in the New Origins words", () => {
+    expect(
+      newAgeNewerTurnQuestion({ ...newer(0, 0), incomingTurn: 22 })
+    ).toBe(
+      "Turn 22 has arrived. Opening it replaces turn 21 on screen, and anything you have changed since it was loaded."
+    );
+  });
+
+  it("counts the earlier turns rather than listing them", () => {
+    expect(newAgeNewerTurnQuestion(newer(2, 0))).toBe(
+      "Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen, and anything you have changed since it was loaded."
+    );
+    expect(newAgeNewerTurnQuestion(newer(1, 0))).toBe(
+      "Turn 24 has arrived, along with 1 earlier turn, which is stored for history. Opening turn 24 replaces turn 21 on screen, and anything you have changed since it was loaded."
+    );
+  });
+
+  it("counts the turns that could not be fetched", () => {
+    expect(newAgeNewerTurnQuestion(newer(4, 1))).toBe(
+      "Turn 24 has arrived, along with 4 earlier turns, which are stored for history. 1 turn could not be fetched. Opening turn 24 replaces turn 21 on screen, and anything you have changed since it was loaded."
+    );
+    expect(newAgeNewerTurnQuestion(newer(4, 2))).toContain(" 2 turns could not be fetched. ");
+    expect(newAgeNewerTurnQuestion(newer(0, 2))).toBe(
+      "Turn 24 has arrived. 2 turns could not be fetched. Opening turn 24 replaces turn 21 on screen, and anything you have changed since it was loaded."
+    );
+  });
+
+  it("names the world in the same-turn question", () => {
+    expect(newAgeSameTurnQuestion("Trident", 21)).toBe(
+      "Trident still has turn 21 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since."
+    );
+  });
+
+  it("shows no working line while asking", () => {
+    expect(fetchWorkingLine(newer(0, 0), "Trident")).toBeNull();
+    expect(fetchWorkingLine(same(0, 0), "Trident")).toBeNull();
+  });
+
+  it("leaves the stored-for-history line to the store on a plain Keep turn N", () => {
+    expect(newAgeKeepStatus(newer(0, 0))).toBeNull();
+  });
+
+  it("counts every stored turn, the newest included, on Keep turn N after All reports", () => {
+    expect(newAgeKeepStatus(newer(2, 0))).toEqual({
+      tone: "notice",
+      text: "3 turns stored for history; still showing turn 21."
+    });
+    expect(newAgeKeepStatus(newer(2, 1))?.text).toBe(
+      "3 turns stored for history, 1 could not be fetched; still showing turn 21."
+    );
+  });
+
+  it("says only what is still showing on Keep what I have, unless earlier turns were stored", () => {
+    expect(newAgeKeepStatus(same(0, 0))).toEqual({ tone: "notice", text: "still showing turn 21." });
+    expect(newAgeKeepStatus(same(2, 0))?.text).toBe(
+      "2 turns stored for history; still showing turn 21."
+    );
+  });
+
+  it("leaves the loaded line to the load on Open, and reports earlier turns on Load it again", () => {
+    expect(newAgeOpenStatus(newer(2, 0))).toBeNull();
+    expect(newAgeOpenStatus(same(0, 0))).toBeNull();
+    expect(newAgeOpenStatus(same(2, 0))?.text).toBe(
+      "2 turns stored for history; still showing turn 21."
+    );
   });
 });
