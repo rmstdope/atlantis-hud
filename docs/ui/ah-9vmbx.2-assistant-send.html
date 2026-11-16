@@ -1,0 +1,102 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Assistant asks to send</title><style>
+:root{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--ink:#dbe3ec;--ink-soft:#a3b0c0;--ink-dim:#8a97a8;--brass:#d9a441;--ok:#4fb783;--danger:#d97070;--warn:#d9a441}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 Georgia,serif;padding:28px 16px 64px}
+header,main{max-width:1100px;margin:0 auto}
+h1{font-size:24px} h1 span{color:var(--brass)}
+header p{color:var(--ink-soft);max-width:92ch;margin-top:10px;font-size:14px}
+h3.sec{margin:30px 0 6px;font-size:13px;letter-spacing:1.8px;text-transform:uppercase;color:var(--brass)}
+p.note{color:var(--ink-soft);font-size:13px;max-width:92ch;margin:6px 0 12px}
+.cost{border-left:2px solid var(--brass);padding-left:12px;margin-top:14px;color:var(--ink-soft);font-size:13px;max-width:92ch}
+.app{position:relative;background:var(--panel);border:1px solid var(--edge);border-radius:8px;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;font-size:12.5px;min-height:380px}
+.bar{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--edge);background:var(--raised)}
+.bar .t{color:var(--brass);font-weight:600;margin-right:auto}
+.chip{border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:2px 9px;color:var(--ink)}
+.chip.b{border-color:var(--brass);color:var(--brass)}
+.body{display:grid;grid-template-columns:1fr 1.2fr;gap:0;min-height:330px}
+.pane{padding:10px;border-right:1px solid var(--edge);color:var(--ink-dim)}
+.pane pre{font-family:'SF Mono',Menlo,monospace;font-size:11.5px;color:var(--ink-soft);white-space:pre-wrap}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center}
+.dlg{width:26rem;max-width:calc(100% - 24px);background:var(--raised);border:1px solid var(--edge);border-radius:6px;padding:12px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.dlg h4{font-size:13px;font-weight:600;margin-bottom:2px}
+.meta{color:var(--ink-soft);margin-bottom:8px}
+.ask{border-left:2px solid var(--brass);padding:4px 0 4px 9px;margin:4px 0 10px;color:var(--ink)}
+.dlg label{display:block;color:var(--ink-soft);margin-bottom:3px}
+.dlg input{width:100%;background:var(--panel);border:1px solid var(--edge);color:var(--ink);border-radius:4px;padding:4px 6px;font:inherit}
+.foot{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.btn{border:1px solid var(--edge);background:var(--panel);color:var(--ink-soft);border-radius:4px;padding:3px 10px}
+.btn.p{border-color:var(--brass);color:var(--brass)}
+.btn.off{opacity:.45}
+.warn{color:var(--warn)} .err{color:var(--danger)} .ok{color:var(--ok)} .soft{color:var(--ink-soft)}
+.facts{background:var(--panel);border:1px solid var(--edge);border-radius:4px;padding:6px 9px;margin:0 0 10px}
+.facts div{margin:2px 0}
+.strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;background:#2a2312;border-bottom:1px solid var(--brass);color:var(--ink)}
+.strip .g{margin-left:auto;display:flex;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.cap{color:var(--ink-dim);font-size:11.5px;margin-top:6px;font-family:system-ui,sans-serif}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}.body{grid-template-columns:1fr}}
+</style></head><body><header><h1>Round 2 · <span>Every state of the prompt — wrong password Option A</span></h1><p>What you chose in round 1: the Send dialog opens by itself, reminds the player what is going out, and stays to explain when nobody answered. Below is every state it can be in. Only the wrong-password state differs between the two pages. The results are the ones today's Send already shows, with the assistant's line kept at the top.</p><p style="color:#4fb783;margin-top:12px;font-size:14px"><b>Chosen (2026-11-16):</b> the Send dialog opens by itself (Q1 A); it reminds the player what is going out (Q2 B); an unanswered prompt stays and explains (Q3 A); a refused password can be typed again in the same prompt (A); the prompt waits 5 minutes; every word as drawn. Rejected: a strip under the top bar, a prompt with no reminders, closing silently when unanswered, one try per prompt.</p></header><main><div class="grid2"><div><h3 class="sec">Wrong password — Option A: try again in the same prompt</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to the server</h4><div class="meta">The Guardsmen (12) · turn 84 · atlantis-pbem.com</div><div class="ask">Your assistant asks to send these orders. Type the faction password to send them, or Cancel to refuse.</div><div class="facts"><div class="warn">4 changes by the assistant you have not kept or reverted yet</div><div class="warn">2 problems found in these orders</div></div><label>Faction password</label><input type="password" placeholder="Required"><div class="err" style="margin-top:6px">The server refused the orders. Check the faction password and try again.</div><div class="foot"><span class="btn">Cancel</span><span class="btn p off">Send</span></div></div></div></div><p class="cap">The field empties and keeps focus, as today's Send does. The assistant keeps waiting, and hears only how it finally ends: sent, declined or not answered.</p></div><div><h3 class="sec">Asking</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to the server</h4><div class="meta">The Guardsmen (12) · turn 84 · atlantis-pbem.com</div><div class="ask">Your assistant asks to send these orders. Type the faction password to send them, or Cancel to refuse.</div><div class="facts"><div class="warn">4 changes by the assistant you have not kept or reverted yet</div><div class="warn">2 problems found in these orders</div></div><label>Faction password</label><input type="password" placeholder="Required"><div class="foot"><span class="btn">Cancel</span><span class="btn p off">Send</span></div></div></div></div><p class="cap">Focus is in the password field. Enter sends, Escape or Cancel refuses. The window bounces in the Dock / flashes in the taskbar if it is behind.</p></div><div><h3 class="sec">Sending</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to the server</h4><div class="meta">The Guardsmen (12) · turn 84 · atlantis-pbem.com</div><div class="ask">Your assistant asks to send these orders. Type the faction password to send them, or Cancel to refuse.</div><div class="facts"><div class="warn">4 changes by the assistant you have not kept or reverted yet</div><div class="warn">2 problems found in these orders</div></div><label>Faction password</label><input type="password" value="••••••" disabled style="opacity:.5"><div class="soft" style="margin-top:8px">Sending orders…</div><div class="foot"><span class="btn off">Cancel</span><span class="btn p off">Send</span></div></div></div></div><p class="cap"></p></div><div><h3 class="sec">Sent — New Origins</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to the server</h4><div class="meta">The Guardsmen (12) · turn 84 · atlantis-pbem.com</div><div class="ask">Your assistant asks to send these orders. Type the faction password to send them, or Cancel to refuse.</div><div class="ok" style="margin:4px 0">Orders for turn 84 were accepted by the server.</div><span class="soft">The server reported</span><pre style="background:var(--panel);border:1px solid var(--edge);border-radius:4px;padding:6px;font-size:11px;white-space:pre-wrap;max-height:6rem;overflow:auto">unit 2302: WORK — no production possible here.</pre><div class="foot"><span class="btn p">Close</span></div></div></div></div><p class="cap">Exactly today's result. The assistant gets the same result, including the full server report.</p></div><div><h3 class="sec">Sent — New Age world</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to Arcanum</h4><div class="meta">The Guardsmen (12) · turn 84 · Arcanum</div><div class="ask">Your assistant asks to send these orders. Type the faction password to send them, or Cancel to refuse.</div><div class="warn" style="margin:4px 0">Orders for turn 84 were saved, but the world found 2 errors in them.</div><span class="soft">Errors</span><ul class="facts" style="padding-left:24px"><li>Unit 2301: MOVE: no such direction.</li><li>Unit 7076: STUDY: unknown skill.</li></ul><div class="foot"><span class="btn p">Close</span></div></div></div></div><p class="cap">Exactly today's New Age result, every error and warning listed. The assistant gets the same lists so it can fix the orders and ask again.</p></div><div><h3 class="sec">Could not reach the server</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to the server</h4><div class="meta">The Guardsmen (12) · turn 84 · atlantis-pbem.com</div><div class="ask">Your assistant asks to send these orders. Type the faction password to send them, or Cancel to refuse.</div><div class="err" style="margin:4px 0">Could not reach the server. Your orders were not sent — export them to a file if the turn is due.</div><div class="foot"><span class="btn p">Close</span></div></div></div></div><p class="cap">Today's sentence. The assistant is told the server could not be reached.</p></div><div><h3 class="sec">Nobody answered in time</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div><div class="scrim"><div class="dlg"><h4>Send orders to the server</h4><div class="meta">The Guardsmen (12) · turn 84 · atlantis-pbem.com</div><div class="soft" style="margin:6px 0">The assistant stopped waiting for an answer, so nothing was sent. Ask it again, or press Send in the top bar.</div><div class="foot"><span class="btn p">Close</span></div></div></div></div><p class="cap">Chosen in round 1. Also used if the assistant itself gives up or disconnects before the player answers.</p></div><div><h3 class="sec">Cancelled</h3><div class="app"><div class="bar"><span class="t">Atlantis HUD</span><span class="chip">Assistant: 4</span><span class="chip">Fetch</span><span class="chip">Export</span><span class="chip b">Send</span></div>
+<div class="body"><div class="pane">Units · Regions</div><div class="pane"><pre>#atlantis 12 "••••••"
+unit 2301
+  MOVE N N
+unit 2302
+  WORK
+unit 7076
+  STUDY COMBAT
+#end</pre></div></div></div><p class="cap">Cancel or Escape just closes the dialog — the player made the choice, so nothing needs saying. The assistant is told the player declined.</p></div></div><div class="cost"><b>Cost:</b> a typo costs nothing — the player just types it again. The assistant does not learn about a mistyped password.</div></main></body></html>
