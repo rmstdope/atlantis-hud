@@ -8,8 +8,8 @@ import {
   assistantFetchRefusal,
   fetchBroughtReport,
   newAgeRunOutcome,
-  originsArrivalOutcome,
-  originsChoiceOutcome,
+  keptOutcome,
+  landedOutcome,
   type AssistantFetchOutcome
 } from "./assistantFetch";
 
@@ -151,31 +151,31 @@ describe("which outcomes answer a request still waiting its turn", () => {
   });
 });
 
-describe("a New Origins arrival", () => {
-  it("loads, files an older turn, or hands another faction's to the strip", () => {
-    expect(originsArrivalOutcome({ kind: "load" }, 84, null)).toEqual({ kind: "loaded", turnNumber: 84 });
-    expect(originsArrivalOutcome({ kind: "storeOnly" }, 80, 83)).toEqual({ kind: "storedOlder", showing: 83 });
-    expect(originsArrivalOutcome({ kind: "foreign" }, 84, 83)).toEqual({ kind: "foreign" });
+describe("what the HUD did with a report that arrived", () => {
+  it("loaded it, filed it for history, or handed another faction's to the strip", () => {
+    expect(landedOutcome("loaded", 84)).toEqual({ kind: "loaded", turnNumber: 84 });
+    expect(landedOutcome("stored", 83)).toEqual({ kind: "storedOlder", showing: 83 });
+    expect(landedOutcome("asked", 83)).toEqual({ kind: "foreign" });
   });
 
-  it("is not an outcome yet while the player is asked", () => {
-    expect(originsArrivalOutcome({ kind: "askNewer", currentTurn: 83, incomingTurn: 84 }, 84, 83)).toBeNull();
-    expect(originsArrivalOutcome({ kind: "askSame", turnNumber: 83 }, 83, 83)).toBeNull();
+  it("would not load it, or it was not a turn report", () => {
+    expect(landedOutcome(undefined, 83)).toEqual({ kind: "notLoaded" });
+    expect(landedOutcome("mapExport", 83)).toEqual({ kind: "notLoaded" });
+    expect(landedOutcome("mageSheet", 83)).toEqual({ kind: "notLoaded" });
   });
 });
 
-describe("the player's answer to a New Origins question", () => {
-  const newer = { kind: "askNewer", currentTurn: 83, incomingTurn: 84 } as const;
-  const same = { kind: "askSame", turnNumber: 83 } as const;
-
-  it("Keep turn 83 stores turn 84 and keeps 83 on screen; Open turn 84 loads it", () => {
-    expect(originsChoiceOutcome(newer, "keep")).toEqual({ kind: "kept", showing: 83, storedTurn: 84 });
-    expect(originsChoiceOutcome(newer, "open")).toEqual({ kind: "loaded", turnNumber: 84 });
+describe("Keep on a New Origins question", () => {
+  it("Keep turn 83 stores turn 84 and keeps 83 on screen", () => {
+    expect(keptOutcome({ kind: "askNewer", currentTurn: 83, incomingTurn: 84 })).toEqual({
+      kind: "kept",
+      showing: 83,
+      storedTurn: 84
+    });
   });
 
-  it("Keep what I have stores nothing; Load it again reloads the same turn", () => {
-    expect(originsChoiceOutcome(same, "keep")).toEqual({ kind: "kept", showing: 83, storedTurn: null });
-    expect(originsChoiceOutcome(same, "open")).toEqual({ kind: "loaded", turnNumber: 83 });
+  it("Keep what I have stores nothing", () => {
+    expect(keptOutcome({ kind: "askSame", turnNumber: 83 })).toEqual({ kind: "kept", showing: 83, storedTurn: null });
   });
 });
 

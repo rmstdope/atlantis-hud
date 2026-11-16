@@ -13,7 +13,6 @@
 import { withoutFactionPassword } from "../ordersDocument";
 import type { ReportLoadOutcome } from "../reportLoad";
 import type { NewAgeFetchOutcome } from "../workspace/newAgeFetchRun";
-import type { NewOriginsArrival } from "../workspace/newOriginsFetchView";
 
 /** The line at the top of the dialog while the assistant waits. */
 export const ASSISTANT_FETCH_ASKS_LINE = "The assistant is asking for this turn's report.";
@@ -132,40 +131,33 @@ export function fetchBroughtReport(outcome: AssistantFetchOutcome): boolean {
   );
 }
 
-/** A New Origins run's arrival as an outcome; null while the player is asked Keep or Open. */
-export function originsArrivalOutcome(
-  arrival: NewOriginsArrival,
-  incomingTurn: number | null,
-  showing: number | null
-): AssistantFetchOutcome | null {
-  switch (arrival.kind) {
-    case "load":
-      return { kind: "loaded", turnNumber: incomingTurn };
-    case "storeOnly":
+/**
+ * What `loadReport` did with a report that arrived, as an outcome; `showing` is the turn on screen
+ * once it had. Anything but a turn report taken in - refused (it said why on the status line), a
+ * map or a mage sheet - is a report the HUD did not load.
+ */
+export function landedOutcome(landed: ReportLoadOutcome | undefined, showing: number | null): AssistantFetchOutcome {
+  switch (landed) {
+    case "loaded":
+      return { kind: "loaded", turnNumber: showing };
+    case "stored":
       return { kind: "storedOlder", showing };
-    case "foreign":
+    case "asked":
       return { kind: "foreign" };
-    case "askNewer":
-    case "askSame":
-      return null;
+    default:
+      return { kind: "notLoaded" };
   }
 }
 
-/** The player's Keep or Open on a New Origins question, as an outcome. */
-export function originsChoiceOutcome(
+/** Keep on a New Origins question: `Keep turn 83`, or `Keep what I have`. */
+export function keptOutcome(
   phase:
     | { kind: "askNewer"; currentTurn: number; incomingTurn: number }
-    | { kind: "askSame"; turnNumber: number },
-  choice: "keep" | "open"
+    | { kind: "askSame"; turnNumber: number }
 ): AssistantFetchOutcome {
-  if (phase.kind === "askNewer") {
-    return choice === "keep"
-      ? { kind: "kept", showing: phase.currentTurn, storedTurn: phase.incomingTurn }
-      : { kind: "loaded", turnNumber: phase.incomingTurn };
-  }
-  return choice === "keep"
-    ? { kind: "kept", showing: phase.turnNumber, storedTurn: null }
-    : { kind: "loaded", turnNumber: phase.turnNumber };
+  return phase.kind === "askNewer"
+    ? { kind: "kept", showing: phase.currentTurn, storedTurn: phase.incomingTurn }
+    : { kind: "kept", showing: phase.turnNumber, storedTurn: null };
 }
 
 /**
@@ -185,16 +177,6 @@ export function newAgeRunOutcome(
     case "reportFailed":
       return { kind: "failed", reason: outcome.reason };
     case "done":
-      switch (landed) {
-        case "loaded":
-          return { kind: "loaded", turnNumber: showing };
-        case "stored":
-          return { kind: "storedOlder", showing };
-        case "asked":
-          return { kind: "foreign" };
-        default:
-          // Refused by `loadReport` (it said why on the status line), or not a turn report at all.
-          return { kind: "notLoaded" };
-      }
+      return landedOutcome(landed, showing);
   }
 }
