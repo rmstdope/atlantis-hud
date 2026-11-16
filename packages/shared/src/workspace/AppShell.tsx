@@ -5626,6 +5626,10 @@ export function AppShell({
   } | null>(null);
   /** What the open Send dialog adds for the assistant, or null for the player's own Send. */
   const [assistantPrompt, setAssistantPrompt] = useState<"asking" | "stopped" | null>(null);
+  // The prompt as it stands, for the clock, the signal and the Send handlers, which run outside a
+  // render. Set ahead of the render when the prompt stops, so no Send slips through in between.
+  const assistantPromptNow = useRef(assistantPrompt);
+  assistantPromptNow.current = assistantPrompt;
   // The phases as they stand, for the clock and the signal, which fire outside a render.
   const sendPhaseNow = useRef(sendPhase);
   sendPhaseNow.current = sendPhase;
@@ -5658,6 +5662,7 @@ export function AppShell({
       return;
     }
     answerAssistantSend({ kind: "notAnswered" });
+    assistantPromptNow.current = "stopped";
     setAssistantPrompt("stopped");
   }, [answerAssistantSend]);
 
@@ -5736,8 +5741,6 @@ export function AppShell({
 
   // Switching game or world closes an assistant's prompt with the dialogs above, and the assistant
   // hears why. The player's own New Origins Send is left as it always was.
-  const assistantPromptNow = useRef(assistantPrompt);
-  assistantPromptNow.current = assistantPrompt;
   useEffect(() => {
     if (assistantPromptNow.current === null) {
       return;
@@ -7085,7 +7088,12 @@ export function AppShell({
           serverHost={uploadUrl === null ? "" : new URL(uploadUrl).host}
           phase={sendPhase}
           assistant={assistantPromptView}
-          onSend={(password) => void sendOrders(password)}
+          onSend={(password) => {
+            // Once the assistant stopped waiting nothing may go out, whatever the dialog last drew.
+            if (assistantPromptNow.current !== "stopped") {
+              void sendOrders(password);
+            }
+          }}
           onDismiss={dismissOriginsPrompt}
         />
       )}
@@ -7115,7 +7123,11 @@ export function AppShell({
           }
           phase={newAgeSendPhase}
           assistant={assistantPromptView}
-          onSend={(factionNumber, password) => void sendToNewAge(factionNumber, password)}
+          onSend={(factionNumber, password) => {
+            if (assistantPromptNow.current !== "stopped") {
+              void sendToNewAge(factionNumber, password);
+            }
+          }}
           onDismiss={dismissNewAgePrompt}
         />
       )}

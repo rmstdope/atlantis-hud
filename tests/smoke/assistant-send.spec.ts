@@ -41,6 +41,9 @@ declare global {
     __assistantAnswer?: (id: number) => Promise<Answer>;
     __assistantWithdraw?: (id: number) => void;
     __uploads?: string[];
+    /** Set, and the next orders upload waits for `__releaseUpload` with the world's reply. */
+    __holdUpload?: boolean;
+    __releaseUpload?: (reply: Reply) => void;
   }
 }
 
@@ -90,6 +93,11 @@ test.beforeEach(async ({ page }) => {
           }
           if (request.url.includes("/files/orders")) {
             uploads.push(request.url);
+            if (window.__holdUpload) {
+              return new Promise<Reply>((resolve) => {
+                window.__releaseUpload = resolve;
+              });
+            }
             return orders;
           }
           return { status: 200, body: report };
@@ -222,7 +230,10 @@ test("when the assistant stops waiting, the prompt says so and can send nothing"
   await expect(page.getByTestId("newage-password")).toHaveCount(0);
   await expect(page.getByTestId("newage-send-confirm")).toHaveCount(0);
   await expect(page.getByTestId("newage-send-close")).toBeFocused();
-  expect((await answerOf(page, id)).isError).toBe(true);
+  expect(await answerOf(page, id)).toEqual({
+    text: "Nobody typed the faction password within 5 minutes. Nothing was sent.",
+    isError: true
+  });
 
   await page.getByTestId("newage-send-close").click();
   await expect(panel(page)).toHaveCount(0);
@@ -242,4 +253,50 @@ test("a second request while one waits is refused with nothing shown", { tag: DE
 
   await page.getByTestId("newage-send-cancel").click();
   expect((await answerOf(page, first)).text).toContain("declined");
+});
+
+/** Asks, types the password and sends, then has the assistant give up while the upload is held. */
+async function giveUpWhileSending(page: Page): Promise<number> {
+  await page.evaluate(() => {
+    window.__holdUpload = true;
+  });
+  const id = await ask(page, "send_orders");
+  await page.getByTestId("newage-password").fill("hunter2");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("newage-send-outcome")).toHaveText("Sending orders…");
+  await expect.poll(() => page.evaluate(() => typeof window.__releaseUpload)).toBe("function");
+  await page.evaluate((call) => window.__assistantWithdraw!(call), id);
+  return id;
+}
+
+test("a send already on its way when the assistant gives up still shows its result", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await withTurnLoaded(page);
+  const id = await giveUpWhileSending(page);
+
+  // The orders may already have reached the world, so nothing says they were not sent.
+  await expect(page.getByTestId("assistant-send-stopped")).toHaveCount(0);
+  await page.evaluate((reply) => window.__releaseUpload!(reply), SAVED_WITH_ERRORS);
+
+  await expect(page.getByTestId("newage-send-outcome")).toHaveText(
+    `Orders for turn ${STANDARD_TURN} were saved, but the world found 2 errors in them.`
+  );
+  await expect(page.getByTestId("assistant-send-stopped")).toHaveCount(0);
+  const answer = await answerOf(page, id);
+  expect(answer.isError).toBe(false);
+  expect(answer.text).toContain("MOVE: no such direction.");
+});
+
+test("a send on its way that the world does not save stops the prompt once it comes back", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
+  await withTurnLoaded(page);
+  const id = await giveUpWhileSending(page);
+
+  await page.evaluate(
+    (reply) => window.__releaseUpload!(reply),
+    { status: 200, body: JSON.stringify({ saved: false, valid: false, error_count: 0, errors: [], warnings: [], message: "Wrong faction password" }) }
+  );
+
+  await expect(page.getByTestId("assistant-send-stopped")).toBeVisible();
+  await expect(page.getByTestId("newage-password")).toHaveCount(0);
+  await expect(page.getByTestId("newage-send-close")).toBeFocused();
+  expect((await answerOf(page, id)).text).toBe("Nobody typed the faction password within 5 minutes. Nothing was sent.");
 });
