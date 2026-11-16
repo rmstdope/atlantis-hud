@@ -452,7 +452,10 @@ impl Listening {
     async fn open(url: &str) -> Self {
         let response = listen(url, Some(TOKEN)).await;
         if response.status() != 200 {
-            panic!("the listen is served: {}", response.text().await.unwrap_or_default());
+            panic!(
+                "the listen is served: {}",
+                response.text().await.unwrap_or_default()
+            );
         }
         Self {
             response,

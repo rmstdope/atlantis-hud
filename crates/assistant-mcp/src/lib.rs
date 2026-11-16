@@ -270,11 +270,11 @@ impl ServerHandler for Handler {
                 .enable_tool_list_changed()
                 .build(),
         )
-            .with_server_info(Implementation::new(
-                "atlantis-hud",
-                env!("CARGO_PKG_VERSION"),
-            ))
-            .with_instructions(INSTRUCTIONS)
+        .with_server_info(Implementation::new(
+            "atlantis-hud",
+            env!("CARGO_PKG_VERSION"),
+        ))
+        .with_instructions(INSTRUCTIONS)
     }
 
     async fn list_tools(
