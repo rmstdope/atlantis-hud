@@ -399,6 +399,9 @@ export const SWEEP: SweepEntry[] = [
   { command: "assistant_register_tools", args: () => ({ tools: [] }) },
   { command: "assistant_answer", args: () => ({ id: 0, answer: { text: "", isError: false } }) },
   { command: "assistant_connection", args: () => ({}) },
+  // The window asks for attention only when it is not focused, and never takes focus (ah-9vmbx.2):
+  // a binding proof that changes nothing on screen.
+  { command: "assistant_request_attention", args: () => ({}) },
   // A relative path is refused before anything is written (ah-a97xg.11) - a binding proof that
   // leaves nothing on the runner's disk.
   { command: "assistant_write_file", args: () => ({ path: "battle.json", text: "{}" }) },

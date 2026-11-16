@@ -2,7 +2,8 @@
 //!
 //! The relay itself is `atlantis-hud-assistant-mcp`; this is the Tauri end of it. Each call a client
 //! makes is emitted to the window as `assistant://call`, and the frontend sends its answer back
-//! with the `assistant_answer` command. The tools are whatever the frontend registered with
+//! with the `assistant_answer` command. A call that ends unanswered - the client gave up or went
+//! away - is emitted as `assistant://withdrawn` with its id, so a prompt waiting on it can stop. The tools are whatever the frontend registered with
 //! `assistant_register_tools` when it started.
 //!
 //! The token is created once and kept in the application data directory, so the command that
@@ -22,6 +23,9 @@ const DEFAULT_PORT: u16 = 47615;
 /// How long a call waits for the frontend before it fails. Validation of a large turn can take a
 /// few seconds; anything much longer is a window that is not there.
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long `send_orders` may wait. The frontend's own clock gives the player five minutes to type
+/// the password; this is only the backstop past that and a slow upload.
+const SEND_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const TOKEN_FILE: &str = "assistant-token";
 
 /// What the settings dialog shows: where the server is, and how to reach it.
@@ -103,9 +107,17 @@ fn keep_private(_path: &Path) -> std::io::Result<()> {
 /// working as before, and the settings dialog says why the assistant cannot connect.
 pub fn start(app: &tauri::App) {
     let handle = app.handle().clone();
-    let relay = Relay::new(CALL_TIMEOUT, move |call| {
-        let _ = handle.emit("assistant://call", call);
-    });
+    let withdrawn = app.handle().clone();
+    let relay = Relay::new(
+        CALL_TIMEOUT,
+        move |call| {
+            let _ = handle.emit("assistant://call", call);
+        },
+        move |id| {
+            let _ = withdrawn.emit("assistant://withdrawn", id);
+        },
+    );
+    relay.allow_longer("send_orders", SEND_TIMEOUT);
     let port = port();
     let url = format!("http://127.0.0.1:{port}/mcp");
     let stop = CancellationToken::new();
@@ -179,6 +191,20 @@ pub fn assistant_answer(
 #[tauri::command(rename_all = "snake_case")]
 pub fn assistant_write_file(path: String, text: String) -> Result<(), String> {
     atlantis_hud_assistant_mcp::write_assistant_file(Path::new(&path), &text)
+}
+
+/// Asks for the player's attention the operating system's way - the Dock icon bounces, the taskbar
+/// button flashes - when the assistant wants something only the player can give and the window is
+/// behind another. Never takes focus.
+#[tauri::command(rename_all = "snake_case")]
+pub fn assistant_request_attention(app: tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if window.is_focused().unwrap_or(false) {
+        return;
+    }
+    let _ = window.request_user_attention(Some(tauri::UserAttentionType::Critical));
 }
 
 #[tauri::command(rename_all = "snake_case")]

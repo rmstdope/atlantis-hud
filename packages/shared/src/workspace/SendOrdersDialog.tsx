@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import type { AssistantPrompt } from "../assistant/assistantSend";
+import { AssistantAskLines, AssistantStoppedLine, useFocusBackOnClose } from "./AssistantSendLines";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { PASSWORD_REQUIRED_HINT } from "./newAgeSignInView";
 import {
@@ -27,6 +29,7 @@ export function SendOrdersDialog({
   turnNumber,
   serverHost,
   phase,
+  assistant,
   onSend,
   onDismiss
 }: {
@@ -34,6 +37,8 @@ export function SendOrdersDialog({
   turnNumber: number | null;
   serverHost: string;
   phase: SendOrdersPhase;
+  /** Present when the assistant asked for this send (ah-9vmbx.2); absent, this is today's dialog. */
+  assistant?: AssistantPrompt;
   /** Cancel and Escape both abort an in-flight request, so this promises nothing about delivery. */
   onSend: (password: string) => void;
   onDismiss: () => void;
@@ -41,7 +46,16 @@ export function SendOrdersDialog({
   const [password, setPassword] = useState("");
   const fieldRef = useRef<HTMLInputElement | null>(null);
 
-  useEscapeToDismiss(onDismiss);
+  // The assistant's prompt cannot be refused while the orders are on their way, so the player and
+  // the assistant both learn what the server said.
+  const inFlight = assistant !== undefined && phase.kind === "sending";
+  const dismiss = () => {
+    if (!inFlight) {
+      onDismiss();
+    }
+  };
+  useEscapeToDismiss(dismiss);
+  useFocusBackOnClose(assistant !== undefined);
 
   // After a refusal the password was probably wrong, so the field is cleared and keeps focus to be
   // retyped. An unreachable server says nothing about the password, so that one is left alone.
@@ -53,13 +67,25 @@ export function SendOrdersDialog({
   }, [phase.kind]);
 
   const problem = passwordProblem(password, { blankIsAProblem: false });
-  const canSend = phase.kind === "ready" && password.trim() !== "" && problem === null;
+  // A prompt the assistant stopped waiting on can send nothing, whatever was typed before it stopped.
+  const canSend =
+    assistant?.kind !== "stopped" && phase.kind === "ready" && password.trim() !== "" && problem === null;
   // A refusal is not the end of the interaction: the password was probably wrong, and the plan's
   // keyboard rules ask for it to be retyped in place. Only an acceptance and an unreachable server
   // leave nothing further to do here, and only those collapse the footer to a single Close.
-  const settled = phase.kind === "sent" || phase.kind === "unreachable";
-  const message = outcomeMessage(phase, turnNumber);
-  const report = phase.kind === "sent" && showsServerReport(phase.serverReport) ? phase.serverReport : null;
+  const stopped = assistant?.kind === "stopped";
+  const settled = stopped || phase.kind === "sent" || phase.kind === "unreachable";
+  // Close takes focus once there is nothing left to answer - a result, or a prompt the assistant
+  // stopped waiting on. `autoFocus` alone misses a Close that replaces a footer already on screen.
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (settled) {
+      closeRef.current?.focus();
+    }
+  }, [settled]);
+  const message = stopped ? null : outcomeMessage(phase, turnNumber);
+  const report =
+    !stopped && phase.kind === "sent" && showsServerReport(phase.serverReport) ? phase.serverReport : null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -73,7 +99,7 @@ export function SendOrdersDialog({
       data-testid="send-orders-backdrop"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) {
-          onDismiss();
+          dismiss();
         }
       }}
       // The dialog mounts inside the header, which is the report drop target: a file dropped on
@@ -94,6 +120,8 @@ export function SendOrdersDialog({
         <p data-testid="send-orders-meta" className="text-ink-soft">
           {metaLine(factionLabel, turnNumber, serverHost)}
         </p>
+        <AssistantAskLines prompt={assistant} settled={settled} />
+        {stopped ? <AssistantStoppedLine /> : null}
 
         {settled ? null : (
           <label className="flex flex-col gap-1">
@@ -113,7 +141,7 @@ export function SendOrdersDialog({
           </label>
         )}
 
-        {problem === null ? null : (
+        {problem === null || settled ? null : (
           <p data-testid="send-orders-problem" className="text-danger">
             {problem}
           </p>
@@ -143,6 +171,7 @@ export function SendOrdersDialog({
           {settled ? (
             <button
               type="button"
+              ref={closeRef}
               data-testid="send-orders-close"
               autoFocus
               onClick={onDismiss}
@@ -155,8 +184,9 @@ export function SendOrdersDialog({
               <button
                 type="button"
                 data-testid="send-orders-cancel"
-                onClick={onDismiss}
-                className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass"
+                disabled={inFlight}
+                onClick={dismiss}
+                className="rounded border border-edge px-2 py-0.5 text-ink-soft hover:border-brass hover:text-brass disabled:text-ink-dim disabled:hover:border-edge"
               >
                 Cancel
               </button>

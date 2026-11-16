@@ -1,3 +1,4 @@
+import type { AssistantSendOutcome } from "./assistantSend";
 import { describe, expect, it } from "vitest";
 import {
   type ArmyMemberRecord,
@@ -300,6 +301,8 @@ interface ArmyWorld {
   unreadTurns: number;
   /** Rejects every write with this message when set. */
   writeFails: string | null;
+  /** What a send the assistant asks for comes to. */
+  sendOutcome: AssistantSendOutcome;
 }
 
 /** A host over one turn, recording what it was asked to write and answering with `diagnostics`. */
@@ -313,8 +316,10 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     scanning: false,
     unreadTurns: 0,
     writeFails: null,
+    sendOutcome: { kind: "declined" },
     ...world
   };
+  const sendSignals: AbortSignal[] = [];
   const planned: { unitId: string; destination: string; carryingJson: string }[] = [];
   let current = turn;
   const armyWrites: { next: ArmyRecord; previous: ArmyRecord | null }[] = [];
@@ -327,6 +332,10 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     },
     studyPlanner: () => armyWorld.studyPlanner,
+    sendOrders: async (signal) => {
+      sendSignals.push(signal);
+      return armyWorld.sendOutcome;
+    },
     battleSkills: () => ({ skills: armyWorld.skills, scanning: armyWorld.scanning, unreadTurns: armyWorld.unreadTurns }),
     writeFile: async (path, text) => {
       if (armyWorld.writeFails !== null) {
@@ -361,11 +370,11 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     }
   };
-  return { host, written, files, planned, armyWrites };
+  return { host, written, files, planned, armyWrites, sendSignals };
 }
 
-async function call(host: AssistantHost, name: string, args: Record<string, unknown> = {}) {
-  return answerToolCall(host, name, args);
+async function call(host: AssistantHost, name: string, args: Record<string, unknown> = {}, signal?: AbortSignal) {
+  return answerToolCall(host, name, args, signal);
 }
 
 function json(text: string): any {
@@ -2616,5 +2625,46 @@ describe("the faction password never reaches the assistant", () => {
 
     expect(written).toHaveLength(1);
     expect(written[0]!.split("\n")[0]).toBe('#atlantis 3 "sesame"');
+  });
+});
+
+describe("send_orders", () => {
+  it("takes no arguments", () => {
+    const tool = ASSISTANT_TOOLS.find((one) => one.name === "send_orders");
+    expect(tool?.inputSchema).toEqual({ type: "object", properties: {} });
+    expect(tool?.description).toMatch(/password/);
+  });
+
+  it("answers what the host's send came to", async () => {
+    const { host } = aHost(aTurn(), [], {}, {
+      sendOutcome: { kind: "accepted", turnNumber: 84, serverReport: "unit 12: MOVE: no exit." }
+    });
+
+    const answer = await call(host, "send_orders");
+
+    expect(answer).toEqual({
+      text: "Orders for turn 84 were accepted by the server.\nThe server reported:\nunit 12: MOVE: no exit.",
+      isError: false
+    });
+  });
+
+  it("says the player declined as an error", async () => {
+    const { host } = aHost(aTurn());
+
+    expect(await call(host, "send_orders")).toEqual({
+      text: "The player declined to send the orders. Nothing was sent.",
+      isError: true
+    });
+  });
+
+  it("hands the call's signal to the host, so the prompt stops when the assistant does", async () => {
+    const { host, sendSignals } = aHost(aTurn());
+    const controller = new AbortController();
+
+    await call(host, "send_orders", {}, controller.signal);
+    controller.abort();
+
+    expect(sendSignals).toHaveLength(1);
+    expect(sendSignals[0]?.aborted).toBe(true);
   });
 });

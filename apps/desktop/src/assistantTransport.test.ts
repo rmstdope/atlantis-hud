@@ -8,15 +8,25 @@ vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
 const CALL: AssistantCall = { id: 7, name: "get_orders", arguments: {} };
 
-/** Connects with `onCall`, and hands back what delivers a call the way the shell's event does. */
-async function connectedWith(onCall: (call: AssistantCall) => Promise<AssistantAnswer>) {
-  let deliver: (event: { payload: AssistantCall }) => void = () => undefined;
-  listen.mockImplementation(async (_name: string, handler: typeof deliver) => {
-    deliver = handler;
+type Handler = (event: { payload: unknown }) => void;
+
+/** Connects with `onCall`, and hands back what delivers each of the shell's events. */
+async function connectedTo(onCall: (call: AssistantCall, signal: AbortSignal) => Promise<AssistantAnswer>) {
+  const handlers = new Map<string, Handler>();
+  listen.mockImplementation(async (name: string, handler: Handler) => {
+    handlers.set(name, handler);
     return () => undefined;
   });
   await desktopAssistantTransport()!.connect([], onCall);
-  return (call: AssistantCall) => deliver({ payload: call });
+  return {
+    call: (call: AssistantCall) => handlers.get("assistant://call")?.({ payload: call }),
+    withdraw: (id: number) => handlers.get("assistant://withdrawn")?.({ payload: id })
+  };
+}
+
+/** Connects with `onCall`, and hands back what delivers a call the way the shell's event does. */
+async function connectedWith(onCall: (call: AssistantCall, signal: AbortSignal) => Promise<AssistantAnswer>) {
+  return (await connectedTo(onCall)).call;
 }
 
 describe("desktopAssistantTransport", () => {
@@ -59,6 +69,27 @@ describe("desktopAssistantTransport", () => {
     vi.stubGlobal("window", { __ATLANTIS_DESKTOP_ASSISTANT__: standIn });
 
     expect(desktopAssistantTransport()).toBe(standIn);
+  });
+
+  it("aborts a call's signal when the shell withdraws it, and no other call's", async () => {
+    const signals = new Map<number, AbortSignal>();
+    const shell = await connectedTo((call, signal) => {
+      signals.set(call.id, signal);
+      return new Promise(() => undefined);
+    });
+
+    shell.call(CALL);
+    shell.call({ ...CALL, id: 8 });
+    shell.withdraw(7);
+
+    expect(signals.get(7)?.aborted).toBe(true);
+    expect(signals.get(8)?.aborted).toBe(false);
+  });
+
+  it("asks the shell for the player's attention", async () => {
+    desktopAssistantTransport()!.requestAttention?.();
+
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("assistant_request_attention"));
   });
 
   // Vitest fails the run on an unhandled rejection, which is what this one would be.

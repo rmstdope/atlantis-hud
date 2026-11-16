@@ -160,6 +160,7 @@ fn main() {
             edit_game_manifest,
             assistant::assistant_register_tools,
             assistant::assistant_answer,
+            assistant::assistant_request_attention,
             assistant::assistant_connection,
             assistant::assistant_write_file,
             atlantis_hud_core_tauri::command_parse_report,

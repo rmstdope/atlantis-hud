@@ -1,5 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import {
+  ASSISTANT_ALL_CLEAR_LINE,
+  ASSISTANT_ASKS_LINE,
+  ASSISTANT_STOPPED_LINE,
+  sendReminders,
+  type AssistantPrompt
+} from "../assistant/assistantSend";
 import { SendOrdersDialog } from "./SendOrdersDialog";
 import type { SendOrdersPhase } from "./sendOrdersView";
 import { interpretOrdersUploadReply } from "./ordersUpload";
@@ -86,5 +93,76 @@ describe("the send dialog", () => {
       expect(markup).not.toContain("#atlantis");
       expect(markup).not.toContain("REDACTED");
     }
+  });
+});
+
+const drawAsked = (phase: SendOrdersPhase, assistant: AssistantPrompt | undefined) =>
+  renderToStaticMarkup(
+    <SendOrdersDialog
+      factionLabel="Green Tide (4)"
+      turnNumber={71}
+      serverHost="atlantis-pbem.com"
+      phase={phase}
+      assistant={assistant}
+      onSend={() => {}}
+      onDismiss={() => {}}
+    />
+  );
+const buttonOf = (markup: string, testId: string) =>
+  markup.match(new RegExp(`<button[^>]*data-testid="${testId}"[^>]*>`))?.[0] ?? "";
+
+describe("when the assistant asks (ah-9vmbx.2)", () => {
+  const asking = (reminders = sendReminders(4, 2)): AssistantPrompt => ({ kind: "asking", reminders });
+
+  it("adds the assistant's line under the meta line, marked by a brass edge", () => {
+    const markup = drawAsked({ kind: "ready" }, asking());
+    expect(markup).toContain(ASSISTANT_ASKS_LINE);
+    const line = markup.match(/<p[^>]*data-testid="assistant-send-line"[^>]*>/)![0];
+    expect(line).toContain("border-l-2");
+    expect(line).toContain("border-brass");
+    expect(markup.indexOf("Green Tide (4) · turn 71 · atlantis-pbem.com")).toBeLessThan(markup.indexOf(ASSISTANT_ASKS_LINE));
+  });
+
+  it("shows the reminders in amber, above the password field", () => {
+    const markup = drawAsked({ kind: "ready" }, asking());
+    expect(markup).toContain("4 changes by the assistant you have not kept or reverted yet");
+    expect(markup).toContain("2 problems found in these orders");
+    expect(markup).toContain("text-warn");
+    expect(markup.indexOf("2 problems found")).toBeLessThan(markup.indexOf("Faction password"));
+  });
+
+  it("shows the soft all-clear when nothing is outstanding", () => {
+    const markup = drawAsked({ kind: "ready" }, asking(sendReminders(0, 0)));
+    expect(markup).toContain(ASSISTANT_ALL_CLEAR_LINE);
+    expect(markup).not.toContain("text-warn");
+  });
+
+  it("turns Cancel off while the orders are on their way", () => {
+    expect(buttonOf(drawAsked({ kind: "sending" }, asking()), "send-orders-cancel")).toMatch(/ disabled=""/);
+    expect(buttonOf(drawAsked({ kind: "ready" }, asking()), "send-orders-cancel")).not.toMatch(/ disabled=""/);
+  });
+
+  it("keeps the assistant's line over a result, and drops the reminders", () => {
+    const markup = drawAsked({ kind: "sent", serverReport: null }, asking());
+    expect(markup).toContain(ASSISTANT_ASKS_LINE);
+    expect(markup).not.toContain("2 problems found in these orders");
+    expect(markup).toContain(`data-testid="${"send-orders-close"}"`);
+  });
+
+  it("once the assistant stopped waiting, says so with a single Close and nothing to type", () => {
+    const markup = drawAsked({ kind: "ready" }, { kind: "stopped" });
+    expect(markup).toContain(ASSISTANT_STOPPED_LINE);
+    expect(markup).toContain("Green Tide (4) · turn 71 · atlantis-pbem.com");
+    expect(markup).toContain(`data-testid="${"send-orders-close"}"`);
+    expect(markup).not.toContain('type="password"');
+    expect(markup).not.toContain(`data-testid="${"send-orders-cancel"}"`);
+    expect(markup).not.toContain(ASSISTANT_ASKS_LINE);
+    expect(markup).not.toContain("problems found");
+  });
+
+  it("is today's dialog exactly when the assistant did not ask", () => {
+    const markup = drawAsked({ kind: "ready" }, undefined);
+    expect(markup).not.toContain("assistant-send-");
+    expect(markup).not.toContain(ASSISTANT_STOPPED_LINE);
   });
 });

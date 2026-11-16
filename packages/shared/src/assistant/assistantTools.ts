@@ -32,6 +32,7 @@ import type {
 } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
 import { withoutFactionPassword } from "../ordersDocument";
+import { assistantSendAnswer, type AssistantSendOutcome } from "./assistantSend";
 import type { ArmiesState } from "../armiesStore";
 import { memberIsStale, unitsByIdIn } from "../armies";
 import { changeAssistantArmy, createAssistantArmy } from "./assistantArmies";
@@ -131,6 +132,12 @@ export interface AssistantHost {
    * rejects with a sentence the assistant can read when this build has none or cannot read it.
    */
   rulesReference(rulesetId: string): Promise<string>;
+  /**
+   * Opens the HUD's own Send dialog for the player, with the assistant's line and reminders, and
+   * resolves with how the request ended (ah-9vmbx.2). The faction password is typed into the dialog
+   * and never comes near this interface. `signal` aborts when the assistant stops waiting.
+   */
+  sendOrders(signal: AbortSignal): Promise<AssistantSendOutcome>;
 }
 
 /**
@@ -469,6 +476,12 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
       },
       required: ["army"]
     }
+  },
+  {
+    name: "send_orders",
+    description:
+      "Ask the player to send the open game's orders to the game server, exactly as they stand in the HUD. The HUD's own Send dialog opens for the player, who types the faction password there - you never supply or see it - or refuses. It shows them how many of your changes they have not kept or reverted and how many problems the HUD's checks find; sending does not keep your changes. The call waits up to 5 minutes for the player. Answers whether the orders were accepted or saved, with every error, warning and report line the server returned, so you can fix the orders and ask again; or that the player declined, nobody answered, or why nothing could be asked. Each call is a new prompt.",
+    inputSchema: { type: "object", properties: {} }
   },
   {
     name: "get_study_plans",
@@ -1868,7 +1881,8 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
 export async function answerToolCall(
   host: AssistantHost,
   name: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  signal: AbortSignal = new AbortController().signal
 ): Promise<AssistantAnswer> {
   if (!ASSISTANT_TOOLS.some((tool) => tool.name === name)) {
     return { text: `Atlantis HUD has no tool called "${name}".`, isError: true };
@@ -1878,6 +1892,9 @@ export async function answerToolCall(
     return { text: "No turn is open in Atlantis HUD. Ask the player to open a game and load a report.", isError: true };
   }
   try {
+    if (name === "send_orders") {
+      return assistantSendAnswer(await host.sendOrders(signal));
+    }
     const answered = await answer(host, turn, name, args);
     return answered ?? { text: `Atlantis HUD has no tool called "${name}".`, isError: true };
   } catch (error: unknown) {

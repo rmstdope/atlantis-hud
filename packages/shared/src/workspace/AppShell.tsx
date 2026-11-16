@@ -185,6 +185,16 @@ import { readyArmies } from "../assistant/assistantTools";
 import { readyStudyPlans } from "../assistant/assistantStudyPlans";
 import { revertAssistantChanges } from "../assistant/assistantChanges";
 import { armyRevert } from "../assistant/assistantArmyChanges";
+import {
+  ASSISTANT_SEND_WAIT_MS,
+  assistantSendRefusal,
+  sendInFlight,
+  sendReminders,
+  settledNewAgeSend,
+  settledOriginsSend,
+  type AssistantPrompt,
+  type AssistantSendOutcome
+} from "../assistant/assistantSend";
 import { AssistantChangesPanel, type RevertTargets } from "./AssistantChangesPanel";
 import { useAssistantChanges } from "./useAssistantChanges";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
@@ -4546,6 +4556,13 @@ export function AppShell({
   // for the same reason (ah-n3j1q).
   const assistantDocument = useRef(ordersDocument);
   assistantDocument.current = ordersDocument;
+  /**
+   * What `send_orders` runs (ah-9vmbx.2). Assigned further down, every render, once the Send
+   * dialogs' state is in scope; read through this ref so the assistant's host can be built here.
+   */
+  const assistantSendRequest = useRef<(signal: AbortSignal) => Promise<AssistantSendOutcome>>(() =>
+    Promise.resolve({ kind: "refused", reason: "Atlantis HUD is still starting. Nothing was sent." })
+  );
   // The open game's stored turns, for an assistant comparing turns (ah-a97xg.4). Rebuilt with the
   // game, the faction or the parser, which drops the parsed reports the source keeps.
   const assistantFactionId = parsed?.header.factionId ?? null;
@@ -4608,6 +4625,7 @@ export function AppShell({
             label: hexLabel
           };
     },
+    sendOrders: (signal) => assistantSendRequest.current(signal),
     battleSkills: () => {
       const { skills, status, unreadTurns } = useBattleSkillsStore.getState();
       return { skills, scanning: status === "scanning", unreadTurns };
@@ -5593,6 +5611,156 @@ export function AppShell({
     sendAbort.current = null;
     setSendPhase(null);
   }, []);
+
+  /**
+   * The assistant's request to send (ah-9vmbx.2), while one is waiting on the player: how to answer
+   * it, its five-minute clock, and whether that clock ran out under a send still on its way. Cleared
+   * the moment the request is answered, so it is answered exactly once.
+   */
+  const assistantRequest = useRef<{
+    resolve: (outcome: AssistantSendOutcome) => void;
+    timer: ReturnType<typeof setTimeout>;
+    signal: AbortSignal;
+    onAbort: () => void;
+    lapsed: boolean;
+  } | null>(null);
+  /** What the open Send dialog adds for the assistant, or null for the player's own Send. */
+  const [assistantPrompt, setAssistantPrompt] = useState<"asking" | "stopped" | null>(null);
+  // The prompt as it stands, for the clock, the signal and the Send handlers, which run outside a
+  // render. Set ahead of the render when the prompt stops, so no Send slips through in between.
+  const assistantPromptNow = useRef(assistantPrompt);
+  assistantPromptNow.current = assistantPrompt;
+  // The phases as they stand, for the clock and the signal, which fire outside a render.
+  const sendPhaseNow = useRef(sendPhase);
+  sendPhaseNow.current = sendPhase;
+  const newAgeSendPhaseNow = useRef(newAgeSendPhase);
+  newAgeSendPhaseNow.current = newAgeSendPhase;
+
+  const answerAssistantSend = useCallback((outcome: AssistantSendOutcome) => {
+    const request = assistantRequest.current;
+    if (request === null) {
+      return;
+    }
+    assistantRequest.current = null;
+    clearTimeout(request.timer);
+    request.signal.removeEventListener("abort", request.onAbort);
+    request.resolve(outcome);
+  }, []);
+
+  /**
+   * The clock ran out, or the assistant gave up: the prompt stops asking. A send already on its way
+   * is let finish - it may have reached the server - and the settle effect below decides then.
+   */
+  const stopAssistantPrompt = useCallback(() => {
+    const request = assistantRequest.current;
+    if (request === null) {
+      return;
+    }
+    const phase = newAgeSendPhaseNow.current ?? sendPhaseNow.current;
+    if (phase !== null && sendInFlight(phase)) {
+      request.lapsed = true;
+      return;
+    }
+    answerAssistantSend({ kind: "notAnswered" });
+    assistantPromptNow.current = "stopped";
+    setAssistantPrompt("stopped");
+  }, [answerAssistantSend]);
+
+  // A phase that ends the request answers it; a lapse held off by a send in flight lands once that
+  // send comes back without a result.
+  useEffect(() => {
+    const request = assistantRequest.current;
+    if (request === null) {
+      return;
+    }
+    const turnNumber = parsed?.header.turnNumber ?? null;
+    const settled =
+      newAgeSendPhase !== null
+        ? settledNewAgeSend(newAgeSendPhase, turnNumber)
+        : sendPhase !== null
+          ? settledOriginsSend(sendPhase, turnNumber)
+          : null;
+    if (settled !== null) {
+      answerAssistantSend(settled);
+      return;
+    }
+    const phase = newAgeSendPhase ?? sendPhase;
+    if (request.lapsed && phase !== null && !sendInFlight(phase)) {
+      answerAssistantSend({ kind: "notAnswered" });
+      setAssistantPrompt("stopped");
+    }
+  }, [sendPhase, newAgeSendPhase, parsed?.header.turnNumber, answerAssistantSend]);
+
+  // A shell going away answers what it was asked rather than leaving the assistant to the relay's
+  // backstop.
+  useEffect(() => () => answerAssistantSend({ kind: "notAnswered" }), [answerAssistantSend]);
+
+  /** Cancel, Escape, the backdrop or Close: a request still waiting hears the player declined. */
+  const dismissOriginsPrompt = useCallback(() => {
+    answerAssistantSend({ kind: "declined" });
+    setAssistantPrompt(null);
+    dismissSend();
+  }, [answerAssistantSend, dismissSend]);
+  const dismissNewAgePrompt = useCallback(() => {
+    answerAssistantSend({ kind: "declined" });
+    setAssistantPrompt(null);
+    dismissNewAgeSend();
+  }, [answerAssistantSend, dismissNewAgeSend]);
+
+  assistantSendRequest.current = (signal) => {
+    const refusal = assistantSendRefusal({
+      gameOpen: game !== null,
+      sendRoad: openSend !== null,
+      canSend: canSendOrders,
+      offReason: sendOffReason,
+      promptOpen: assistantRequest.current !== null,
+      dialogOpen: sendPhase !== null || newAgeSendPhase !== null || hasOpenDismissLayers()
+    });
+    if (refusal !== null) {
+      return Promise.resolve({ kind: "refused", reason: refusal });
+    }
+    if (signal.aborted || openSend === null) {
+      return Promise.resolve({ kind: "notAnswered" });
+    }
+    const open = openSend;
+    return new Promise<AssistantSendOutcome>((resolve) => {
+      const onAbort = () => stopAssistantPrompt();
+      assistantRequest.current = {
+        resolve,
+        timer: setTimeout(stopAssistantPrompt, ASSISTANT_SEND_WAIT_MS),
+        signal,
+        onAbort,
+        lapsed: false
+      };
+      signal.addEventListener("abort", onAbort);
+      setAssistantPrompt("asking");
+      open();
+      assistant?.requestAttention?.();
+    });
+  };
+
+  // Switching game or world closes an assistant's prompt with the dialogs above, and the assistant
+  // hears why. The player's own New Origins Send is left as it always was.
+  useEffect(() => {
+    if (assistantPromptNow.current === null) {
+      return;
+    }
+    answerAssistantSend({ kind: "gameChanged" });
+    setAssistantPrompt(null);
+    dismissSend();
+    dismissNewAgeSend();
+  }, [openGameId, newAgeWorld?.worldId, answerAssistantSend, dismissSend, dismissNewAgeSend]);
+
+  /** What the open dialog adds for the assistant: its line and reminders, or the stopped sentence. */
+  const assistantPromptView: AssistantPrompt | undefined =
+    assistantPrompt === null
+      ? undefined
+      : assistantPrompt === "stopped"
+        ? { kind: "stopped" }
+        : {
+            kind: "asking",
+            reminders: sendReminders(assistantChanges.views.length + assistantChanges.armyViews.length, ordersErrorCount)
+          };
 
   // A rectangle belongs to the map it was dragged on. Switching game, loading another turn or
   // changing level leaves it describing somewhere else, so it goes and the dialog falls back to
@@ -6919,8 +7087,14 @@ export function AppShell({
           turnNumber={parsed?.header.turnNumber ?? null}
           serverHost={uploadUrl === null ? "" : new URL(uploadUrl).host}
           phase={sendPhase}
-          onSend={(password) => void sendOrders(password)}
-          onDismiss={dismissSend}
+          assistant={assistantPromptView}
+          onSend={(password) => {
+            // Once the assistant stopped waiting nothing may go out, whatever the dialog last drew.
+            if (assistantPromptNow.current !== "stopped") {
+              void sendOrders(password);
+            }
+          }}
+          onDismiss={dismissOriginsPrompt}
         />
       )}
       {ordersExportWarning === null ? null : (
@@ -6948,8 +7122,13 @@ export function AppShell({
               : null
           }
           phase={newAgeSendPhase}
-          onSend={(factionNumber, password) => void sendToNewAge(factionNumber, password)}
-          onDismiss={dismissNewAgeSend}
+          assistant={assistantPromptView}
+          onSend={(factionNumber, password) => {
+            if (assistantPromptNow.current !== "stopped") {
+              void sendToNewAge(factionNumber, password);
+            }
+          }}
+          onDismiss={dismissNewAgePrompt}
         />
       )}
       {fetchPhase === null || newAgeWorld === null ? null : (

@@ -13,7 +13,12 @@
 //! - the frontend answers it by id ([`Relay::answer`]), and that answer is the call's result.
 //!
 //! A call nobody answers within the relay's timeout fails as a tool error rather than hanging the
-//! client: the window may be closed, or still opening a game.
+//! client: the window may be closed, or still opening a game. A tool that waits on the player - a
+//! send that needs the faction password typed in - is given longer ([`Relay::allow_longer`]).
+//!
+//! The frontend is told when a call it was handed ends unanswered - the client cancelled it or went
+//! away, or the timeout passed - through the withdraw callback, so a prompt waiting on the player can
+//! stop waiting too.
 //!
 //! Served over Streamable HTTP on a loopback port, statelessly and as plain JSON responses. Every
 //! request must carry `Authorization: Bearer <token>`: a loopback port is reachable by every
@@ -62,6 +67,7 @@ pub struct ToolAnswer {
 }
 
 type Dispatch = dyn Fn(ToolCall) + Send + Sync;
+type Withdraw = dyn Fn(u64) + Send + Sync;
 
 /// The tools the frontend registered, and the calls waiting on it.
 pub struct Relay {
@@ -69,26 +75,77 @@ pub struct Relay {
     pending: Mutex<HashMap<u64, oneshot::Sender<ToolAnswer>>>,
     next_id: AtomicU64,
     timeout: Duration,
+    longer: Mutex<HashMap<String, Duration>>,
     dispatch: Box<Dispatch>,
+    withdraw: Box<Withdraw>,
+}
+
+/// What a call that is not answered says.
+const NOT_ANSWERED: &str = "Atlantis HUD did not answer. Is its window open, with a game loaded?";
+
+/// Holds a dispatched call's place in `pending`, and withdraws it however the wait ends - unless an
+/// answer took it first. A guard rather than code after the wait, because a client that goes away
+/// drops the waiting future without running anything after its `.await`.
+struct Waiting<'a> {
+    relay: &'a Relay,
+    id: u64,
+}
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        let unanswered = self
+            .relay
+            .pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.id);
+        if unanswered.is_some() {
+            (self.relay.withdraw)(self.id);
+        }
+    }
 }
 
 impl Relay {
     /// A relay with no tools yet, handing each call to `dispatch` and giving up on one that is not
-    /// answered within `timeout`.
+    /// answered within `timeout`. `withdraw` is told the id of every dispatched call that ended
+    /// without an answer.
     pub fn new(
         timeout: Duration,
         dispatch: impl Fn(ToolCall) + Send + Sync + 'static,
+        withdraw: impl Fn(u64) + Send + Sync + 'static,
     ) -> Arc<Self> {
         Arc::new(Self {
             tools: RwLock::new(Vec::new()),
             pending: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             timeout,
+            longer: Mutex::new(HashMap::new()),
             dispatch: Box::new(dispatch),
+            withdraw: Box::new(withdraw),
         })
     }
 
-    /// Replaces the tool list with `tools`, an array of MCP tool definitions.
+    /// Lets calls to `tool` wait `timeout` rather than the relay's own: a tool that waits on the
+    /// player rather than on the frontend's arithmetic.
+    pub fn allow_longer(&self, tool: &str, timeout: Duration) {
+        self.longer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(tool.to_string(), timeout);
+    }
+
+    fn timeout_for(&self, tool: &str) -> Duration {
+        self.longer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(tool)
+            .copied()
+            .unwrap_or(self.timeout)
+    }
+
+    /// Replaces the tool list with `tools`, an array of MCP tool definitions, and ends every call
+    /// still waiting: tools are registered when a window starts, so one that registers again after
+    /// a reload is not the window those calls were handed to.
     ///
     /// # Errors
     ///
@@ -100,6 +157,19 @@ impl Relay {
             .tools
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = parsed;
+        let stranded: Vec<(u64, oneshot::Sender<ToolAnswer>)> = self
+            .pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .drain()
+            .collect();
+        for (id, sender) in stranded {
+            let _ = sender.send(ToolAnswer {
+                text: NOT_ANSWERED.to_string(),
+                is_error: true,
+            });
+            (self.withdraw)(id);
+        }
         Ok(())
     }
 
@@ -129,35 +199,41 @@ impl Relay {
             .any(|tool| tool.name == name)
     }
 
-    async fn call(&self, name: String, arguments: serde_json::Value) -> ToolAnswer {
+    async fn call(
+        &self,
+        name: String,
+        arguments: serde_json::Value,
+        cancelled: CancellationToken,
+    ) -> ToolAnswer {
         if !self.knows(&name) {
             return ToolAnswer {
                 text: format!("Atlantis HUD has no tool called \"{name}\"."),
                 is_error: true,
             };
         }
+        let timeout = self.timeout_for(&name);
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
         self.pending
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(id, sender);
+        let _waiting = Waiting { relay: self, id };
         (self.dispatch)(ToolCall {
             id,
             name,
             arguments,
         });
-        let answered = tokio::time::timeout(self.timeout, receiver).await;
-        // Whatever happened, nothing is waiting under this id any more.
-        self.pending
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(&id);
-        match answered {
-            Ok(Ok(answer)) => answer,
-            _ => ToolAnswer {
-                text: "Atlantis HUD did not answer. Is its window open, with a game loaded?"
-                    .to_string(),
+        tokio::select! {
+            answered = tokio::time::timeout(timeout, receiver) => match answered {
+                Ok(Ok(answer)) => answer,
+                _ => ToolAnswer {
+                    text: NOT_ANSWERED.to_string(),
+                    is_error: true,
+                },
+            },
+            () = cancelled.cancelled() => ToolAnswer {
+                text: "The call was cancelled.".to_string(),
                 is_error: true,
             },
         }
@@ -194,10 +270,13 @@ impl ServerHandler for Handler {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let arguments = serde_json::Value::Object(request.arguments.unwrap_or_default());
-        let answer = self.0.call(request.name.into_owned(), arguments).await;
+        let answer = self
+            .0
+            .call(request.name.into_owned(), arguments, context.ct)
+            .await;
         let content = vec![ContentBlock::text(answer.text)];
         Ok(if answer.is_error {
             CallToolResult::error(content)
