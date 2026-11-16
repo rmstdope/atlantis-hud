@@ -388,3 +388,199 @@ async fn registering_tools_again_ends_calls_still_waiting() {
     assert_eq!(answer["result"]["isError"], true);
     assert_eq!(next_withdrawn(&mut server).await, call.id);
 }
+
+#[tokio::test]
+async fn advertises_that_its_tool_list_can_change() {
+    let server = a_server(Duration::from_secs(5)).await;
+
+    let answer = rpc(
+        &server.url,
+        "initialize",
+        json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": { "name": "test", "version": "1" }
+        }),
+    )
+    .await;
+
+    assert_eq!(
+        answer["result"]["capabilities"]["tools"]["listChanged"], true,
+        "{answer}"
+    );
+}
+
+/// An open `subscriptions/listen` request, as a 2026-07-28 client opens one to hear about changes:
+/// the server answers with an event stream that stays open.
+struct Listening {
+    response: reqwest::Response,
+    seen: String,
+}
+
+const LIST_CHANGED: &str = "notifications/tools/list_changed";
+
+async fn listen(url: &str, token: Option<&str>) -> reqwest::Response {
+    let mut request = reqwest::Client::new()
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "subscriptions/listen")
+        .body(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "subscriptions/listen",
+                "params": {
+                    "notifications": { "toolsListChanged": true },
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                        "io.modelcontextprotocol/clientCapabilities": {},
+                        "io.modelcontextprotocol/clientInfo": { "name": "test", "version": "1" }
+                    }
+                }
+            })
+            .to_string(),
+        );
+    if let Some(token) = token {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
+    request.send().await.expect("the server answers")
+}
+
+impl Listening {
+    async fn open(url: &str) -> Self {
+        let response = listen(url, Some(TOKEN)).await;
+        if response.status() != 200 {
+            panic!(
+                "the listen is served: {}",
+                response.text().await.unwrap_or_default()
+            );
+        }
+        Self {
+            response,
+            seen: String::new(),
+        }
+    }
+
+    /// Reads the stream until `count` tool-list changes have arrived on it in all, or fails after
+    /// five seconds.
+    async fn until_changes(&mut self, count: usize) {
+        let read = async {
+            while self.seen.matches(LIST_CHANGED).count() < count {
+                let chunk = self
+                    .response
+                    .chunk()
+                    .await
+                    .expect("the stream reads")
+                    .expect("the stream stays open");
+                self.seen.push_str(&String::from_utf8_lossy(&chunk));
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), read)
+            .await
+            .unwrap_or_else(|_| panic!("{count} change(s) within five seconds; saw {}", self.seen));
+    }
+
+    /// Reads whatever arrives within `quiet`, and says how many tool-list changes the stream has
+    /// carried in all.
+    async fn changes_after(&mut self, quiet: Duration) -> usize {
+        while let Ok(Ok(Some(chunk))) = tokio::time::timeout(quiet, self.response.chunk()).await {
+            self.seen.push_str(&String::from_utf8_lossy(&chunk));
+        }
+        self.seen.matches(LIST_CHANGED).count()
+    }
+}
+
+#[tokio::test]
+async fn listening_needs_the_token() {
+    let server = a_server(Duration::from_secs(5)).await;
+
+    assert_eq!(listen(&server.url, None).await.status(), 401);
+    assert_eq!(listen(&server.url, Some("guess")).await.status(), 401);
+}
+
+#[tokio::test]
+async fn a_client_that_starts_listening_is_told_to_refresh_at_once() {
+    // A client reconnecting to a HUD restarted on a newer build cannot know its tools changed, and
+    // the new process cannot know what the client last listed: so every listen opens with a change.
+    let server = a_server(Duration::from_secs(5)).await;
+
+    let mut listening = Listening::open(&server.url).await;
+
+    listening.until_changes(1).await;
+    assert_eq!(listening.changes_after(Duration::from_millis(300)).await, 1);
+}
+
+#[tokio::test]
+async fn registering_tools_again_tells_every_listening_client() {
+    let server = a_server(Duration::from_secs(5)).await;
+    let mut first = Listening::open(&server.url).await;
+    let mut second = Listening::open(&server.url).await;
+    first.until_changes(1).await;
+    second.until_changes(1).await;
+
+    // A reloaded window registers its tools afresh, a new one among them.
+    server
+        .relay
+        .set_tools(&json!([
+            { "name": "get_unit", "description": "One unit.", "inputSchema": { "type": "object" } },
+            { "name": "fetch_report", "description": "This turn's report.", "inputSchema": { "type": "object" } }
+        ]))
+        .expect("tools register");
+
+    first.until_changes(2).await;
+    second.until_changes(2).await;
+    let answer = rpc(&server.url, "tools/list", json!({})).await;
+    let names: Vec<&str> = answer["result"]["tools"]
+        .as_array()
+        .expect("a tool list")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert_eq!(names, ["get_unit", "fetch_report"]);
+}
+
+#[tokio::test]
+async fn a_listen_that_wants_no_tool_changes_is_kept_open_and_quiet() {
+    // Ending it at once would invite a client that reopens a closed listen to loop.
+    let server = a_server(Duration::from_secs(5)).await;
+    let response = reqwest::Client::new()
+        .post(&server.url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "subscriptions/listen")
+        .header("Authorization", format!("Bearer {TOKEN}"))
+        .body(
+            json!({
+                "jsonrpc": "2.0", "id": 12, "method": "subscriptions/listen",
+                "params": {
+                    "notifications": {},
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                        "io.modelcontextprotocol/clientCapabilities": {}
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(response.status(), 200);
+    let mut listening = Listening {
+        response,
+        seen: String::new(),
+    };
+    server.relay.set_tools(&json!([])).expect("tools register");
+
+    assert_eq!(listening.changes_after(Duration::from_millis(300)).await, 0);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), listening.response.chunk())
+            .await
+            .is_err(),
+        "the stream is still open: {}",
+        listening.seen
+    );
+}
