@@ -2488,3 +2488,133 @@ describe("reading the open world's rules and data", () => {
     expect(asked).toEqual(["newage-trident"]);
   });
 });
+
+describe("the faction password never reaches the assistant", () => {
+  const LOCKED = ['#atlantis 3 "sesame"', "", ";*** plain (1,1) in Coast ***", "", "unit 100", "work", "", "unit 101", "", "#end", ""].join("\n");
+  const REPORT = 'Testers (3) Report\nOrders Template (Long Format):\n\n#atlantis 3 "sesame"\n\nunit 100\n#end\n';
+  const HIDDEN = '#atlantis 3 "<password hidden>"';
+  /** Orders whose unit 100 block carries a pasted header line, so a per-unit answer would show it. */
+  const PASTED = LOCKED.replace("work", 'work\n; pasted: #atlantis 3 "sesame"');
+
+  /** Turn 11 kept the player's orders; turn 9 kept none and its report's template holds the line. */
+  function lockedEarlierTurns(): EarlierTurnSource {
+    const report = (turnNumber: number, template: string | null) =>
+      aParsedReport({
+        header: aReportHeaderInfo({ factionId: "3", turnNumber }),
+        regions: [
+          aReportRegion({
+            regionId: "1,1,1",
+            coordinate: { x: 1, y: 1, z: 1 },
+            units: [aReportUnit({ unitId: "100", name: "Farmers", regionId: "1,1,1", own: true, factionId: "3" })]
+          })
+        ],
+        ordersTemplate: template === null ? null : { text: template, factionId: "3", units: [] }
+      });
+    return {
+      list: async () => [],
+      load: async (turnNumber) =>
+        turnNumber === 11
+          ? { turnNumber, parsed: report(11, null), ordersDocument: PASTED }
+          : turnNumber === 9
+            ? { turnNumber, parsed: report(9, PASTED), ordersDocument: null }
+            : null
+    };
+  }
+
+  function aLockedHost() {
+    const made = aHost(aTurn({ ordersDocument: LOCKED, rawReport: REPORT }));
+    return { ...made, host: { ...made.host, earlierTurns: lockedEarlierTurns() } };
+  }
+
+  it("hides it in the open turn's whole orders document", async () => {
+    const { host } = aLockedHost();
+
+    const answer = await call(host, "get_orders");
+
+    expect(answer.text).not.toContain("sesame");
+    expect(json(answer.text).document.split("\n")[0]).toBe(HIDDEN);
+  });
+
+  it("hides it in an earlier turn's kept orders and in its report's orders template", async () => {
+    const { host } = aLockedHost();
+
+    const kept = await call(host, "get_orders", { turn: 11 });
+    const template = await call(host, "get_orders", { turn: 9 });
+
+    expect(kept.text).not.toContain("sesame");
+    expect(json(kept.text).orders.split("\n")[0]).toBe(HIDDEN);
+    expect(template.text).not.toContain("sesame");
+    expect(json(template.text).orders.split("\n")[0]).toBe(HIDDEN);
+  });
+
+  it("hides it when the report's own text is read or searched", async () => {
+    const { host } = aLockedHost();
+
+    const read = (await call(host, "read_report", { fromLine: 1, lineCount: 10 })).text;
+    const found = (await call(host, "search_report", { query: "atlantis" })).text;
+
+    expect(read).not.toContain("sesame");
+    expect(read).toContain(`4: ${HIDDEN}`);
+    expect(found).toBe(`4: ${HIDDEN}`);
+  });
+
+  it("does not let a search tell whether the password matches", async () => {
+    const { host } = aLockedHost();
+
+    const guessed = (await call(host, "search_report", { query: "sesame" })).text;
+    const prefix = (await call(host, "search_report", { query: '3 "s' })).text;
+
+    expect(guessed).toBe('No line of the report contains "sesame".');
+    expect(prefix).toBe('No line of the report contains "3 "s".');
+  });
+
+  it("hides it in an earlier turn's per-unit orders", async () => {
+    const { host } = aLockedHost();
+
+    const kept = await call(host, "get_orders", { turn: 11, unitId: "100" });
+    const template = await call(host, "get_orders", { turn: 9, unitId: "100" });
+
+    expect(kept.text).not.toContain("sesame");
+    expect(json(kept.text).orders).toBe(`work\n; pasted: ${HIDDEN}`);
+    expect(template.text).not.toContain("sesame");
+    expect(json(template.text).orders).toBe(`work\n; pasted: ${HIDDEN}`);
+  });
+
+  it("hides it in any refusal and in a failure the host reports", async () => {
+    const { host } = aLockedHost();
+    const failing: AssistantHost = {
+      ...host,
+      validate: async () => {
+        throw new Error('could not read #atlantis 3 "sesame"');
+      }
+    };
+
+    const refused = await call(host, "get_unit", { unitId: '#atlantis 3 "sesame"' });
+    const failed = await call(failing, "get_turn_overview");
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).not.toContain("sesame");
+    expect(failed.isError).toBe(true);
+    expect(failed.text).toBe('The HUD failed to answer: could not read #atlantis 3 "<password hidden>"');
+  });
+
+  it("hides it in a refused write that shows the orders as they now stand", async () => {
+    const { host } = aLockedHost();
+    host.typeByHand(LOCKED.replace("work", `work\n; pasted: #atlantis 3 "sesame"`));
+
+    const refused = await call(host, "write_orders", { turnKey: KEY, units: [{ unitId: "100", version: V("work"), orders: "tax" }] });
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).not.toContain("sesame");
+    expect(refused.text).toContain("<password hidden>");
+  });
+
+  it("leaves the password in the stored orders a write saves", async () => {
+    const { host, written } = aLockedHost();
+
+    await call(host, "write_orders", { turnKey: KEY, units: [{ unitId: "100", version: V("work"), orders: "tax" }] });
+
+    expect(written).toHaveLength(1);
+    expect(written[0]!.split("\n")[0]).toBe('#atlantis 3 "sesame"');
+  });
+});

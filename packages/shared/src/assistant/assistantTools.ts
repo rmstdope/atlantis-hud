@@ -31,6 +31,7 @@ import type {
   WorkedRegion
 } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
+import { withoutFactionPassword } from "../ordersDocument";
 import type { ArmiesState } from "../armiesStore";
 import { memberIsStale, unitsByIdIn } from "../armies";
 import { changeAssistantArmy, createAssistantArmy } from "./assistantArmies";
@@ -507,12 +508,30 @@ const MAX_RULES_MATCHES = 50;
 
 class Refusal extends Error {}
 
+/** A refusal, with the `#atlantis` line's password hidden in whatever it quotes (`ah-9vmbx.1`). */
 function refuse(message: string): never {
+  throw new Refusal(withoutFactionPassword(message));
+}
+
+/**
+ * A refusal whose text is already safe: one embedding JSON built by `passwordlessJson`, which must
+ * not be masked again as finished text, where a line runs on through an escaped `\n`.
+ */
+function refuseMasked(message: string): never {
   throw new Refusal(message);
 }
 
 function ok(value: unknown): AssistantAnswer {
-  return { text: typeof value === "string" ? value : JSON.stringify(value), isError: false };
+  return { text: typeof value === "string" ? withoutFactionPassword(value) : passwordlessJson(value), isError: false };
+}
+
+/**
+ * JSON for an answer, with the `#atlantis` line's password hidden in every string it carries
+ * (`ah-9vmbx.1`). Masked value by value, before escaping, so a line ends at a real line break and
+ * never runs on through an escaped `\n` into the rest of the JSON.
+ */
+function passwordlessJson(value: unknown): string {
+  return JSON.stringify(value, (_key, field: unknown) => (typeof field === "string" ? withoutFactionPassword(field) : field));
 }
 
 function stringArg(args: Record<string, unknown>, name: string): string | undefined {
@@ -1209,9 +1228,9 @@ async function writeOrders(host: AssistantHost, turn: AssistantTurn, args: Recor
   }
   if (changed.length > 0) {
     noteShown(host, turn, changed.map((unit) => [unit.unitId, unit.orders] as const));
-    refuse(
+    refuseMasked(
       "Nothing was written: the player changed these units' orders since you read them. Here they are as they now stand; rethink against them, and write again with these versions.\n" +
-        JSON.stringify({ changed })
+        passwordlessJson({ changed })
     );
   }
   const checked: CheckedWrite[] = current.map(({ write, region, ids, orders: now }) => {
@@ -1824,7 +1843,8 @@ async function answer(host: AssistantHost, turn: AssistantTurn, name: string, ar
     case "search_report": {
       const query = requiredString(args, "query").toLowerCase();
       const hits: string[] = [];
-      turn.rawReport.split("\n").forEach((line, index) => {
+      // Searched masked, so whether a query hits never depends on the password itself.
+      withoutFactionPassword(turn.rawReport).split("\n").forEach((line, index) => {
         if (hits.length < MAX_SEARCH_HITS && line.toLowerCase().includes(query)) {
           hits.push(`${index + 1}: ${line}`);
         }
@@ -1862,6 +1882,6 @@ export async function answerToolCall(
     return answered ?? { text: `Atlantis HUD has no tool called "${name}".`, isError: true };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { text: error instanceof Refusal ? message : `The HUD failed to answer: ${message}`, isError: true };
+    return { text: error instanceof Refusal ? message : `The HUD failed to answer: ${withoutFactionPassword(message)}`, isError: true };
   }
 }

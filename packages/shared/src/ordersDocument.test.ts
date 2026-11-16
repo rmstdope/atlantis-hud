@@ -39,6 +39,7 @@ import {
   stripUnitComments,
   withoutTrailingBlankLines,
   withFactionPassword,
+  withoutFactionPassword,
   withUnitComments,
   writeRouteOrder,
   writeUnitOrders,
@@ -593,6 +594,47 @@ describe("withFactionPassword", () => {
   it("returns a document with no #atlantis line unchanged", () => {
     const document = "unit 18642\n@work\n#end";
     expect(withFactionPassword(document, "p")).toBe(document);
+  });
+});
+
+describe("withoutFactionPassword", () => {
+  it("hides the password on the #atlantis line and leaves every other line as it was", () => {
+    const masked = withoutFactionPassword(DOCUMENT);
+
+    expect(masked.split("\n")[0]).toBe('#atlantis 95 "<password hidden>"');
+    expect(masked.split("\n").slice(1)).toEqual(DOCUMENT.split("\n").slice(1));
+  });
+
+  it("hides an unquoted password, one with no faction id, and an upper-case directive", () => {
+    expect(withoutFactionPassword("#atlantis 7 sesame\n")).toBe('#atlantis 7 "<password hidden>"\n');
+    expect(withoutFactionPassword('#atlantis "sesame"\n')).toBe('#atlantis "<password hidden>"\n');
+    expect(withoutFactionPassword('#ATLANTIS 27 "foobar"')).toBe('#ATLANTIS 27 "<password hidden>"');
+    expect(withoutFactionPassword('#atlantis 3"sesame"')).toBe('#atlantis 3 "<password hidden>"');
+  });
+
+  it("finds the directive anywhere on a line, as in a numbered report line", () => {
+    expect(withoutFactionPassword('12: #atlantis 3 "sesame"\n13: unit 1')).toBe(
+      '12: #atlantis 3 "<password hidden>"\n13: unit 1'
+    );
+  });
+
+  it("keeps a CRLF line ending and the line's indentation", () => {
+    expect(withoutFactionPassword('  #atlantis 42 "old"\r\nunit 1\r\n')).toBe('  #atlantis 42 "<password hidden>"\r\nunit 1\r\n');
+  });
+
+  it("leaves the rules' own sentences about the #atlantis line unchanged", () => {
+    const prose = [
+      "If you have a password set, you must specify it on your #ATLANTIS line or else your orders",
+      "(This applies to #ATLANTIS and #END lines as well as to order",
+      "#ATLANTIS line for the game to accept your orders.",
+      "#atlantis and unit lines."
+    ].join("\n");
+    expect(withoutFactionPassword(prose)).toBe(prose);
+  });
+
+  it("leaves a line that carries no password, and a word that merely starts with #atlantis, unchanged", () => {
+    const text = "#atlantis 3\n#atlantisfoo bar\n#end";
+    expect(withoutFactionPassword(text)).toBe(text);
   });
 });
 
