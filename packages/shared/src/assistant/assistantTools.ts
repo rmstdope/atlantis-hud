@@ -31,6 +31,7 @@ import type {
   WorkedRegion
 } from "@atlantis/core-client";
 import { regionIdOf } from "../hexMapModel";
+import { withoutFactionPassword } from "../ordersDocument";
 import type { ArmiesState } from "../armiesStore";
 import { memberIsStale, unitsByIdIn } from "../armies";
 import { changeAssistantArmy, createAssistantArmy } from "./assistantArmies";
@@ -512,7 +513,16 @@ function refuse(message: string): never {
 }
 
 function ok(value: unknown): AssistantAnswer {
-  return { text: typeof value === "string" ? value : JSON.stringify(value), isError: false };
+  return { text: typeof value === "string" ? withoutFactionPassword(value) : passwordlessJson(value), isError: false };
+}
+
+/**
+ * JSON for an answer, with the `#atlantis` line's password hidden in every string it carries
+ * (`ah-9vmbx.1`). Masked value by value, before escaping, so a line ends at a real line break and
+ * never runs on through an escaped `\n` into the rest of the JSON.
+ */
+function passwordlessJson(value: unknown): string {
+  return JSON.stringify(value, (_key, field: unknown) => (typeof field === "string" ? withoutFactionPassword(field) : field));
 }
 
 function stringArg(args: Record<string, unknown>, name: string): string | undefined {
@@ -1211,7 +1221,7 @@ async function writeOrders(host: AssistantHost, turn: AssistantTurn, args: Recor
     noteShown(host, turn, changed.map((unit) => [unit.unitId, unit.orders] as const));
     refuse(
       "Nothing was written: the player changed these units' orders since you read them. Here they are as they now stand; rethink against them, and write again with these versions.\n" +
-        JSON.stringify({ changed })
+        passwordlessJson({ changed })
     );
   }
   const checked: CheckedWrite[] = current.map(({ write, region, ids, orders: now }) => {
