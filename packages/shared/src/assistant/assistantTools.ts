@@ -33,6 +33,7 @@ import type {
 import { regionIdOf } from "../hexMapModel";
 import { withoutFactionPassword } from "../ordersDocument";
 import { assistantSendAnswer, type AssistantSendOutcome } from "./assistantSend";
+import { assistantFetchAnswer, type AssistantFetchOutcome } from "./assistantFetch";
 import type { ArmiesState } from "../armiesStore";
 import { memberIsStale, unitsByIdIn } from "../armies";
 import { changeAssistantArmy, createAssistantArmy } from "./assistantArmies";
@@ -138,6 +139,12 @@ export interface AssistantHost {
    * and never comes near this interface. `signal` aborts when the assistant stops waiting.
    */
   sendOrders(signal: AbortSignal): Promise<AssistantSendOutcome>;
+  /**
+   * Opens the HUD's own Fetch dialog for the player, with the assistant's line on top, and resolves
+   * with how the fetch ended (ah-9vmbx.3). The faction password is typed into the dialog and never
+   * comes near this interface. `signal` aborts when the assistant stops waiting.
+   */
+  fetchReport(signal: AbortSignal): Promise<AssistantFetchOutcome>;
 }
 
 /**
@@ -481,6 +488,12 @@ export const ASSISTANT_TOOLS: readonly AssistantToolDefinition[] = [
     name: "send_orders",
     description:
       "Ask the player to send the open game's orders to the game server, exactly as they stand in the HUD. The HUD's own Send dialog opens for the player, who types the faction password there - you never supply or see it - or refuses. It shows them how many of your changes they have not kept or reverted and how many problems the HUD's checks find; sending does not keep your changes. The call waits up to 5 minutes for the player. Answers whether the orders were accepted or saved, with every error, warning and report line the server returned, so you can fix the orders and ask again; or that the player declined, nobody answered, or why nothing could be asked. Each call is a new prompt.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  {
+    name: "fetch_report",
+    description:
+      "Ask the player to fetch this turn's report from the game server into the open game. The HUD's own Fetch dialog opens for the player, who types the faction password there - you never supply or see it - or declines. Works with no report loaded yet. The call waits, with no time limit, until the player answers; if a dialog is already open in the HUD, the request waits until it closes. Answers which turn is on screen now - and whether a newer turn was only stored for history because the player kept the one they had - or why nothing was fetched. Read the new turn afterwards with the usual tools.",
     inputSchema: { type: "object", properties: {} }
   },
   {
@@ -1886,6 +1899,15 @@ export async function answerToolCall(
 ): Promise<AssistantAnswer> {
   if (!ASSISTANT_TOOLS.some((tool) => tool.name === name)) {
     return { text: `Atlantis HUD has no tool called "${name}".`, isError: true };
+  }
+  if (name === "fetch_report") {
+    // Before the turn check: a game with no report yet is exactly where a fetch is wanted.
+    try {
+      return assistantFetchAnswer(await host.fetchReport(signal));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { text: `The HUD failed to answer: ${withoutFactionPassword(message)}`, isError: true };
+    }
   }
   const turn = host.turn();
   if (turn === null) {

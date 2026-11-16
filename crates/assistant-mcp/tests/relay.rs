@@ -335,6 +335,36 @@ async fn a_tool_allowed_longer_outlives_the_default_timeout() {
 }
 
 #[tokio::test]
+async fn a_tool_allowed_forever_waits_and_is_answered() {
+    // A fetch waits on the player with no time limit at all (ah-9vmbx.3): the largest duration
+    // there is must neither overflow the deadline nor end the call.
+    let mut server = a_server(Duration::from_millis(100)).await;
+    server.relay.allow_longer("get_unit", Duration::MAX);
+    let url = server.url.clone();
+
+    let pending = tokio::spawn(async move {
+        rpc(
+            &url,
+            "tools/call",
+            json!({ "name": "get_unit", "arguments": {} }),
+        )
+        .await
+    });
+    let call = server.calls.recv().await.expect("the call is dispatched");
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(server.relay.answer(
+        call.id,
+        ToolAnswer {
+            text: "Fetched".to_string(),
+            is_error: false
+        }
+    ));
+
+    let answer = pending.await.expect("the request completes");
+    assert_eq!(answer["result"]["content"][0]["text"], "Fetched");
+}
+
+#[tokio::test]
 async fn registering_tools_again_ends_calls_still_waiting() {
     let mut server = a_server(Duration::from_secs(30)).await;
     let url = server.url.clone();

@@ -13,6 +13,8 @@ import {
   type NewAgeFetchPhase,
   type NewAgeFetchScope
 } from "./newAgeFetchView";
+import { ASSISTANT_FETCH_NOTE, type AssistantFetchPrompt } from "../assistant/assistantFetch";
+import { AssistantFetchLine } from "./AssistantFetchLine";
 import { credentialNote, PASSWORD_REQUIRED_HINT, signInMetaLine } from "./newAgeSignInView";
 
 /**
@@ -30,6 +32,7 @@ export function NewAgeFetchDialog({
   suggestedFactionNumber,
   phase,
   initialScope = "thisTurn",
+  assistant,
   onFetch,
   onDismiss
 }: {
@@ -48,6 +51,12 @@ export function NewAgeFetchDialog({
    * next opening - from the header's button - is back on "Latest report".
    */
   initialScope?: NewAgeFetchScope;
+  /**
+   * Set when the assistant asked for this fetch (ah-9vmbx.3): its line on top, its note under the
+   * password, and no choice of what to fetch - it asked for this turn only. Absent, the dialog is
+   * the header's own.
+   */
+  assistant?: AssistantFetchPrompt;
   onFetch: (factionNumber: string, password: string, scope: NewAgeFetchScope) => void;
   /** Cancel and Escape both abandon whatever is running, so this promises nothing. */
   onDismiss: () => void;
@@ -91,7 +100,7 @@ export function NewAgeFetchDialog({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (canFetch) {
-      onFetch(factionNumber.trim(), password, scope);
+      onFetch(factionNumber.trim(), password, assistant === undefined ? scope : "thisTurn");
     }
   };
 
@@ -118,6 +127,7 @@ export function NewAgeFetchDialog({
         className="flex w-[26rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <h2 className="text-ink">{fetchDialogTitle(rulesetLabel)}</h2>
+        <AssistantFetchLine prompt={assistant} />
         <p data-testid="newage-fetch-meta" className="text-ink-soft">
           {signInMetaLine(host, turnNumber)}
         </p>
@@ -127,7 +137,7 @@ export function NewAgeFetchDialog({
             <NewAgeSignInFields
               factionNumber={factionNumber}
               password={password}
-              note={credentialNote("fetch")}
+              note={assistant === undefined ? credentialNote("fetch") : ASSISTANT_FETCH_NOTE}
               phase={{ kind: "ready" }}
               fieldRef={fieldRef}
               onFactionNumber={setFactionNumber}
@@ -140,29 +150,31 @@ export function NewAgeFetchDialog({
               </p>
             ) : null}
 
-            <fieldset className="flex flex-col gap-1 border-0 p-0">
-              <legend className="sr-only">What to fetch</legend>
-              <label className="flex items-start gap-2 text-ink-soft">
-                <input
-                  data-testid="newage-fetch-scope-this-turn"
-                  type="radio"
-                  name="newage-fetch-scope"
-                  checked={scope === "thisTurn"}
-                  onChange={() => setScope("thisTurn")}
-                />
-                <span>{FETCH_SCOPE_THIS_TURN}</span>
-              </label>
-              <label className="flex items-start gap-2 text-ink-soft">
-                <input
-                  data-testid="newage-fetch-scope-history"
-                  type="radio"
-                  name="newage-fetch-scope"
-                  checked={scope === "thisTurnAndHistory"}
-                  onChange={() => setScope("thisTurnAndHistory")}
-                />
-                <span>{FETCH_SCOPE_WITH_HISTORY}</span>
-              </label>
-            </fieldset>
+            {assistant !== undefined ? null : (
+              <fieldset className="flex flex-col gap-1 border-0 p-0">
+                <legend className="sr-only">What to fetch</legend>
+                <label className="flex items-start gap-2 text-ink-soft">
+                  <input
+                    data-testid="newage-fetch-scope-this-turn"
+                    type="radio"
+                    name="newage-fetch-scope"
+                    checked={scope === "thisTurn"}
+                    onChange={() => setScope("thisTurn")}
+                  />
+                  <span>{FETCH_SCOPE_THIS_TURN}</span>
+                </label>
+                <label className="flex items-start gap-2 text-ink-soft">
+                  <input
+                    data-testid="newage-fetch-scope-history"
+                    type="radio"
+                    name="newage-fetch-scope"
+                    checked={scope === "thisTurnAndHistory"}
+                    onChange={() => setScope("thisTurnAndHistory")}
+                  />
+                  <span>{FETCH_SCOPE_WITH_HISTORY}</span>
+                </label>
+              </fieldset>
+            )}
           </>
         ) : (
           <>

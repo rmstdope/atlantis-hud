@@ -1,4 +1,5 @@
 import type { AssistantSendOutcome } from "./assistantSend";
+import type { AssistantFetchOutcome } from "./assistantFetch";
 import { describe, expect, it } from "vitest";
 import {
   type ArmyMemberRecord,
@@ -303,6 +304,8 @@ interface ArmyWorld {
   writeFails: string | null;
   /** What a send the assistant asks for comes to. */
   sendOutcome: AssistantSendOutcome;
+  /** What a fetch the assistant asks for comes to. */
+  fetchOutcome: AssistantFetchOutcome;
 }
 
 /** A host over one turn, recording what it was asked to write and answering with `diagnostics`. */
@@ -317,9 +320,11 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     unreadTurns: 0,
     writeFails: null,
     sendOutcome: { kind: "declined" },
+    fetchOutcome: { kind: "declined" },
     ...world
   };
   const sendSignals: AbortSignal[] = [];
+  const fetchSignals: AbortSignal[] = [];
   const planned: { unitId: string; destination: string; carryingJson: string }[] = [];
   let current = turn;
   const armyWrites: { next: ArmyRecord; previous: ArmyRecord | null }[] = [];
@@ -335,6 +340,10 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
     sendOrders: async (signal) => {
       sendSignals.push(signal);
       return armyWorld.sendOutcome;
+    },
+    fetchReport: async (signal) => {
+      fetchSignals.push(signal);
+      return armyWorld.fetchOutcome;
     },
     battleSkills: () => ({ skills: armyWorld.skills, scanning: armyWorld.scanning, unreadTurns: armyWorld.unreadTurns }),
     writeFile: async (path, text) => {
@@ -370,7 +379,7 @@ function aHost(turn: AssistantTurn | null, diagnostics: OrderDiagnostic[] = [], 
       }
     }
   };
-  return { host, written, files, planned, armyWrites, sendSignals };
+  return { host, written, files, planned, armyWrites, sendSignals, fetchSignals };
 }
 
 async function call(host: AssistantHost, name: string, args: Record<string, unknown> = {}, signal?: AbortSignal) {
@@ -2666,5 +2675,39 @@ describe("send_orders", () => {
 
     expect(sendSignals).toHaveLength(1);
     expect(sendSignals[0]?.aborted).toBe(true);
+  });
+});
+
+describe("fetch_report", () => {
+  it("takes no arguments and says the player types the password", () => {
+    const tool = ASSISTANT_TOOLS.find((one) => one.name === "fetch_report");
+    expect(tool?.inputSchema).toEqual({ type: "object", properties: {} });
+    expect(tool?.description).toMatch(/password/);
+  });
+
+  it("answers what the host's fetch came to", async () => {
+    const { host } = aHost(aTurn(), [], {}, { fetchOutcome: { kind: "loaded", turnNumber: 84 } });
+
+    expect(await call(host, "fetch_report")).toEqual({
+      text: "Turn 84's report was fetched and is on screen in Atlantis HUD now. Read it with the usual tools.",
+      isError: false
+    });
+  });
+
+  it("asks even when no report is on screen yet, since fetching one is the point", async () => {
+    const { host } = aHost(null, [], {}, { fetchOutcome: { kind: "loaded", turnNumber: 1 } });
+
+    expect((await call(host, "fetch_report")).isError).toBe(false);
+  });
+
+  it("hands the call's signal to the host, so the dialog knows when the assistant stops waiting", async () => {
+    const { host, fetchSignals } = aHost(aTurn());
+    const controller = new AbortController();
+
+    await call(host, "fetch_report", {}, controller.signal);
+    controller.abort();
+
+    expect(fetchSignals).toHaveLength(1);
+    expect(fetchSignals[0]?.aborted).toBe(true);
   });
 });

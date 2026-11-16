@@ -118,6 +118,9 @@ pub fn start(app: &tauri::App) {
         },
     );
     relay.allow_longer("send_orders", SEND_TIMEOUT);
+    // A fetch waits until the player answers, however long that takes (ah-9vmbx.3): the dialog
+    // has no clock, so the relay must not bring one.
+    relay.allow_longer("fetch_report", Duration::MAX);
     let port = port();
     let url = format!("http://127.0.0.1:{port}/mcp");
     let stop = CancellationToken::new();
