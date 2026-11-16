@@ -1,0 +1,117 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant fetch</title>
+<style>
+:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+  --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main { max-width:1320px; margin:0 auto; }
+h1 { font-size:26px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+header p + p { margin-top:8px; }
+h3.sec { margin:42px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+.card h2 { font-size:15.5px; margin-bottom:5px; }
+.card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+.concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+.cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+.cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+.ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; margin-bottom:10px; }
+.ui h4 { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; font-family:inherit; }
+.ui .meta { color:var(--ink-soft); margin-bottom:9px; }
+.ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+.ui .field { margin-bottom:9px; }
+.ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+  color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+.ui input::placeholder { color:var(--ink-dim); }
+.ui .hint { color:var(--ink-dim); margin:2px 0 9px; }
+.ui .danger { color:var(--danger); margin:2px 0 9px; }
+.ui .body { color:var(--ink-soft); margin:8px 0 4px; }
+.ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font:inherit; }
+.ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+.banner { background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:11px 13px;
+  font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink-soft); }
+.banner b { color:var(--ink); }
+.banner .foot { display:flex; gap:8px; margin-top:10px; }
+.btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+.btn.primary { border-color:var(--brass); color:var(--brass); }
+.hdr { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+  font-family:system-ui,sans-serif; font-size:12.5px;
+  background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px; }
+.hdr .chip { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:3px 9px; }
+.hdr .chip.brass { border-color:var(--brass); color:var(--brass); }
+.status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+  border-radius:5px; padding:6px 10px; color:var(--ink-soft); margin-top:6px; }
+.status.ok { color:var(--ok); } .status.bad { color:var(--danger); }
+.caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; max-width:100ch; }
+.tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+  font-family:system-ui,sans-serif; display:block; margin:14px 0 5px; }
+table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:6px; font-family:system-ui,sans-serif; }
+th, td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+th { color:var(--brass); font-weight:normal; letter-spacing:.6px; }
+td { color:var(--ink-soft); } td b { color:var(--ink); font-weight:600; }
+.rej { color:var(--ink-soft); font-size:13.5px; max-width:100ch; }
+.rej li { margin:7px 0 7px 18px; }
+.rej li b { color:var(--ink); }
+</style>
+<style>
+.ask { border-left:3px solid var(--brass); padding:5px 8px; margin:2px 0 9px; color:var(--ink); background:rgba(217,164,65,.07); }
+.strip { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:8px 11px; font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); margin-top:6px; }
+.strip .grow { flex:1; min-width:200px; }
+.app { border:1px solid var(--edge); border-radius:8px; padding:8px; background:var(--ground); position:relative; }
+.app .map { height:120px; border:1px dashed var(--edge); border-radius:6px; margin-top:6px; color:var(--ink-dim); font-family:system-ui,sans-serif; font-size:12px; display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:46px 30px 14px; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; border-radius:6px; }
+.overlay .ui { width:300px; margin:0; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+</style>
+<header><h1>The assistant fetches <span>this turn's report</span></h1>
+<p>The assistant asks for this turn's report. The HUD opens its usual Fetch dialog on its own, with one line on top saying the assistant is asking. Typing the password and pressing Fetch is the go-ahead; Cancel is the no. The assistant never sees the password, and it is never kept.</p>
+<p>From the moment you press Fetch, it is the Fetch you already know: the same working line, the same refusals, and the same Open / Keep question when a newer turn arrives. Agreed 2026-11-16 over three rounds. Every string is quoted exactly as it will ship.</p>
+<p style="color:var(--ink-dim)">Desktop application only, as the Fetch button is. On the web version nothing appears, and the assistant is told fetching is not available there.</p></header>
+<main>
+
+<h3 class="sec">1 · It asks</h3><p>The dialog opens straight away, over whatever is on screen, with the password field focused. If the HUD is not the window you are using, its Dock icon bounces (on Windows the taskbar button flashes) until you switch to it. The HUD never comes to the front by itself.</p>
+<div class="cards2">
+<div class="card"><h2><em>New Origins</em></h2>
+<div class="app"><div class="hdr"><span class="chip">Export &#9662;</span><span class="chip brass">Fetch</span><span class="chip">Send</span></div><div class="map">map &amp; units</div><div class="map">orders</div>
+<div class="overlay"><div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div><div class="field"><label>Faction number</label><input type="text" value="27"></div><div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div><div class="hint">Used for this fetch only. The assistant never sees it, and nothing is written to this machine.</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div></div></div></div></div>
+<div class="card"><h2><em>New Age</em> no "what to fetch" choice</h2>
+<div class="app"><div class="hdr"><span class="chip">Export &#9662;</span><span class="chip brass">Fetch</span><span class="chip">Send</span></div><div class="map">map &amp; units</div><div class="map">orders</div>
+<div class="overlay"><div class="ui"><h4>Fetch from New Age: Arcanum</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">Faction 27 &middot; turn 12 &middot; arcanum.example</div><div class="field"><label>Faction number</label><input type="text" value="27"></div><div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div><div class="hint">Used for this fetch only. The assistant never sees it, and nothing is written to this machine.</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div></div></div></div>
+<p class="caption">"Latest report / All reports not yet fetched/imported" is left out: the assistant asked for this turn only. For earlier turns, use the header's Fetch.</p></div>
+</div>
+<div class="cards2" style="margin-top:18px"><div class="card"><h2><em>empty</em> nothing loaded yet</h2><p class="concept">As the header's Fetch does: only the address in the line, a blank faction number, and Fetch off until both fields are filled.</p>
+<div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">atlantis-pbem.com</div><div class="field"><label>Faction number</label><input type="text" placeholder="Required"></div><div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div><div class="hint">Used for this fetch only. The assistant never sees it, and nothing is written to this machine.</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div></div></div>
+<div class="card"><h2><em>no time limit</em></h2><p class="concept">The dialog waits until you answer. It never closes because time ran out.</p></div></div>
+
+<h3 class="sec">2 · Once you press Fetch: what Fetch already does</h3><p>The line on top stays throughout. Everything else is unchanged.</p>
+<div class="cards3">
+<div class="card"><h2><em>working</em></h2><div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div><div class="body" style="margin:10px 0">Fetching this turn's report from New Origins&hellip;</div><div class="foot"><span class="btn">Cancel</span></div></div></div>
+<div class="card"><h2><em>refused</em> try again</h2><p class="concept">The password is cleared and focused again. The assistant goes on waiting.</p><div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div><div class="field"><label>Faction number</label><input type="text" value="27"></div><div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div><div class="danger">Faction password is incorrect.</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div></div></div>
+<div class="card"><h2><em>a newer turn</em> asks, as today</h2><div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div><div class="body">Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded.</div><div class="foot"><span class="btn">Keep turn 83</span><span class="btn primary">Open turn 84</span></div></div>
+<span class="tag">Open turn 84</span><div class="status ok">turn 84 loaded — 4 regions, 11 units.</div>
+<span class="tag">Keep turn 83</span><div class="status">turn 84 stored for history; still showing turn 83.</div></div>
+</div>
+<p class="caption">The same turn, an older turn, somebody else's faction, unreachable, unreadable: all exactly as the header's Fetch, with the same words. In every case the assistant is told what happened: which turn is now on screen, or why nothing was fetched.</p>
+
+<h3 class="sec">3 · You say no</h3><p>Cancel or Escape, at any point before the report arrives. Nothing is fetched.</p>
+<div class="cards2"><div class="card"><div class="status">Fetch declined — the assistant has been told.</div></div></div>
+
+<h3 class="sec">4 · The assistant stops waiting</h3><p>When the assistant says it has stopped waiting, the dialog stays open and only the top line changes. Fetching still works and loads the turn, as the header's Fetch does; the assistant just won't hear how it went. Cancelling now says nothing, because there is nobody to tell.</p>
+<div class="cards2"><div class="card"><div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant stopped waiting. You can still fetch this turn&#39;s report here.</div><div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div><div class="field"><label>Faction number</label><input type="text" value="27"></div><div class="field"><label>Faction password</label><input type="password" placeholder="Required"></div><div class="hint">Used for this fetch only. The assistant never sees it, and nothing is written to this machine.</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div></div></div></div>
+
+<h3 class="sec">5 · You are already in a dialog</h3><p>The request waits its turn. Nothing changes until your dialog closes; then the assistant's Fetch opens. If your own dialog was a Fetch that brought this turn, the assistant is told that turn and nothing more opens. A second request while one is already waiting adds nothing on screen.</p>
+<div class="cards2"><div class="card"><div class="ui"><h4>Send orders</h4><div class="meta">…you carry on…</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Send</span></div></div><span class="tag">once it closes</span><div class="ui"><h4>Fetch from New Origins</h4><div class="ask">The assistant is asking for this turn&#39;s report.</div><div class="meta">Merchant Guild (27) &middot; turn 83 &middot; atlantis-pbem.com</div><div class="foot"><span class="btn">Cancel</span><span class="btn primary">Fetch</span></div></div></div></div>
+
+<h3 class="sec">The words</h3>
+<table><tr><th>Where</th><th>What it says</th></tr>
+<tr><td>Line at the top of the dialog</td><td><b>The assistant is asking for this turn's report.</b></td></tr>
+<tr><td>… once the assistant has stopped waiting</td><td><b>The assistant stopped waiting. You can still fetch this turn's report here.</b></td></tr>
+<tr><td>Note under the password</td><td><b>Used for this fetch only. The assistant never sees it, and nothing is written to this machine.</b></td></tr>
+<tr><td>Status line after Cancel</td><td><b>Fetch declined — the assistant has been told.</b></td></tr>
+<tr><td>Everything else</td><td>Word for word what the header's Fetch says today, for both kinds of world.</td></tr></table>
+</main>
