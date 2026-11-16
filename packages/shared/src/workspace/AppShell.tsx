@@ -195,6 +195,17 @@ import {
   type AssistantPrompt,
   type AssistantSendOutcome
 } from "../assistant/assistantSend";
+import {
+  ASSISTANT_FETCH_DECLINED,
+  assistantFetchRefusal,
+  fetchBroughtReport,
+  heldCancelOutcome,
+  keptOutcome,
+  landedOutcome,
+  newAgeRunOutcome,
+  type AssistantFetchOutcome,
+  type AssistantFetchPrompt
+} from "../assistant/assistantFetch";
 import { AssistantChangesPanel, type RevertTargets } from "./AssistantChangesPanel";
 import { useAssistantChanges } from "./useAssistantChanges";
 import { AppHeader, type HeaderPopoverId } from "./AppHeader";
@@ -321,7 +332,7 @@ import { paletteTurnActions, type TurnActionId } from "./paletteTurnActions";
 import { structuresForUnitDock } from "../structureLabel";
 import type { Resume, StopKey } from "../diagnosticNav";
 import { resumeWalk, stepDiagnostic, stopKeys } from "../diagnosticNav";
-import { hasOpenDismissLayers } from "../dismissStack";
+import { hasOpenDismissLayers, subscribeDismissLayers } from "../dismissStack";
 import {
   firesInContext,
   isKeyDialog,
@@ -2342,7 +2353,7 @@ export function AppShell({
         // Should not be reachable - a report cannot be imported at all without an open game - but
         // claiming success here would tell the player a turn is stored when nothing was written.
         setStatus(failedStatus("there is no open game to store it in"));
-        return;
+        return false;
       }
       const settledRuleset = rulesetTextOf(await rulesetForThisLoad());
       const now = new Date().toISOString();
@@ -2359,6 +2370,7 @@ export function AppShell({
       setMemory({ remembered: stored.remembered, knownMap: stored.knownMap });
       setMergedReports(stored.merged);
       setStatus(stored.status);
+      return true;
     },
     [client, game, parsed, rawReport, rulesetForThisLoad]
   );
@@ -2467,7 +2479,7 @@ export function AppShell({
 
   const loadReport = useCallback(
     (text: string, fileName: string): Promise<ReportLoadOutcome | undefined> =>
-      runReported<ReportLoadOutcome>(
+      runReported<ReportLoadOutcome | undefined>(
         async () => {
           // Whatever was being written belongs to the turn that is about to be replaced. Saved
           // before anything else, because the state below is what tells the flush which draft it is.
@@ -2545,8 +2557,11 @@ export function AppShell({
             // ref must be left alone too.
             viewerRef.current = report;
             void checkOpened([{ fileName, report }], null);
+            return "loaded";
           }
-          return "loaded";
+          // `applyReport` said why in red; nothing reached the screen, so a caller must not claim
+          // it did - neither the fetch's green line nor the assistant's answer (ah-9vmbx.3).
+          return undefined;
         },
         (message) => setStatus(failedStatus(message)),
         { busy: setBusy, prefix: `could not read ${fileName}` }
@@ -4563,6 +4578,10 @@ export function AppShell({
   const assistantSendRequest = useRef<(signal: AbortSignal) => Promise<AssistantSendOutcome>>(() =>
     Promise.resolve({ kind: "refused", reason: "Atlantis HUD is still starting. Nothing was sent." })
   );
+  /** What `fetch_report` runs (ah-9vmbx.3), assigned further down for the same reason. */
+  const assistantFetchHandler = useRef<(signal: AbortSignal) => Promise<AssistantFetchOutcome>>(() =>
+    Promise.resolve({ kind: "refused", reason: "Atlantis HUD is still starting. Nothing was fetched." })
+  );
   // The open game's stored turns, for an assistant comparing turns (ah-a97xg.4). Rebuilt with the
   // game, the faction or the parser, which drops the parsed reports the source keeps.
   const assistantFactionId = parsed?.header.factionId ?? null;
@@ -4626,6 +4645,7 @@ export function AppShell({
           };
     },
     sendOrders: (signal) => assistantSendRequest.current(signal),
+    fetchReport: (signal) => assistantFetchHandler.current(signal),
     battleSkills: () => {
       const { skills, status, unreadTurns } = useBattleSkillsStore.getState();
       return { skills, scanning: status === "scanning", unreadTurns };
@@ -5096,8 +5116,13 @@ export function AppShell({
           ? "new-origins"
           : null;
 
-  /** Opens that dialog; `scope` is only asked by a New Age one, which has the choice to tick. */
-  const openFetch = (scope: NewAgeFetchScope) => {
+  /**
+   * Opens that dialog; `scope` is only asked by a New Age one, which has the choice to tick.
+   * `assistant` is set when the assistant asked for it (ah-9vmbx.3), and every opening sets it, so
+   * the player's own Fetch never inherits a line from an earlier one.
+   */
+  const openFetch = (scope: NewAgeFetchScope, assistant: AssistantFetchPrompt | null = null) => {
+    setAssistantFetch(assistant);
     if (fetchRoad === "new-age") {
       setFetchScopeOnOpen(scope);
       setFetchPhase({ kind: "ready", message: null, retype: false });
@@ -5252,6 +5277,57 @@ export function AppShell({
     dismissNewAgeSend
   ]);
 
+  /**
+   * The assistant's request to fetch this turn's report (ah-9vmbx.3), while one waits on the player:
+   * how to answer it, and whether its dialog is on screen yet - `shown` is false while it waits its
+   * turn behind another dialog. Cleared the moment it is answered, so it is answered exactly once.
+   */
+  const assistantFetchRequest = useRef<{
+    resolve: (outcome: AssistantFetchOutcome) => void;
+    signal: AbortSignal;
+    onAbort: () => void;
+    unsubscribe: () => void;
+    shown: boolean;
+  } | null>(null);
+  /**
+   * The New Age run (its controller) putting this turn's report into the game right now. A Cancel
+   * then cannot stop it - the report lands - so that run answers the assistant with what landed.
+   */
+  const newAgeStoringRun = useRef<AbortController | null>(null);
+  /** A Cancel held back for that reason: which request, and which run will answer it. */
+  const heldDecline = useRef<{ request: object; run: AbortController } | null>(null);
+  /** What the open Fetch dialog adds for the assistant, or null for the player's own Fetch. */
+  const [assistantFetch, setAssistantFetch] = useState<AssistantFetchPrompt | null>(null);
+
+  const answerAssistantFetch = useCallback((outcome: AssistantFetchOutcome) => {
+    const request = assistantFetchRequest.current;
+    if (request === null) {
+      return;
+    }
+    assistantFetchRequest.current = null;
+    request.signal.removeEventListener("abort", request.onAbort);
+    request.unsubscribe();
+    request.resolve(outcome);
+  }, []);
+
+  /**
+   * A fetch reached an outcome - the assistant's, or the player's own. The assistant's dialog
+   * answers whatever it came to; a request still waiting its turn is answered only by a report
+   * that arrived, since this turn is then in hand and nothing more need open.
+   */
+  const settleAssistantFetch = useCallback(
+    (outcome: AssistantFetchOutcome | null) => {
+      const request = assistantFetchRequest.current;
+      if (outcome === null || request === null) {
+        return;
+      }
+      if (request.shown || fetchBroughtReport(outcome)) {
+        answerAssistantFetch(outcome);
+      }
+    },
+    [answerAssistantFetch]
+  );
+
   /** What the game already holds, in the shape `missingTurns` reads. */
   const storedTurns = useMemo(
     () => turnSummaries.map((summary) => ({
@@ -5289,17 +5365,18 @@ export function AppShell({
    * this writes over it once the load has returned. Only for a fetch: a dropped file is unchanged.
    */
   const openFetchedReport = useCallback(
-    async (report: ParsedReport, text: string) => {
+    async (report: ParsedReport, text: string): Promise<ReportLoadOutcome | undefined> => {
       const outcome = await loadReport(text, FETCHED_REPORT_NAME);
       if (outcome !== "loaded" || report.header.turnNumber === null) {
         // `loadReport` refused it and has already said why in red; do not paint over that.
-        return;
+        return outcome;
       }
       // The same expression `loadTurn` uses, so the two lines can never disagree about a unit.
       const unitCount = report.regions.reduce((total, region) => total + region.units.length, 0);
       setStatus(
         noticeStatus(loadedStatus(report.header.turnNumber, report.regions.length, unitCount))
       );
+      return outcome;
     },
     [loadReport]
   );
@@ -5310,9 +5387,11 @@ export function AppShell({
     originsPending.current = null;
     setOriginsPhase(null);
     if (pending) {
-      await openFetchedReport(pending.report, pending.text);
+      settleAssistantFetch(
+        landedOutcome(await openFetchedReport(pending.report, pending.text), currentWorkingTurn())
+      );
     }
-  }, [openFetchedReport]);
+  }, [openFetchedReport, settleAssistantFetch, currentWorkingTurn]);
 
   /** `Keep turn 83` files the fetched turn; `Keep what I have` files nothing. */
   const keepPendingReport = useCallback(async () => {
@@ -5326,14 +5405,22 @@ export function AppShell({
     if (phase.kind === "askSame") {
       // There is nowhere to file a turn you are already looking at.
       setStatus(noticeStatus(stillShowing(phase.turnNumber)));
+      settleAssistantFetch(keptOutcome(phase));
       return;
     }
     if (phase.kind === "askNewer") {
       // `storeOlderTurn` never checks age; it names the incoming turn and the current one, which
       // is exactly `turn 84 stored for history; still showing turn 83.`
-      await storeReportOnly(pending.report, pending.text, phase.currentTurn);
+      // Reported like any other load, so a failed write says why in red rather than rejecting
+      // into nothing - and the assistant hears it was not stored rather than waiting for ever.
+      const stored = await runReported(
+        () => storeReportOnly(pending.report, pending.text, phase.currentTurn),
+        (message) => setStatus(failedStatus(message)),
+        { prefix: `could not store turn ${phase.incomingTurn}` }
+      );
+      settleAssistantFetch(stored === true ? keptOutcome(phase) : { kind: "notLoaded" });
     }
-  }, [originsPhase, storeReportOnly]);
+  }, [originsPhase, storeReportOnly, settleAssistantFetch]);
 
   /**
    * One press of Fetch on a New Origins game: post the site's own download form with what the
@@ -5411,14 +5498,26 @@ export function AppShell({
       }
       setOriginsPhase(null);
       if (outcome.arrival.kind === "load") {
-        await openFetchedReport(outcome.report, outcome.text);
+        settleAssistantFetch(
+          landedOutcome(await openFetchedReport(outcome.report, outcome.text), currentWorkingTurn())
+        );
         return;
       }
       // `storeOnly` and `foreign`: `loadReport` routes both, and says so itself - the filing line
       // for the first, the strip under the header for the second. No status of our own.
-      await loadReport(outcome.text, FETCHED_REPORT_NAME);
+      settleAssistantFetch(
+        landedOutcome(await loadReport(outcome.text, FETCHED_REPORT_NAME), currentWorkingTurn())
+      );
     },
-    [pbemTransport, openGameId, parseReport, loadReport, openFetchedReport]
+    [
+      pbemTransport,
+      openGameId,
+      parseReport,
+      loadReport,
+      openFetchedReport,
+      settleAssistantFetch,
+      currentWorkingTurn
+    ]
   );
 
   /**
@@ -5444,6 +5543,8 @@ export function AppShell({
       fetchAbandoned.current = false;
       /** Whether the run ever reached a per-turn fetch, so a refresh could find something new. */
       let reachedTurns = false;
+      /** What `loadReport` did with this turn's own report, for the assistant's answer. */
+      let landed: ReportLoadOutcome | undefined;
 
       const outcome = await runNewAgeFetch(scope, { factionNumber, password }, worldName, {
         login: (id, secret) => api.login(id, secret, controller.signal),
@@ -5453,13 +5554,22 @@ export function AppShell({
           api.historyReport(token, turnNumber, controller.signal),
         // `loadReport` is the same door a dropped file goes through, and it reports its own reason
         // on the status line - so a report it would not take is a `false` rather than a rejection.
-        store: async (turnNumber, reportText) =>
-          (await loadReport(
-            reportText,
-            turnNumber === null
-              ? fetchedReportName(worldName)
-              : fetchedTurnName(worldName, turnNumber)
-          )) !== undefined,
+        store: async (turnNumber, reportText) => {
+          const name =
+            turnNumber === null ? fetchedReportName(worldName) : fetchedTurnName(worldName, turnNumber);
+          if (turnNumber !== null) {
+            return (await loadReport(reportText, name)) !== undefined;
+          }
+          newAgeStoringRun.current = controller;
+          try {
+            landed = await loadReport(reportText, name);
+          } finally {
+            if (newAgeStoringRun.current === controller) {
+              newAgeStoringRun.current = null;
+            }
+          }
+          return landed !== undefined;
+        },
         heldTurns: () => ({
           stored: storedTurnsRef.current,
           workingTurn: currentWorkingTurn()
@@ -5494,6 +5604,23 @@ export function AppShell({
         worldName
       });
 
+      if (stillOurs) {
+        settleAssistantFetch(newAgeRunOutcome(outcome, landed, currentWorkingTurn()));
+      } else if (heldDecline.current?.run === controller) {
+        // Dismissed while this run was landing this turn's report: the request whose Cancel was
+        // held back hears what landed, or that nothing did - never a later request.
+        const held = heldCancelOutcome(
+          heldDecline.current,
+          controller,
+          assistantFetchRequest.current,
+          landed,
+          currentWorkingTurn()
+        );
+        heldDecline.current = null;
+        if (held !== null) {
+          answerAssistantFetch(held);
+        }
+      }
       if (aftermath.dialog.kind === "close") {
         setFetchPhase(null);
       } else if (aftermath.dialog.kind === "reopen") {
@@ -5538,7 +5665,18 @@ export function AppShell({
         }
       }
     },
-    [newAgeApi, newAgeWorld, openGameId, loadReport, currentWorkingTurn, client, game, newAgeFromBrowser]
+    [
+      newAgeApi,
+      newAgeWorld,
+      openGameId,
+      loadReport,
+      currentWorkingTurn,
+      client,
+      game,
+      newAgeFromBrowser,
+      settleAssistantFetch,
+      answerAssistantFetch
+    ]
   );
 
   /**
@@ -5761,6 +5899,115 @@ export function AppShell({
             kind: "asking",
             reminders: sendReminders(assistantChanges.views.length + assistantChanges.armyViews.length, ordersErrorCount)
           };
+
+  // The phases as they stand, for the dismiss-stack listener, which fires outside a render.
+  const fetchPhaseNow = useRef(fetchPhase);
+  fetchPhaseNow.current = fetchPhase;
+  const originsPhaseNow = useRef(originsPhase);
+  originsPhaseNow.current = originsPhase;
+
+  /**
+   * Shows the assistant's Fetch dialog once nothing else is over the screen (ah-9vmbx.3). Rebuilt
+   * every render, so it opens whichever Fetch this game has now.
+   */
+  const showQueuedAssistantFetch = useRef<() => void>(() => {});
+  showQueuedAssistantFetch.current = () => {
+    const request = assistantFetchRequest.current;
+    if (request === null || request.shown) {
+      return;
+    }
+    if (
+      fetchPhaseNow.current !== null ||
+      originsPhaseNow.current !== null ||
+      sendPhaseNow.current !== null ||
+      newAgeSendPhaseNow.current !== null ||
+      hasOpenDismissLayers()
+    ) {
+      return;
+    }
+    if (fetchRoad === null) {
+      // The game changed under a waiting request to one with no Fetch here.
+      answerAssistantFetch({
+        kind: "refused",
+        reason:
+          assistantFetchRefusal({ gameOpen: game !== null, fetchRoad: false, requestWaiting: false }) ?? ""
+      });
+      return;
+    }
+    request.shown = true;
+    openFetch("thisTurn", "asking");
+    assistant?.requestAttention?.();
+  };
+
+  assistantFetchHandler.current = (signal) => {
+    const refusal = assistantFetchRefusal({
+      gameOpen: game !== null,
+      fetchRoad: fetchRoad !== null,
+      requestWaiting: assistantFetchRequest.current !== null
+    });
+    if (refusal !== null) {
+      return Promise.resolve({ kind: "refused", reason: refusal });
+    }
+    if (signal.aborted) {
+      return Promise.resolve({ kind: "notAnswered" });
+    }
+    return new Promise<AssistantFetchOutcome>((resolve) => {
+      // The assistant stopped waiting: an open dialog stays, with the other line, and fetching
+      // still works; a request still waiting its turn is simply dropped.
+      const onAbort = () => {
+        const shown = assistantFetchRequest.current?.shown ?? false;
+        answerAssistantFetch({ kind: "notAnswered" });
+        if (shown) {
+          setAssistantFetch("stopped");
+        }
+      };
+      assistantFetchRequest.current = {
+        resolve,
+        signal,
+        onAbort,
+        unsubscribe: subscribeDismissLayers(() => showQueuedAssistantFetch.current()),
+        shown: false
+      };
+      signal.addEventListener("abort", onAbort);
+      showQueuedAssistantFetch.current();
+    });
+  };
+
+  // A dialog closed: a request waiting its turn may now be shown. The assistant's line needs no
+  // clearing here - it is drawn only inside a Fetch dialog, and every opening sets it afresh.
+  useEffect(() => {
+    showQueuedAssistantFetch.current();
+  }, [fetchPhase, originsPhase, sendPhase, newAgeSendPhase]);
+
+  // Switching game or world drops the request - the dialogs close with it above - and the
+  // assistant hears the player did not answer. So does the shell going away.
+  useEffect(() => {
+    answerAssistantFetch({ kind: "notAnswered" });
+    setAssistantFetch(null);
+  }, [openGameId, newAgeWorld?.worldId, answerAssistantFetch]);
+  useEffect(() => () => answerAssistantFetch({ kind: "notAnswered" }), [answerAssistantFetch]);
+
+  /** Cancel, Escape or the backdrop on a Fetch dialog: the assistant's own hears it was declined. */
+  const declineAssistantFetch = useCallback(() => {
+    const request = assistantFetchRequest.current;
+    // This turn's report is already landing and Cancel cannot stop it: the run answers with that.
+    const storing = newAgeStoringRun.current;
+    if (request?.shown && storing !== null) {
+      heldDecline.current = { request, run: storing };
+    } else if (request?.shown) {
+      answerAssistantFetch({ kind: "declined" });
+      setStatus(noticeStatus(ASSISTANT_FETCH_DECLINED));
+    }
+    setAssistantFetch(null);
+  }, [answerAssistantFetch]);
+  const dismissNewAgeFetchDialog = useCallback(() => {
+    declineAssistantFetch();
+    dismissFetch();
+  }, [declineAssistantFetch, dismissFetch]);
+  const dismissOriginsFetchDialog = useCallback(() => {
+    declineAssistantFetch();
+    dismissOriginsFetch();
+  }, [declineAssistantFetch, dismissOriginsFetch]);
 
   // A rectangle belongs to the map it was dragged on. Switching game, loading another turn or
   // changing level leaves it describing somewhere else, so it goes and the dialog falls back to
@@ -7146,10 +7393,11 @@ export function AppShell({
           }
           phase={fetchPhase}
           initialScope={fetchScopeOnOpen}
+          assistant={assistantFetch ?? undefined}
           onFetch={(factionNumber, password, scope) =>
             void fetchFromNewAge(factionNumber, password, scope)
           }
-          onDismiss={dismissFetch}
+          onDismiss={dismissNewAgeFetchDialog}
         />
       )}
       {originsPhase === null ? null : (
@@ -7166,12 +7414,13 @@ export function AppShell({
               : null
           }
           phase={originsPhase}
+          assistant={assistantFetch ?? undefined}
           onFetch={(factionNumber, password) =>
             void fetchFromNewOrigins(factionNumber, password)
           }
           onKeep={() => void keepPendingReport()}
           onOpen={() => void openPendingReport()}
-          onDismiss={dismissOriginsFetch}
+          onDismiss={dismissOriginsFetchDialog}
         />
       )}
       {exportOpen ? (

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hasOpenDismissLayers, pushDismissLayer, isTopDismissLayer } from "./dismissStack";
+import { hasOpenDismissLayers, pushDismissLayer, isTopDismissLayer, subscribeDismissLayers } from "./dismissStack";
 
 const cleanups: Array<() => void> = [];
 
@@ -48,5 +48,22 @@ describe("dismiss stack", () => {
     const layer = open();
     expect(hasOpenDismissLayers()).toBe(true);
     void layer;
+  });
+
+  it("tells subscribers when a layer opens or closes, until they unsubscribe", () => {
+    let told = 0;
+    const unsubscribe = subscribeDismissLayers(() => {
+      told += 1;
+    });
+    const close = pushDismissLayer();
+    expect(told).toBe(1);
+    close();
+    expect(told).toBe(2);
+    // Closing a layer that is already gone changes nothing, so nobody is told.
+    close();
+    expect(told).toBe(2);
+    unsubscribe();
+    pushDismissLayer()();
+    expect(told).toBe(2);
   });
 });

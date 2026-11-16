@@ -9,6 +9,24 @@
  */
 
 const stack: Array<() => void> = [];
+const listeners = new Set<() => void>();
+
+function changed(): void {
+  for (const listener of [...listeners]) {
+    listener();
+  }
+}
+
+/**
+ * Calls `listener` whenever a layer opens or closes, until the returned function is called - how
+ * something waiting for every surface to close learns that they have (ah-9vmbx.3).
+ */
+export function subscribeDismissLayers(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 /**
  * Registers an open surface and answers its closer: calling it removes the layer wherever it
@@ -20,9 +38,11 @@ export function pushDismissLayer(): () => void {
     const at = stack.indexOf(layer);
     if (at !== -1) {
       stack.splice(at, 1);
+      changed();
     }
   };
   stack.push(layer);
+  changed();
   return layer;
 }
 

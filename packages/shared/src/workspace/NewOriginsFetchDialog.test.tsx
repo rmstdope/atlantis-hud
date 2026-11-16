@@ -1,13 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import type { AssistantFetchPrompt } from "../assistant/assistantFetch";
 import { NEW_ORIGINS_HOST } from "./newOriginsApi";
 import { NewOriginsFetchDialog } from "./NewOriginsFetchDialog";
 import type { NewOriginsFetchPhase } from "./newOriginsFetchView";
 
-const draw = (phase: NewOriginsFetchPhase, turnNumber: number | null = 83) =>
+const draw = (phase: NewOriginsFetchPhase, turnNumber: number | null = 83, assistant?: AssistantFetchPrompt) =>
   renderToStaticMarkup(
     <NewOriginsFetchDialog
+      assistant={assistant}
       host={NEW_ORIGINS_HOST}
       factionName="Merchant Guild"
       factionNumber="27"
@@ -111,5 +113,46 @@ describe("NewOriginsFetchDialog", () => {
       "Faction password is incorrect. Try again or contact the Game Masters on Discord to change your password."
     );
     expect(markup).toContain('value="27"');
+  });
+});
+
+describe("NewOriginsFetchDialog when the assistant asked (ah-9vmbx.3)", () => {
+  const ready: NewOriginsFetchPhase = { kind: "ready", message: null, retype: false };
+
+  it("shows the assistant's line between the heading and the meta line, and its note", () => {
+    const markup = draw(ready, 83, "asking");
+    const heading = markup.indexOf("Fetch from New Origins");
+    const line = markup.indexOf("The assistant is asking for this turn&#x27;s report.");
+    const meta = markup.indexOf('data-testid="neworigins-fetch-meta"');
+
+    expect(heading).toBeLessThan(line);
+    expect(line).toBeLessThan(meta);
+    expect(markup).toContain(
+      "Used for this fetch only. The assistant never sees it, and nothing is written to this machine."
+    );
+    expect(markup).not.toContain("Used for this fetch only. Nothing is written to this machine.");
+  });
+
+  it("keeps the line through the work and the newer-turn question", () => {
+    expect(draw({ kind: "fetching" }, 83, "asking")).toContain('data-testid="assistant-fetch-line"');
+    const asking = draw({ kind: "askNewer", currentTurn: 83, incomingTurn: 84 }, 83, "asking");
+    expect(asking).toContain('data-testid="assistant-fetch-line"');
+    expect(asking).toContain("Keep turn 83");
+    expect(asking).toContain("Open turn 84");
+  });
+
+  it("says the assistant stopped waiting, and still offers the fetch", () => {
+    const markup = draw(ready, 83, "stopped");
+
+    expect(markup).toContain("The assistant stopped waiting. You can still fetch this turn&#x27;s report here.");
+    expect(markup).toContain("The assistant never sees it");
+    expect(markup).toContain('data-testid="neworigins-fetch-confirm"');
+  });
+
+  it("adds nothing for the player's own Fetch", () => {
+    const markup = draw(ready);
+
+    expect(markup).not.toContain('data-testid="assistant-fetch-line"');
+    expect(markup).not.toContain("The assistant never sees it");
   });
 });

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { ASSISTANT_FETCH_NOTE, type AssistantFetchPrompt } from "../assistant/assistantFetch";
+import { AssistantFetchLine } from "./AssistantFetchLine";
 import { useEscapeToDismiss } from "./dismissLayer";
 import { NewAgeSignInFields } from "./NewAgeSignInFields";
 import { FETCH_CONFIRM } from "./newAgeFetchView";
@@ -39,6 +41,7 @@ export function NewOriginsFetchDialog({
   turnNumber,
   suggestedFactionNumber,
   phase,
+  assistant,
   onFetch,
   onKeep,
   onOpen,
@@ -52,6 +55,11 @@ export function NewOriginsFetchDialog({
   /** Prefills the field; the player can change it. `null` leaves it empty. */
   suggestedFactionNumber: string | null;
   phase: NewOriginsFetchPhase;
+  /**
+   * Set when the assistant asked for this fetch (ah-9vmbx.3): its line on top and its note under
+   * the password. Absent, the dialog is the header's own.
+   */
+  assistant?: AssistantFetchPrompt;
   onFetch: (factionNumber: string, password: string) => void;
   /** `Keep turn 83` / `Keep what I have`. */
   onKeep: () => void;
@@ -124,6 +132,7 @@ export function NewOriginsFetchDialog({
         className="flex w-[26rem] flex-col gap-2 rounded border border-edge bg-panel-raised p-3 text-pane whitespace-normal shadow-lg"
       >
         <h2 className="text-ink">{FETCH_DIALOG_TITLE}</h2>
+        <AssistantFetchLine prompt={assistant} />
         <p data-testid="neworigins-fetch-meta" className="text-ink-soft">
           {fetchMetaLine({ factionName, factionNumber, turnNumber, host })}
         </p>
@@ -133,7 +142,7 @@ export function NewOriginsFetchDialog({
             <NewAgeSignInFields
               factionNumber={typedFactionNumber}
               password={password}
-              note={credentialNote("fetch")}
+              note={assistant === undefined ? credentialNote("fetch") : ASSISTANT_FETCH_NOTE}
               phase={{ kind: "ready" }}
               fieldRef={fieldRef}
               onFactionNumber={setTypedFactionNumber}
