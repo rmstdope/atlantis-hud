@@ -2556,6 +2556,44 @@ describe("the faction password never reaches the assistant", () => {
     expect(found).toBe(`4: ${HIDDEN}`);
   });
 
+  it("does not let a search tell whether the password matches", async () => {
+    const { host } = aLockedHost();
+
+    const guessed = (await call(host, "search_report", { query: "sesame" })).text;
+    const prefix = (await call(host, "search_report", { query: '3 "s' })).text;
+
+    expect(guessed).toBe('No line of the report contains "sesame".');
+    expect(prefix).toBe('No line of the report contains "3 "s".');
+  });
+
+  it("hides it in an earlier turn's per-unit orders", async () => {
+    const { host } = aLockedHost();
+
+    const kept = await call(host, "get_orders", { turn: 11, unitId: "100" });
+    const template = await call(host, "get_orders", { turn: 9, unitId: "100" });
+
+    expect(json(kept.text).orders).toBe("work");
+    expect(json(template.text).orders).toBe("work");
+  });
+
+  it("hides it in any refusal and in a failure the host reports", async () => {
+    const { host } = aLockedHost();
+    const failing: AssistantHost = {
+      ...host,
+      validate: async () => {
+        throw new Error('could not read #atlantis 3 "sesame"');
+      }
+    };
+
+    const refused = await call(host, "get_unit", { unitId: '#atlantis 3 "sesame"' });
+    const failed = await call(failing, "get_turn_overview");
+
+    expect(refused.isError).toBe(true);
+    expect(refused.text).not.toContain("sesame");
+    expect(failed.isError).toBe(true);
+    expect(failed.text).toBe('The HUD failed to answer: could not read #atlantis 3 "<password hidden>"');
+  });
+
   it("hides it in a refused write that shows the orders as they now stand", async () => {
     const { host } = aLockedHost();
     host.typeByHand(LOCKED.replace("work", `work\n; pasted: #atlantis 3 "sesame"`));

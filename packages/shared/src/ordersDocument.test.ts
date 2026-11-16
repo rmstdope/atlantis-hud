@@ -621,6 +621,16 @@ describe("withoutFactionPassword", () => {
     expect(withoutFactionPassword('  #atlantis 42 "old"\r\nunit 1\r\n')).toBe('  #atlantis 42 "<password hidden>"\r\nunit 1\r\n');
   });
 
+  it("leaves the rules' own sentences about the #atlantis line unchanged", () => {
+    const prose = [
+      "If you have a password set, you must specify it on your #ATLANTIS line or else your orders",
+      "(This applies to #ATLANTIS and #END lines as well as to order",
+      "#ATLANTIS line for the game to accept your orders.",
+      "#atlantis and unit lines."
+    ].join("\n");
+    expect(withoutFactionPassword(prose)).toBe(prose);
+  });
+
   it("leaves a line that carries no password, and a word that merely starts with #atlantis, unchanged", () => {
     const text = "#atlantis 3\n#atlantisfoo bar\n#end";
     expect(withoutFactionPassword(text)).toBe(text);

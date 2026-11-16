@@ -1087,19 +1087,27 @@ export function withFactionPassword(document: string, password: string): string 
  * HUD (the assistant tools, `ah-9vmbx.1`) while the stored orders keep it (`ah-d7ih`).
  *
  * Matched anywhere on a line, not only at its start, so a numbered report line
- * (`12: #atlantis 3 "pw"`) is caught as well as an orders document's header. The directive and the
- * faction id it names stay; everything after the id - quoted or not, since `rules/password` sets one
- * with a bare word - becomes `"<password hidden>"`. A line with nothing after the id, and every other
- * byte of the text, `\r` included, is left exactly as it was.
+ * (`12: #atlantis 3 "pw"`) is caught as well as an orders document's header. The password sits after
+ * the faction number (`rules/orders`: `#ATLANTIS 27 "foobar"`), quoted or - since `rules/password`
+ * sets one with a bare word - not, so after a number the rest of the line becomes
+ * `"<password hidden>"`. With no number only a quoted string is taken for one, which is what keeps
+ * the rules' own sentences ("specify it on your #ATLANTIS line or else...") intact. A line with
+ * nothing after the number, and every other byte of the text, `\r` included, is left as it was.
  */
 export function withoutFactionPassword(text: string): string {
-  return text.replace(ANY_FACTION_HEADER, (line, directive: string, id: string, rest: string) =>
-    rest.trim() === "" ? line : `${directive}${id.trimEnd()} "<password hidden>"`
-  );
+  return text.replace(ANY_FACTION_HEADER, (line, directive: string, id: string | undefined, rest: string | undefined) => {
+    if (id === undefined) {
+      return `${directive} "<password hidden>"`;
+    }
+    return (rest ?? "").trim() === "" ? line : `${directive}${id} "<password hidden>"`;
+  });
 }
 
-/** `#atlantis`, its id as a bare token, and the rest of the line up to (never including) `\r`. */
-const ANY_FACTION_HEADER = /(#atlantis\b)([ \t]*[^\s"]*)([^\r\n]*)/giu;
+/**
+ * `#atlantis` and then either a faction number with the rest of the line up to (never including)
+ * `\r`, or a quoted string straight after it.
+ */
+const ANY_FACTION_HEADER = /(#atlantis\b)(?:([ \t]+\d+)(?=[ \t\r]|$)([^\r\n]*)|[ \t]*"[^"\r\n]*"?)/gimu;
 
 /**
  * The header line, with what must survive a rewrite of it.
