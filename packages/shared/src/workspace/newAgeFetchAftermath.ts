@@ -4,7 +4,7 @@ import {
   FETCH_REFUSED_MID_RUN,
   fetchFailureReason
 } from "./newAgeFetchView";
-import type { NewAgeFetchPhase } from "./newAgeFetchView";
+import type { NewAgeAskPhase, NewAgeFetchPhase } from "./newAgeFetchView";
 import {
   historyListNotFetched,
   historyListNotUnderstood,
@@ -45,7 +45,9 @@ export type NewAgeFetchDialogNext =
   /** Close it: the run is over, whatever it did. */
   | { kind: "close" }
   /** Keep it up, asking again with the password cleared - the login was refused. */
-  | { kind: "reopen"; phase: NewAgeFetchPhase };
+  | { kind: "reopen"; phase: NewAgeFetchPhase }
+  /** Keep it up, asking Keep / Open about the turn the run held back (ah-1y7yi). */
+  | { kind: "ask"; phase: NewAgeAskPhase };
 
 export type NewAgeFetchAftermath = {
   dialog: NewAgeFetchDialogNext;
@@ -69,10 +71,26 @@ export function newAgeFetchAftermath(input: NewAgeFetchAftermathInput): NewAgeFe
             kind: "reopen",
             phase: { kind: "ready", message: outcome.message, retype: outcome.retype }
           }
-        : { kind: "close" },
+        : outcome.kind === "held"
+          ? { kind: "ask", phase: askPhase(outcome) }
+          : { kind: "close" },
     status: stillOurs ? statusFor(outcome, input.workingTurn, input.worldName) : null,
     relistTurns: relistTurns(input)
   };
+}
+
+/**
+ * The question for a held turn. An "All reports" run counts what it stored and what it could not
+ * fetch - a mid-run refusal's unasked turns among them, since they were not fetched either. Every
+ * other history answer (a list that failed, nothing earlier, nothing missing) counts nothing, and
+ * the single-turn question is asked.
+ */
+function askPhase(outcome: Extract<NewAgeFetchOutcome, { kind: "held" }>): NewAgeAskPhase {
+  const ran = outcome.history?.kind === "ran" ? outcome.history : null;
+  const earlierStored = ran === null ? 0 : ran.stored.length;
+  // `failed` is a Map, so `.size`.
+  const notFetched = ran === null ? 0 : ran.failed.size + ran.unfetched;
+  return { ...outcome.arrival, earlierStored, notFetched };
 }
 
 /**
@@ -124,6 +142,9 @@ function statusFor(
     case "abandoned":
       // The player closed the dialog, and a line about a run they stopped is noise.
       return null;
+    case "held":
+      // The question is up; the line is written once it is answered.
+      return null;
   }
 }
 
@@ -150,7 +171,8 @@ function relistTurns(input: NewAgeFetchAftermathInput): boolean {
   const { outcome } = input;
   const storedSomething =
     input.reachedTurns &&
-    (outcome.kind === "abandoned" || (outcome.kind === "done" && outcome.history?.kind === "ran"));
+    (outcome.kind === "abandoned" ||
+      ((outcome.kind === "done" || outcome.kind === "held") && outcome.history?.kind === "ran"));
   return storedSomething && !input.superseded && input.sameGame;
 }
 

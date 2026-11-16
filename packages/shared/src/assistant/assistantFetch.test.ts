@@ -186,6 +186,21 @@ describe("the end of a New Age run", () => {
     expect(newAgeRunOutcome({ kind: "abandoned" }, undefined, 12)).toBeNull();
   });
 
+  it("waits for Keep or Open when the turn was held for the question (ah-1y7yi)", () => {
+    expect(
+      newAgeRunOutcome(
+        {
+          kind: "held",
+          arrival: { kind: "askNewer", currentTurn: 21, incomingTurn: 22 },
+          reportText: "turn 22",
+          history: null
+        },
+        undefined,
+        21
+      )
+    ).toBeNull();
+  });
+
   it("says why when the report could not be had", () => {
     expect(newAgeRunOutcome({ kind: "reportFailed", reason: "could not reach api.example" }, undefined, 12)).toEqual({
       kind: "failed",

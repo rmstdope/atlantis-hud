@@ -96,7 +96,10 @@ describe("newAgeFetchView", () => {
 });
 
 describe("newAgeFetchView - asking before the screen is replaced (ah-1y7yi)", () => {
-  const newer = (earlierStored: number, notFetched: number): NewAgeAskPhase => ({
+  const newer = (
+    earlierStored: number,
+    notFetched: number
+  ): Extract<NewAgeAskPhase, { kind: "askNewer" }> => ({
     kind: "askNewer",
     currentTurn: 21,
     incomingTurn: 24,

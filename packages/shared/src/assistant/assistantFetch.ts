@@ -163,7 +163,8 @@ export function keptOutcome(
 /**
  * A New Age run's end as an outcome. `landed` is what `loadReport` did with this turn's report, and
  * `showing` the turn on screen once it had. Null while the dialog stays up for another try (a
- * refused sign-in) and after the player dismissed it, which the dismissal itself answers.
+ * refused sign-in), while the Keep / Open question is up, and after the player dismissed it, which
+ * the dismissal itself answers.
  */
 export function newAgeRunOutcome(
   outcome: NewAgeFetchOutcome,
@@ -173,6 +174,8 @@ export function newAgeRunOutcome(
   switch (outcome.kind) {
     case "refused":
     case "abandoned":
+    case "held":
+      // A held turn is answered by Keep or Open, as on New Origins (ah-1y7yi).
       return null;
     case "reportFailed":
       return { kind: "failed", reason: outcome.reason };
