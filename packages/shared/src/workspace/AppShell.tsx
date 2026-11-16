@@ -199,6 +199,7 @@ import {
   ASSISTANT_FETCH_DECLINED,
   assistantFetchRefusal,
   fetchBroughtReport,
+  heldCancelOutcome,
   keptOutcome,
   landedOutcome,
   newAgeRunOutcome,
@@ -5289,15 +5290,12 @@ export function AppShell({
     shown: boolean;
   } | null>(null);
   /**
-   * Set while a New Age run is putting this turn's report into the game. A Cancel then cannot stop
-   * it - the report lands - so the run answers the assistant with what landed, not the Cancel.
+   * The New Age run (its controller) putting this turn's report into the game right now. A Cancel
+   * then cannot stop it - the report lands - so that run answers the assistant with what landed.
    */
-  const newAgeStoringThisTurn = useRef(false);
-  /**
-   * The request whose Cancel was held back because its report was landing. The run that was
-   * landing it answers exactly this request, with what landed - or that nothing did.
-   */
-  const heldDecline = useRef<object | null>(null);
+  const newAgeStoringRun = useRef<AbortController | null>(null);
+  /** A Cancel held back for that reason: which request, and which run will answer it. */
+  const heldDecline = useRef<{ request: object; run: AbortController } | null>(null);
   /** What the open Fetch dialog adds for the assistant, or null for the player's own Fetch. */
   const [assistantFetch, setAssistantFetch] = useState<AssistantFetchPrompt | null>(null);
 
@@ -5562,11 +5560,13 @@ export function AppShell({
           if (turnNumber !== null) {
             return (await loadReport(reportText, name)) !== undefined;
           }
-          newAgeStoringThisTurn.current = true;
+          newAgeStoringRun.current = controller;
           try {
             landed = await loadReport(reportText, name);
           } finally {
-            newAgeStoringThisTurn.current = false;
+            if (newAgeStoringRun.current === controller) {
+              newAgeStoringRun.current = null;
+            }
           }
           return landed !== undefined;
         },
@@ -5606,16 +5606,20 @@ export function AppShell({
 
       if (stillOurs) {
         settleAssistantFetch(newAgeRunOutcome(outcome, landed, currentWorkingTurn()));
-      } else if (heldDecline.current !== null) {
-        // Dismissed while this turn's report was landing: the request whose Cancel was held back
-        // hears what landed, or that it did not. A run dismissed earlier was answered by its
-        // dismissal, and a later request is never answered from this run.
-        if (assistantFetchRequest.current === heldDecline.current) {
-          answerAssistantFetch(
-            newAgeRunOutcome(outcome, landed, currentWorkingTurn()) ?? { kind: "notLoaded" }
-          );
-        }
+      } else if (heldDecline.current?.run === controller) {
+        // Dismissed while this run was landing this turn's report: the request whose Cancel was
+        // held back hears what landed, or that nothing did - never a later request.
+        const held = heldCancelOutcome(
+          heldDecline.current,
+          controller,
+          assistantFetchRequest.current,
+          landed,
+          currentWorkingTurn()
+        );
         heldDecline.current = null;
+        if (held !== null) {
+          answerAssistantFetch(held);
+        }
       }
       if (aftermath.dialog.kind === "close") {
         setFetchPhase(null);
@@ -5987,8 +5991,9 @@ export function AppShell({
   const declineAssistantFetch = useCallback(() => {
     const request = assistantFetchRequest.current;
     // This turn's report is already landing and Cancel cannot stop it: the run answers with that.
-    if (request?.shown && newAgeStoringThisTurn.current) {
-      heldDecline.current = request;
+    const storing = newAgeStoringRun.current;
+    if (request?.shown && storing !== null) {
+      heldDecline.current = { request, run: storing };
     } else if (request?.shown) {
       answerAssistantFetch({ kind: "declined" });
       setStatus(noticeStatus(ASSISTANT_FETCH_DECLINED));

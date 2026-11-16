@@ -7,6 +7,7 @@ import {
   assistantFetchAnswer,
   assistantFetchRefusal,
   fetchBroughtReport,
+  heldCancelOutcome,
   newAgeRunOutcome,
   keptOutcome,
   landedOutcome,
@@ -199,5 +200,29 @@ describe("the end of a New Age run", () => {
     expect(newAgeRunOutcome(done, "asked", 13)).toEqual({ kind: "foreign" });
     expect(newAgeRunOutcome(done, undefined, 12)).toEqual({ kind: "notLoaded" });
     expect(newAgeRunOutcome(done, "mapExport", 12)).toEqual({ kind: "notLoaded" });
+  });
+});
+
+describe("a Cancel held back while a run was landing this turn's report", () => {
+  const request = { id: "R" };
+  const run = { id: "A" };
+  const held = { request, run };
+
+  it("is answered by the run that was landing it, with what landed, whatever that run returned", () => {
+    expect(heldCancelOutcome(held, run, request, "loaded", 13)).toEqual({ kind: "loaded", turnNumber: 13 });
+    expect(heldCancelOutcome(held, run, request, undefined, 12)).toEqual({ kind: "notLoaded" });
+  });
+
+  it("is never answered by another run that ends first", () => {
+    expect(heldCancelOutcome(held, { id: "B" }, request, undefined, 12)).toBeNull();
+  });
+
+  it("never answers a later request", () => {
+    expect(heldCancelOutcome(held, run, { id: "later" }, "loaded", 13)).toBeNull();
+    expect(heldCancelOutcome(held, run, null, "loaded", 13)).toBeNull();
+  });
+
+  it("is nothing when no Cancel was held back", () => {
+    expect(heldCancelOutcome(null, run, request, "loaded", 13)).toBeNull();
   });
 });

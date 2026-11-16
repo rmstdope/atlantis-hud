@@ -180,3 +180,22 @@ export function newAgeRunOutcome(
       return landedOutcome(landed, showing);
   }
 }
+
+/**
+ * The answer to a Cancel held back because a run was landing this turn's report, or null when this
+ * run must not give it. Only the run that was landing it answers, only the request that was
+ * cancelled, and with what landed: the Cancel fell after the report arrived, so whatever the run
+ * returned afterwards - `abandoned` included - `landed` is the truth about the screen.
+ */
+export function heldCancelOutcome<Request, Run>(
+  held: { readonly request: Request; readonly run: Run } | null,
+  run: Run,
+  current: Request | null,
+  landed: ReportLoadOutcome | undefined,
+  showing: number | null
+): AssistantFetchOutcome | null {
+  if (held === null || held.run !== run || current !== held.request) {
+    return null;
+  }
+  return landedOutcome(landed, showing);
+}
