@@ -47,11 +47,13 @@ export function AssistantStoppedLine() {
  */
 export function useFocusBackOnClose(active: boolean) {
   const opener = useRef<Element | null>(typeof document === "undefined" ? null : document.activeElement);
+  // Read once, as the dialog opens: whether this is the assistant's prompt does not change under it.
   const wanted = useRef(active);
   useEffect(() => {
     const element = opener.current;
+    const giveBack = wanted.current;
     return () => {
-      if (wanted.current && element instanceof HTMLElement) {
+      if (giveBack && element instanceof HTMLElement) {
         element.focus();
       }
     };

@@ -298,7 +298,10 @@ async fn an_answered_call_is_never_withdrawn() {
     pending.await.expect("the request completes");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(server.withdrawn.try_recv().is_err(), "nothing was withdrawn");
+    assert!(
+        server.withdrawn.try_recv().is_err(),
+        "nothing was withdrawn"
+    );
 }
 
 #[tokio::test]
@@ -346,10 +349,7 @@ async fn registering_tools_again_ends_calls_still_waiting() {
     });
     let call = server.calls.recv().await.expect("the call is dispatched");
     // A reloaded window registers its tools afresh; the one that took the call is gone.
-    server
-        .relay
-        .set_tools(&json!([]))
-        .expect("tools register");
+    server.relay.set_tools(&json!([])).expect("tools register");
 
     let answer = tokio::time::timeout(Duration::from_secs(5), pending)
         .await

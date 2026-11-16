@@ -197,7 +197,10 @@ pub fn assistant_write_file(path: String, text: String) -> Result<(), String> {
 /// button flashes - when the assistant wants something only the player can give and the window is
 /// behind another. Never takes focus.
 #[tauri::command(rename_all = "snake_case")]
-pub fn assistant_request_attention(window: tauri::WebviewWindow) {
+pub fn assistant_request_attention(app: tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
     if window.is_focused().unwrap_or(false) {
         return;
     }
