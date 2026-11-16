@@ -20,6 +20,13 @@
 //! away, or the timeout passed - through the withdraw callback, so a prompt waiting on the player can
 //! stop waiting too.
 //!
+//! A connected client is told when the tools may have changed, so a new tool is not invisible to
+//! an assistant that listed them before. The relay advertises `listChanged` and serves
+//! `subscriptions/listen` (MCP 2026-07-28): each open listen hears
+//! `notifications/tools/list_changed` once as it opens - the client may be reconnecting to a HUD
+//! restarted on a newer build, and nothing here knows what it listed last - and again every time
+//! the frontend registers its tools ([`Relay::set_tools`]), as a reloaded window does.
+//!
 //! Served over Streamable HTTP on a loopback port, statelessly and as plain JSON responses. Every
 //! request must carry `Authorization: Bearer <token>`: a loopback port is reachable by every
 //! process on the machine, and the tools write the player's orders.
@@ -35,14 +42,15 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
-    ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
+    ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, SubscriptionFilter,
+    Tool,
 };
-use rmcp::service::RequestContext;
+use rmcp::service::{RequestContext, SubscriptionContext};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 mod file;
 
 pub use file::write_assistant_file;
@@ -72,6 +80,8 @@ type Withdraw = dyn Fn(u64) + Send + Sync;
 /// The tools the frontend registered, and the calls waiting on it.
 pub struct Relay {
     tools: RwLock<Vec<Tool>>,
+    /// Counts registrations, so every open listen hears that the tools changed.
+    changes: watch::Sender<u64>,
     pending: Mutex<HashMap<u64, oneshot::Sender<ToolAnswer>>>,
     next_id: AtomicU64,
     timeout: Duration,
@@ -116,6 +126,7 @@ impl Relay {
     ) -> Arc<Self> {
         Arc::new(Self {
             tools: RwLock::new(Vec::new()),
+            changes: watch::Sender::new(0),
             pending: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             timeout,
@@ -145,7 +156,8 @@ impl Relay {
 
     /// Replaces the tool list with `tools`, an array of MCP tool definitions, and ends every call
     /// still waiting: tools are registered when a window starts, so one that registers again after
-    /// a reload is not the window those calls were handed to.
+    /// a reload is not the window those calls were handed to. Every client listening for changes
+    /// is told the tools changed.
     ///
     /// # Errors
     ///
@@ -157,6 +169,7 @@ impl Relay {
             .tools
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = parsed;
+        self.changes.send_modify(|count| *count += 1);
         let stranded: Vec<(u64, oneshot::Sender<ToolAnswer>)> = self
             .pending
             .lock()
@@ -251,7 +264,12 @@ struct Handler(Arc<Relay>);
 
 impl ServerHandler for Handler {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .build(),
+        )
             .with_server_info(Implementation::new(
                 "atlantis-hud",
                 env!("CARGO_PKG_VERSION"),
@@ -265,6 +283,30 @@ impl ServerHandler for Handler {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult::with_all_items(self.0.tools()))
+    }
+
+    fn accepted_subscription_filter(
+        &self,
+        _requested: &SubscriptionFilter,
+    ) -> Option<SubscriptionFilter> {
+        Some(SubscriptionFilter::builder().tools_list_changed().build())
+    }
+
+    async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
+        let mut changes = self.0.changes.subscribe();
+        if context.sink().notify_tool_list_changed().await.is_err() {
+            return Ok(());
+        }
+        loop {
+            tokio::select! {
+                () = context.cancelled() => return Ok(()),
+                changed = changes.changed() => {
+                    if changed.is_err() || context.sink().notify_tool_list_changed().await.is_err() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
     }
 
     async fn call_tool(
@@ -318,7 +360,7 @@ pub async fn serve(
     let config = StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true)
-        .with_sse_keep_alive(None)
+        .with_sse_keep_alive(Some(Duration::from_secs(15)))
         .with_cancellation_token(stop.child_token());
     let service: StreamableHttpService<Handler, NeverSessionManager> =
         StreamableHttpService::new(move || Ok(Handler(relay.clone())), Arc::default(), config);
