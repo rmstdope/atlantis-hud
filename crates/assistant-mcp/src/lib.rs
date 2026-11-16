@@ -293,6 +293,12 @@ impl ServerHandler for Handler {
     }
 
     async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
+        if context.accepted().tools_list_changed != Some(true) {
+            // Nothing this relay sends was asked for. Ending the listen at once would invite a
+            // client that reopens a closed listen to loop, so it waits quietly instead.
+            context.cancelled().await;
+            return Ok(());
+        }
         let mut changes = self.0.changes.subscribe();
         if context.sink().notify_tool_list_changed().await.is_err() {
             return Ok(());

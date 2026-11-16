@@ -540,3 +540,47 @@ async fn registering_tools_again_tells_every_listening_client() {
         .collect();
     assert_eq!(names, ["get_unit", "fetch_report"]);
 }
+
+#[tokio::test]
+async fn a_listen_that_wants_no_tool_changes_is_kept_open_and_quiet() {
+    // Ending it at once would invite a client that reopens a closed listen to loop.
+    let server = a_server(Duration::from_secs(5)).await;
+    let response = reqwest::Client::new()
+        .post(&server.url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "subscriptions/listen")
+        .header("Authorization", format!("Bearer {TOKEN}"))
+        .body(
+            json!({
+                "jsonrpc": "2.0", "id": 12, "method": "subscriptions/listen",
+                "params": {
+                    "notifications": {},
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                        "io.modelcontextprotocol/clientCapabilities": {}
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .expect("the server answers");
+    assert_eq!(response.status(), 200);
+    let mut listening = Listening {
+        response,
+        seen: String::new(),
+    };
+    server.relay.set_tools(&json!([])).expect("tools register");
+
+    assert_eq!(listening.changes_after(Duration::from_millis(300)).await, 0);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), listening.response.chunk())
+            .await
+            .is_err(),
+        "the stream is still open: {}",
+        listening.seen
+    );
+}
