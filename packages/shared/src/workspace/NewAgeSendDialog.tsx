@@ -100,6 +100,14 @@ export function NewAgeSendDialog({
 
   const stopped = assistant?.kind === "stopped";
   const settled = stopped || newAgeSendSettles(phase);
+  // Close takes focus once there is nothing left to answer - a result, or a prompt the assistant
+  // stopped waiting on. `autoFocus` alone misses a Close that replaces a footer already on screen.
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (settled) {
+      closeRef.current?.focus();
+    }
+  }, [settled]);
   const canSend = !stopped && newAgeSendIsReady(factionNumber, password, phase);
   const outcome = stopped ? null : newAgeSendOutcome(phase, turnNumber);
   const errors = stopped ? [] : newAgeSendErrors(phase);
@@ -208,6 +216,7 @@ export function NewAgeSendDialog({
           {settled ? (
             <button
               type="button"
+              ref={closeRef}
               data-testid="newage-send-close"
               autoFocus
               onClick={onDismiss}

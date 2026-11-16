@@ -67,12 +67,22 @@ export function SendOrdersDialog({
   }, [phase.kind]);
 
   const problem = passwordProblem(password, { blankIsAProblem: false });
-  const canSend = phase.kind === "ready" && password.trim() !== "" && problem === null;
+  // A prompt the assistant stopped waiting on can send nothing, whatever was typed before it stopped.
+  const canSend =
+    assistant?.kind !== "stopped" && phase.kind === "ready" && password.trim() !== "" && problem === null;
   // A refusal is not the end of the interaction: the password was probably wrong, and the plan's
   // keyboard rules ask for it to be retyped in place. Only an acceptance and an unreachable server
   // leave nothing further to do here, and only those collapse the footer to a single Close.
   const stopped = assistant?.kind === "stopped";
   const settled = stopped || phase.kind === "sent" || phase.kind === "unreachable";
+  // Close takes focus once there is nothing left to answer - a result, or a prompt the assistant
+  // stopped waiting on. `autoFocus` alone misses a Close that replaces a footer already on screen.
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (settled) {
+      closeRef.current?.focus();
+    }
+  }, [settled]);
   const message = stopped ? null : outcomeMessage(phase, turnNumber);
   const report =
     !stopped && phase.kind === "sent" && showsServerReport(phase.serverReport) ? phase.serverReport : null;
@@ -161,6 +171,7 @@ export function SendOrdersDialog({
           {settled ? (
             <button
               type="button"
+              ref={closeRef}
               data-testid="send-orders-close"
               autoFocus
               onClick={onDismiss}
