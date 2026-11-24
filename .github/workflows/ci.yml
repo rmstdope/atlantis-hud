@@ -154,7 +154,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # The module itself, keyed on everything it is built from. Most changes touch no Rust at
       # all, and for those this job is a restore and an upload rather than a toolchain and a
@@ -218,7 +218,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Cache the built module
         id: wasm-module
@@ -228,7 +228,7 @@ jobs:
           key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
 
@@ -288,7 +288,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Rust
         # The release and its components are the ones rust-toolchain.toml names, so CI
@@ -390,11 +390,11 @@ jobs:
     steps:
       - name: Checkout
         if: needs.changes.outputs.code == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node
         if: needs.changes.outputs.code == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
 
@@ -463,10 +463,10 @@ jobs:
     container: mcr.microsoft.com/playwright:v1.62.1-noble
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
 
@@ -515,8 +515,8 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
       - uses: pnpm/action-setup@v5
@@ -543,7 +543,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Rust
         # The release and its components are the ones rust-toolchain.toml names, so CI
@@ -576,7 +576,7 @@ jobs:
       TAURI_DRIVER_VERSION: 2.0.6
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # The -dev packages are what `tauri build` links against; webkitgtk-webdriver is the
       # WebKitWebDriver binary tauri-driver proxies to (/usr/bin/WebKitWebDriver, where
@@ -624,7 +624,7 @@ jobs:
           exit 1
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
 

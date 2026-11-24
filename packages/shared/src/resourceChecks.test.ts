@@ -192,6 +192,25 @@ describe("resourceChecksOf (ah-rx0r.2)", () => {
   });
 });
 
+describe("a New Origins lake (ah-69p86)", () => {
+  it("can be checked for the mithril and admantium the engine puts there", () => {
+    const index = parseGameData(
+      readFileSync(new URL("../../../config/public/ruleset.json", import.meta.url), "utf8")
+    );
+    if (index === null) {
+      throw new Error("expected the shipped ruleset to parse");
+    }
+    // ../Atlantis gamedata.cpp:4742: a lake holds fish, admantium and mithril. data/MINI: mining 3
+    // determines whether a region holds mithril, mining 5 admantium. Fish needs no skill to see.
+    const lake = aReportRegion({ terrain: "lake", products: [{ amount: 20, name: "fish", tag: "FISH" }] });
+
+    expect(resourceChecksOf(lake, index).map(({ tag, state, skill }) => ({ tag, state, skill }))).toEqual([
+      { tag: "ADMT", state: "unchecked", skill: { skillTag: "MINI", skillName: "mining", level: 5 } },
+      { tag: "MITH", state: "unchecked", skill: { skillTag: "MINI", skillName: "mining", level: 3 } }
+    ]);
+  });
+});
+
 describe("verdicts carried over from earlier turns (ah-tgtp)", () => {
   const herbalist = aReportUnit({
     skills: [{ name: "herb lore", tag: "HERB", level: 1, points: 50 }]

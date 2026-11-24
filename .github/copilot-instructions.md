@@ -223,14 +223,25 @@ Keep al generic code separate so that it can be easily reused by different demos
 ### Four eye Principle
 
 All code changes must be reviewed before being merged into the main codebase. Nothing merges
-unreviewed, and nothing merges red.
+unreviewed, and nothing merges red. There are two exceptions to the first half, and none to the
+second.
 
-**One exception:** a `docs(<bead>): mockup` PR from `plan-bead` that commits a chosen UI mockup to
+**First exception:** a `docs(<bead>): mockup` PR from `plan-bead` that commits a chosen UI mockup to
 `docs/ui/` and touches nothing else. Its content was already reviewed — the navigator chose it,
 iteration by iteration, in the discussion that produced it — so it needs neither a Copilot review nor
 a second look from the navigator; see `plan-bead`'s `SKILL.md` for how it is merged. A PR that touches
 anything outside `docs/`, or content the navigator has not already seen, is not this exception and
 follows the rule above like everything else.
+
+**Second exception:** a pull request opened by Dependabot (`.github/dependabot.yml`). The navigator
+decided, on 2026-11-24, that green CI is review enough for a dependency bump, patch, minor and major
+alike. Cerebro's `dependabot-sweep` opens every Cerebro turn: it merges each green Dependabot PR with
+no review, and files each red one as a `bugfix` bead at P4, leaving the PR open for the bugfixer to
+fix its branch (`.claude/agents/orchestrator.md`, *Dependabot pull requests*). That sweep is the only
+thing that merges one, so no other session merges, reviews or requests Copilot on a Dependabot PR.
+`dependabot_merge` is unset in `.cerebro/project.conf`, which is this mode. Setting it to `review`
+would have every Dependabot PR reviewed before merging. A Dependabot PR still never merges red, and
+one whose checks have not finished waits.
 
 For a bead implemented by an agent, the **Copilot reviewer is the second pair of eyes**, and it
 counts only under all of these:

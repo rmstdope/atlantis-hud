@@ -417,6 +417,19 @@ describe("terrains", () => {
     });
   });
 
+  it("details a New Origins lake from the committed ruleset (ah-69p86)", () => {
+    // ../Atlantis gamedata.cpp:4742: fish 100%, admantium (data/ADMT) 30%, mithril 30%.
+    const committed = readFileSync(new URL("../../../config/public/ruleset.json", import.meta.url), "utf8");
+    const detail = parseGameData(committed)?.detailOf(terrainEntryId("lake"));
+    expect(detail?.kind).toBe("terrain");
+    const found = detail?.kind === "terrain" ? detail.foundHere : null;
+    expect(found?.map(({ name, chance }) => ({ name, chance }))).toEqual([
+      { name: "fish", chance: 100 },
+      { name: "admantium", chance: 30 },
+      { name: "mithril", chance: 30 }
+    ]);
+  });
+
   it("reports a terrain it does not hold as absent", () => {
     expect(terrainIndex().detailOf("terrain:nexus")).toEqual({
       kind: "absent",
@@ -474,7 +487,7 @@ describe("terrain back-links on items", () => {
 });
 
 describe("the shipped New Origins terrains", () => {
-  it("lists fourteen, the underground ones included", () => {
+  it("lists fifteen, the underground ones and the engine's lake included (ah-69p86)", () => {
     const index = terrainIndex(
       readFileSync(new URL("../../../config/public/ruleset.json", import.meta.url), "utf8")
     );
@@ -487,6 +500,7 @@ describe("the shipped New Origins terrains", () => {
       "forest",
       "grotto",
       "jungle",
+      "lake",
       "mountain",
       "ocean",
       "plain",

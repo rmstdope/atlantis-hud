@@ -188,6 +188,12 @@ describe("rulesetGaps", () => {
       expect(gapsIn(named("barren"), TRIDENT, "newage-trident")).toEqual([]);
     });
 
+    it("defines lakes under every shipped ruleset (ah-69p86)", () => {
+      expect(gapsIn(named("lake"), NEW_ORIGINS, "neworigins")).toEqual([]);
+      expect(gapsIn(named("lake"), ARCANUM, "newage-arcanum")).toEqual([]);
+      expect(gapsIn(named("lake"), TRIDENT, "newage-trident")).toEqual([]);
+    });
+
     it("defines dungeons under both New Age worlds and nowhere else", () => {
       expect(gapsIn(named("dungeon"), ARCANUM, "newage-arcanum")).toEqual([]);
       expect(gapsIn(named("dungeon"), TRIDENT, "newage-trident")).toEqual([]);

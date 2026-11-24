@@ -274,6 +274,50 @@ describe("buildRuleset and the terrain table", () => {
 });
 
 /**
+ * A terrain the engine makes but the world's rules page never names (ah-69p86): New Origins lakes,
+ * whose resources are `../Atlantis/gamedata.cpp:4742` - fish 100%, admantium (data/ADMT) 30%, mithril 30%.
+ */
+describe("buildRuleset and terrains the engine adds", () => {
+  const LAKE = [
+    { name: "fish", chance: 100 },
+    { name: "admantium", chance: 30 },
+    { name: "mithril", chance: 30 }
+  ];
+  const withEngine = (engineTerrains: Record<string, { name: string; chance: number }[]>) =>
+    buildRuleset({
+      rulesHtml: RULES_HTML,
+      dataHtml: DATA_HTML,
+      rulesUrl: "https://example.test/rules",
+      dataUrl: "https://example.test/data",
+      orderLanguage: "new-origins",
+      fetchedAt: "2026-01-01T00:00:00Z",
+      engineTerrains: { source: "../Atlantis gamedata.cpp", terrains: engineTerrains }
+    });
+
+  it("adds a terrain the rules page does not state, resolved against the catalogue like any other", () => {
+    const ruleset = withEngine({ lake: LAKE });
+
+    expect(ruleset.terrainResources.lake).toEqual(["FISH", "ADMT", "MITH"]);
+    expect(ruleset.terrainResourceChances.lake).toEqual({ FISH: 100, ADMT: 30, MITH: 30 });
+    expect(ruleset.terrainResources.ocean).toEqual(["FISH", "TURT"]);
+  });
+
+  it("says in the note which terrains came from the engine, and from where", () => {
+    expect(withEngine({ lake: LAKE }).source.note).toContain("lake: ../Atlantis gamedata.cpp");
+  });
+
+  it("refuses a terrain the rules page now states itself, so the page is never overruled", () => {
+    expect(() => withEngine({ ocean: LAKE })).toThrowError(/ocean/);
+  });
+
+  it("refuses an engine resource the catalogue does not name", () => {
+    expect(() => withEngine({ lake: [{ name: "unobtanium", chance: 10 }] })).toThrowError(
+      /lake[\s\S]*unobtanium/
+    );
+  });
+});
+
+/**
  * Swimming in a world without a coastal-water paragraph. New Origins `rules/movement_normal`:
  * "Note that depending on game settings certain races might be able to swim or fly and there are
  * items that can enable your units to fly or walk on water." - and no paragraph restricting

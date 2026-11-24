@@ -99,6 +99,14 @@ describe("checkOpenedReports", () => {
     expect(checked([opened("turn-0.rep", nexus)], "neworigins").affected).toEqual([]);
   });
 
+  it("does not warn about a lake in a New Origins report (ah-69p86, gh-1961)", () => {
+    // The engine makes lakes in New Origins worlds (../Atlantis neworigins/map.cpp: region->type = R_LAKE),
+    // though neither rules/ nor data/ names them.
+    const lake = aParsedReport({ regions: [aReportRegion({ terrain: "lake" })] });
+
+    expect(checked([opened("turn-14.rep", lake)], "neworigins").affected).toEqual([]);
+  });
+
   it("is no check at all when the ruleset is not to hand", () => {
     expect(checkOpenedReports([opened("a.rep", plain(1))], "somewhere-else", INDEXES)).toBeNull();
   });
