@@ -445,7 +445,7 @@ jobs:
           version: 9.12.0
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/playwright-browser
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: web-tarball
           path: web-archive
@@ -504,7 +504,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: deployment-manifest
       - name: Attach manifest to the completed release
@@ -525,25 +525,25 @@ jobs:
       contents: write
     steps:
       - name: Download the macOS bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: macos-bundle
           path: release-artifacts/macos
 
       - name: Download the Linux bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: linux-bundle
           path: release-artifacts/linux
 
       - name: Download the Windows bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: windows-bundle
           path: release-artifacts/windows
 
       - name: Download the web tarball
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-tarball
           path: release-artifacts/web
