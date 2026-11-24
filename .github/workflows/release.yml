@@ -464,7 +464,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish tested static image
         id: image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: deploy
           push: true
