@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Ruleset } from "./build";
-import { WORLDS } from "./worlds";
+import { ENGINE_TERRAINS, WORLDS } from "./worlds";
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../../${relative}`, import.meta.url)), "utf8");
@@ -66,9 +66,11 @@ describe.each([...WORLDS])("$id reveals and terrain resources", (world) => {
     }
   });
 
-  it("carries every terrain its rules page lists", () => {
+  it("carries every terrain its rules page lists, and every one its engine adds (ah-69p86)", () => {
+    const fromEngine = Object.keys(ENGINE_TERRAINS[world.orderLanguage]?.terrains ?? {});
     expect(Object.keys(ruleset.terrainResources)).toHaveLength(
-      world.id === "neworigins" ? 9 : 17
+      (world.id === "neworigins" ? 9 : 17) + fromEngine.length
     );
+    expect(Object.keys(ruleset.terrainResources)).toEqual(expect.arrayContaining(fromEngine));
   });
 });
