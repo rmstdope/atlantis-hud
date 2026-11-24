@@ -46428,12 +46428,19 @@ BUILD
             ..region(vec![unit("3493")])
         }];
 
-        let findings = check_against(&ruleset(), regions, "unit 3493\nSAIL N\n");
-        assert!(
-            !findings
-                .iter()
-                .any(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES),
-            "a lake shore is a shore in New Origins: {findings:?}"
+        let onto = |terrain: &str| {
+            let mut regions = regions.clone();
+            regions[0].exits[0].terrain = terrain.to_string();
+            check_against(&ruleset(), regions, "unit 3493\nSAIL N\n")
+                .into_iter()
+                .filter(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES)
+                .count()
+        };
+        assert_eq!(onto("lake"), 0, "a lake shore is a shore in New Origins");
+        assert_eq!(
+            onto("mountain"),
+            1,
+            "a step with no water at either end still warns"
         );
     }
 
