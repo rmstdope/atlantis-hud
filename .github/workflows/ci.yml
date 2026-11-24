@@ -161,7 +161,7 @@ jobs:
       # build - which matters because every smoke and pwa job waits on it.
       - name: Cache the built module
         id: wasm-module
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: packages/browser-core/src/wasm
           key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') }}
@@ -222,7 +222,7 @@ jobs:
 
       - name: Cache the built module
         id: wasm-module
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: packages/browser-core/src/wasm
           key: wasm-module-${{ hashFiles('crates/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') }}
@@ -650,7 +650,7 @@ jobs:
 
       - name: Cache tauri-driver
         id: tauri-driver
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/tauri-driver
           key: tauri-driver-${{ runner.os }}-${{ env.TAURI_DRIVER_VERSION }}
