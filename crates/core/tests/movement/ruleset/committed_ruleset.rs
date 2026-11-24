@@ -357,11 +357,15 @@ fn rejects_a_water_terrain_that_is_also_difficult_going() {
     assert!(matches!(error, RulesetError::Unusable(_)));
 }
 
+/// The committed `alsoWater` list exactly as the scraper prints it: New Origins' lake, which the
+/// engine treats as water (ah-qpud9).
+const ALSO_WATER: &str = "\"alsoWater\": [\n        \"lake\"\n      ]";
+
 /// The same tell-tale, for the world that adds a second water terrain: `alsoWater` is captured by
 /// the same kind of bare word match, so an extra name that also costs double is a mis-capture.
 #[test]
 fn rejects_a_water_terrain_that_is_also_difficult_going_in_the_extra_list() {
-    let broken = RULESET.replace("\"alsoWater\": []", "\"alsoWater\": [\"forest\"]");
+    let broken = RULESET.replace(ALSO_WATER, "\"alsoWater\": [\"forest\"]");
     assert_ne!(broken, RULESET, "the fixture should have been altered");
 
     let error = Ruleset::from_json(&broken).expect_err("should refuse");
@@ -372,7 +376,7 @@ fn rejects_a_water_terrain_that_is_also_difficult_going_in_the_extra_list() {
 /// `ocean.terrain` would.
 #[test]
 fn rejects_a_blank_extra_water_terrain() {
-    let broken = RULESET.replace("\"alsoWater\": []", "\"alsoWater\": [\" \"]");
+    let broken = RULESET.replace(ALSO_WATER, "\"alsoWater\": [\" \"]");
     assert_ne!(broken, RULESET, "the fixture should have been altered");
 
     let error = Ruleset::from_json(&broken).expect_err("should refuse");

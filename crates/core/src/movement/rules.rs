@@ -121,8 +121,9 @@ pub struct OceanRule {
     ///
     /// `newage trident rules/movement_sailing`: "Lakes count as water for this purpose, and a
     /// region bordering one counts as its shore, so fleets may also sail between a lake and the
-    /// land around it." New Origins' sailing section says nothing of the kind, so its list is
-    /// empty and every behaviour there is unchanged.
+    /// land around it." New Origins' sailing section says nothing of the kind, but its engine
+    /// treats a lake as water all the same (`../Atlantis gamedata.cpp` gives `lake` the similar
+    /// type `R_OCEAN`), so the scraper supplies `lake` there from the engine (ah-qpud9).
     #[serde(default)]
     pub also_water: Vec<String>,
 }

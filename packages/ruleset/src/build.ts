@@ -57,8 +57,11 @@ export type BuildInput = {
   engineTerrains?: EngineTerrains;
 };
 
-/** Terrains read from the game engine's source rather than its pages, and where they were read. */
-export type EngineTerrains = { source: string; terrains: RegionResources };
+/**
+ * Terrains read from the game engine's source rather than its pages, and where they were read.
+ * `water` names those of them the engine treats as water for movement (ah-qpud9).
+ */
+export type EngineTerrains = { source: string; terrains: RegionResources; water?: readonly string[] };
 
 /**
  * The page's terrain table with the engine's terrains added. A terrain the page states as well is
@@ -219,17 +222,30 @@ function engineNote(engine: EngineTerrains | undefined): string {
   if (engine === undefined || terrains.length === 0) {
     return "";
   }
+  const water = engine.water ?? [];
   return (
     " Terrains the rules page does not name, read from the game engine instead: " +
     terrains.map((terrain) => `${terrain}: ${engine.source}`).join("; ") +
-    "."
+    "." +
+    (water.length === 0
+      ? ""
+      : ` Water the rules page does not name, read from the game engine: ${water.join(", ")}.`)
   );
+}
+
+/** The movement rules with the engine's water added to the water the page names. */
+function withEngineWater(movement: Ruleset["movement"], engine: EngineTerrains | undefined): Ruleset["movement"] {
+  const water = (engine?.water ?? []).filter((terrain) => !movement.ocean.alsoWater.includes(terrain));
+  if (water.length === 0) {
+    return movement;
+  }
+  return { ...movement, ocean: { ...movement.ocean, alsoWater: [...movement.ocean.alsoWater, ...water] } };
 }
 
 export function buildRuleset(input: BuildInput): Ruleset {
   // Movement first: it is the part that stops the run, and there is no point reading a catalogue
   // for a ruleset we are going to refuse anyway.
-  const movement = parseMovementRules(input.rulesHtml);
+  const movement = withEngineWater(parseMovementRules(input.rulesHtml), input.engineTerrains);
   const maintenance = parseFoodMaintenance(input.rulesHtml);
   const fee = parseMaintenanceFee(input.rulesHtml);
   const factionPoints = parseFactionPoints(input.rulesHtml);

@@ -64,3 +64,41 @@ fn drones_finish_a_longship_on_the_sharers_wood() {
     assert_eq!(lent, -10, "{:?}", sharer.item_changes);
     assert!(wood(sharer) > 0);
 }
+
+/// The same Lonthax, its one coast swapped for something else. `../Atlantis parseorders.cpp`
+/// `ProcessBuildOrder` refuses a ship that does not fly in a region that is not
+/// `IsCoastalOrLakeside`, and `aregion.cpp` counts a lake beside it as water there - so a New
+/// Origins lake shore is as good a shipyard as the sea's (ah-qpud9), and dry land all round is not.
+fn new_ship_with_the_coast_as(terrain: &str) -> Option<NewShipOutcome> {
+    let coast = "  Southeast : ocean (37,45) in Atlantis Ocean.";
+    let text = atlantis_hud_fixtures::G5_F21_T24.text;
+    assert_eq!(text.matches(coast).count(), 1, "Lonthax's one coast");
+    let report = text.replace(
+        coast,
+        &format!("  Southeast : {terrain} (37,45) in Atlantis Ocean."),
+    );
+    let response = preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        &report,
+        "[]",
+        "unit 7880\nBUILD LONGSHIP\n",
+    )
+    .expect("the ruleset loads");
+    common::preview_row(&report, &response, "7880")
+        .and_then(|row| row.new_ship.as_ref())
+        .map(|ship| ship.outcome)
+}
+
+#[test]
+fn a_longship_is_built_on_a_new_origins_lake_shore() {
+    assert_eq!(
+        new_ship_with_the_coast_as("lake"),
+        Some(NewShipOutcome::NewFleet)
+    );
+    assert_eq!(
+        new_ship_with_the_coast_as("plain"),
+        None,
+        "with no water beside it the engine refuses the ship"
+    );
+}
