@@ -22,10 +22,14 @@ updates:
     schedule:
       interval: "daily"
 
-  # "/" reads .github/workflows; the composite action has to be named on its own.
+  # "/" reads .github/workflows; the composite action is named in an entry of its own, each with
+  # the singular `directory` key.
   - package-ecosystem: "github-actions"
-    directories:
-      - "/"
-      - "/.github/actions/playwright-browser"
+    directory: "/"
+    schedule:
+      interval: "daily"
+
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/playwright-browser"
     schedule:
       interval: "daily"
