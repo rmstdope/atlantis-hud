@@ -10,7 +10,7 @@ const EXPECTED_MAJORS = {
   "actions/setup-node": 7,
   "actions/upload-artifact": 6,
   "actions/download-artifact": 7,
-  "pnpm/action-setup": 5
+  "pnpm/action-setup": 6
 } as const;
 
 function workflowActionPins(): { action: string; major: number; file: string }[] {
