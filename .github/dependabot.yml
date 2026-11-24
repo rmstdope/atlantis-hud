@@ -1,6 +1,7 @@
 # Dependabot version updates (ah-9yj4w).
 #
-# Daily, one pull request per dependency: the navigator's choice (2026-11-24). Cerebro's
+# Daily, one pull request per dependency: the navigator's choice (2026-11-24), except the React
+# packages, grouped on the npm entry below (ah-6gn7c). Cerebro's
 # dependabot-sweep merges a pull request whose CI passed and files a red one as a bugfix bead
 # (`.cerebro/cerebro/agents/orchestrator.md`, "Dependabot pull requests").
 #
@@ -24,6 +25,14 @@ updates:
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
+      # A group with no applies-to covers version updates only; security updates need their own.
+      react-security:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        applies-to: security-updates
 
   # The Cargo workspace: Cargo.toml and Cargo.lock at the root cover crates/* and
   # apps/desktop/src-tauri.

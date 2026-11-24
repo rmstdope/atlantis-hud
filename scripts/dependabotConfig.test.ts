@@ -46,6 +46,14 @@ describe("Dependabot bumps the React packages together", () => {
     expect(groupPatterns(npm[0].text, "react")).toEqual(REACT_PACKAGES);
   });
 
+  it("security updates to the React packages are grouped too", () => {
+    // A group without `applies-to` covers version updates only, and one group cannot cover both,
+    // so security updates need a group of their own (security updates are on for this repository).
+    const [npm] = entries().filter((entry) => entry.ecosystem === "npm");
+    expect(groupPatterns(npm.text, "react-security")).toEqual(REACT_PACKAGES);
+    expect(npm.text).toMatch(/^ {6}react-security:\n(?: {8,}.*\n)*? {8}applies-to: security-updates$/m);
+  });
+
   it("no other ecosystem entry carries the React group", () => {
     const others = entries().filter((entry) => entry.ecosystem !== "npm");
     expect(others.length).toBeGreaterThan(0);
