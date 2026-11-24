@@ -1,7 +1,7 @@
 //! Trident `rules/movement_sailing`: "Lakes count as water for this purpose, and a region
 //! bordering one counts as its shore, so fleets may also sail between a lake and the land around
-//! it." New Origins' sailing section says nothing of the kind, so the same map answers differently
-//! in the two worlds - which is what the control test at the end of this section pins.
+//! it." New Origins' sailing section says nothing of the kind, but its engine treats a lake as water
+//! all the same (ah-qpud9), so both worlds are asserted here.
 
 use super::support::{plan_ruleset, trident};
 use crate::common::{at, ruleset};
@@ -55,18 +55,22 @@ fn a_walker_refused_by_a_lake_names_the_lake() {
     );
 }
 
-/// The control: the same map, the shipped New Origins ruleset. A lake there is ordinary land, so
-/// nothing about this bead may reach that world.
+/// New Origins treats a lake as water too, although its rules page never says so: the engine gives
+/// `lake` the similar type `R_OCEAN` (`../Atlantis gamedata.cpp`, the lake row of the terrain table),
+/// and `monthorders.cpp` stops a walker at a region of that type - "Discovers that ... is lake."
+/// (ah-qpud9).
 #[test]
-fn a_new_origins_walker_still_walks_across_a_lake() {
+fn a_new_origins_walker_refused_by_a_lake_names_the_lake() {
     let report = lake_in_a_line(WALKER);
 
-    let route = plan_ruleset(&ruleset(), &report, "900", at(2, 2))
-        .expect("a lake is dry land in New Origins");
-    assert_eq!(route.mode, MovementMode::Walk);
-    assert!(
-        !route.steps[0].over_water,
-        "nothing on this map is water in New Origins"
+    let in_the_way = plan_ruleset(&ruleset(), &report, "900", at(3, 3))
+        .expect_err("the lake is between the unit and the far plain");
+    assert_eq!(
+        in_the_way,
+        RouteProblem::OceanNeedsShip {
+            coordinate: at(2, 2),
+            terrain: "lake".to_string(),
+        }
     );
 }
 
@@ -97,10 +101,8 @@ fn a_flier_whose_month_ends_over_a_lake_is_refused() {
     );
 }
 
-/// "a 1 man unit with level four sailing skill can sail a Longship alone"
-/// (`newage trident rules/movement_sailing`), and a region bordering a lake counts as its shore.
-#[test]
-fn a_fleet_sails_from_the_shore_onto_a_lake() {
+/// A Longship, its sailors and a lake beside their plain: (1,1) plain - (2,2) lake.
+fn a_fleet_beside_a_lake() -> ParsedReport {
     let mut text = String::from("Foo (1) Report\n\n");
     text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
     text.push_str("Exits:\n  Southeast : lake (2,2) in Nowhere.\n\n");
@@ -111,9 +113,14 @@ fn a_fleet_sails_from_the_shore_onto_a_lake() {
     );
     text.push_str("lake (2,2) in Nowhere.\n\n");
     text.push_str("Exits:\n  Northwest : plain (1,1) in Nowhere.\n");
-    let report = parse_report_full(&text);
+    parse_report_full(&text)
+}
 
-    let route = plan_ruleset(&trident(), &report, "900", at(2, 2))
+/// "a 1 man unit with level four sailing skill can sail a Longship alone"
+/// (`newage trident rules/movement_sailing`), and a region bordering a lake counts as its shore.
+#[test]
+fn a_fleet_sails_from_the_shore_onto_a_lake() {
+    let route = plan_ruleset(&trident(), &a_fleet_beside_a_lake(), "900", at(2, 2))
         .expect("a fleet may sail between a lake and the land around it");
     assert_eq!(route.mode, MovementMode::Sail);
     assert!(
@@ -124,5 +131,20 @@ fn a_fleet_sails_from_the_shore_onto_a_lake() {
     assert!(
         route.steps[0].over_water,
         "core states the fact for every mode; the panel decides who is shown it"
+    );
+}
+
+/// New Origins: SAIL refuses only a region that is not `IsCoastalOrLakeside`
+/// (`../Atlantis monthorders.cpp`, "SAIL: Can't sail inland."), and that counts a lake as water
+/// whatever `LAKESIDE_IS_COASTAL` says (`../Atlantis aregion.cpp`). So the lake's shore is a shore
+/// for a fleet there too (ah-qpud9).
+#[test]
+fn a_new_origins_fleet_sails_from_the_shore_onto_a_lake() {
+    let route = plan_ruleset(&ruleset(), &a_fleet_beside_a_lake(), "900", at(2, 2))
+        .expect("a New Origins fleet may sail between a lake and the land around it");
+    assert_eq!(route.mode, MovementMode::Sail);
+    assert!(
+        route.steps[0].over_water,
+        "the lake is water in New Origins"
     );
 }

@@ -57,6 +57,8 @@ describe("worldBuildInput", () => {
         { name: "mithril", chance: 30 }
       ]
     });
+    // ../Atlantis gamedata.cpp gives lake the similar type R_OCEAN (ah-qpud9).
+    expect(ENGINE_TERRAINS["new-origins"]?.water).toEqual(["lake"]);
     expect(ENGINE_TERRAINS["new-age-arcanum"]).toBeUndefined();
     expect(ENGINE_TERRAINS["new-age-trident"]).toBeUndefined();
   });

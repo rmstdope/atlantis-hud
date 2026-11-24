@@ -106,7 +106,9 @@ function catalogueInput(
  * New Origins lakes (ah-69p86, gh-1961): `pnpm run atlantis rules --search lake` and `data lake`
  * find nothing, yet the engine makes them (`../Atlantis neworigins/map.cpp`:
  * `lake->region->type = R_LAKE`) and players' reports show them. What one holds is its row in the
- * engine's terrain table. Lake movement is not supplied here; ah-qpud9 carries it.
+ * engine's terrain table. A lake is water too (ah-qpud9): the same row gives it the similar type
+ * `R_OCEAN`, `monthorders.cpp` stops a walker at a region of that type, and SAIL's
+ * `IsCoastalOrLakeside` (`aregion.cpp`) lets a fleet onto one from the land around it.
  */
 export const ENGINE_TERRAINS: Readonly<Partial<Record<OrderLanguage, EngineTerrains>>> = {
   "new-origins": {
@@ -117,7 +119,8 @@ export const ENGINE_TERRAINS: Readonly<Partial<Record<OrderLanguage, EngineTerra
         { name: "admantium", chance: 30 },
         { name: "mithril", chance: 30 }
       ]
-    }
+    },
+    water: ["lake"]
   }
 };
 
