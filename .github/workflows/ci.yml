@@ -233,7 +233,7 @@ jobs:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: 9.12.0
 
@@ -400,7 +400,7 @@ jobs:
 
       - name: Setup pnpm
         if: needs.changes.outputs.code == 'true'
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: 9.12.0
 
@@ -471,7 +471,7 @@ jobs:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: 9.12.0
 
@@ -519,7 +519,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: ".nvmrc"
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.12.0
       - run: pnpm install --frozen-lockfile
@@ -629,7 +629,7 @@ jobs:
           node-version-file: ".nvmrc"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: 9.12.0
 
