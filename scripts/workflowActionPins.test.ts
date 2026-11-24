@@ -7,7 +7,7 @@ const WORKFLOWS = join(process.cwd(), ".github", "workflows");
 const EXPECTED_MAJORS = {
   "actions/checkout": 5,
   "actions/cache": 5,
-  "actions/setup-node": 6,
+  "actions/setup-node": 7,
   "actions/upload-artifact": 6,
   "actions/download-artifact": 7,
   "pnpm/action-setup": 5
