@@ -306,6 +306,22 @@ describe("buildRuleset and terrains the engine adds", () => {
     expect(withEngine({ lake: LAKE }).source.note).toContain("lake: ../Atlantis gamedata.cpp");
   });
 
+  it("counts a terrain the engine makes water as water, and says so in the note (ah-qpud9)", () => {
+    const ruleset = buildRuleset({
+      rulesHtml: RULES_HTML,
+      dataHtml: DATA_HTML,
+      rulesUrl: "https://example.test/rules",
+      dataUrl: "https://example.test/data",
+      orderLanguage: "new-origins",
+      fetchedAt: "2026-01-01T00:00:00Z",
+      engineTerrains: { source: "../Atlantis gamedata.cpp", terrains: { lake: LAKE }, water: ["lake"] }
+    });
+
+    expect(ruleset.movement.ocean.alsoWater).toEqual(["lake"]);
+    expect(ruleset.movement.ocean.terrain).toBe("ocean");
+    expect(ruleset.source.note).toContain("Water the rules page does not name, read from the game engine: lake");
+  });
+
   it("refuses a terrain the rules page now states itself, so the page is never overruled", () => {
     expect(() => withEngine({ ocean: LAKE })).toThrowError(/ocean/);
   });

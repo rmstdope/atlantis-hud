@@ -6,7 +6,8 @@ const RULESET: &str = atlantis_hud_fixtures::RULESET_JSON;
 /// New Age: Trident widens the sailing rule's water: "Lakes count as water for this purpose, and a
 /// region bordering one counts as its shore, so fleets may also sail between a lake and the land
 /// around it." (`newage trident rules/movement_sailing`.) New Origins' sailing section carries no
-/// such sentence, so a lake there is dry land — which is why both worlds are asserted here.
+/// such sentence, but its engine gives `lake` the similar type `R_OCEAN` (`../Atlantis gamedata.cpp`,
+/// the lake row of the terrain table), so a lake is water there as well (ah-qpud9).
 #[test]
 fn knows_lakes_are_water_in_trident() {
     let trident = Ruleset::from_json(atlantis_hud_fixtures::NEWAGE_TRIDENT_RULESET_JSON)
@@ -21,8 +22,8 @@ fn knows_lakes_are_water_in_trident() {
     assert!(!trident.is_water("plain"));
 
     assert!(
-        !ruleset().is_water("lake"),
-        "New Origins has no lake sentence, so a lake there is dry land"
+        ruleset().is_water("lake"),
+        "the New Origins engine treats a lake as water, though its rules page never says so"
     );
 }
 

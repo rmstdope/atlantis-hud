@@ -430,6 +430,17 @@ describe("terrains", () => {
     ]);
   });
 
+  it("shows a New Origins lake as water, with no walking cost (ah-qpud9)", () => {
+    // ../Atlantis gamedata.cpp gives lake the similar type R_OCEAN, and monthorders.cpp stops a
+    // walker at a region of that type.
+    const committed = readFileSync(new URL("../../../config/public/ruleset.json", import.meta.url), "utf8");
+    expect(parseGameData(committed)?.detailOf(terrainEntryId("lake"))).toMatchObject({
+      kind: "terrain",
+      movement: { kind: "water" },
+      road: null
+    });
+  });
+
   it("reports a terrain it does not hold as absent", () => {
     expect(terrainIndex().detailOf("terrain:nexus")).toEqual({
       kind: "absent",
