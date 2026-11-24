@@ -1,0 +1,31 @@
+# Dependabot version updates (ah-9yj4w).
+#
+# Daily, one pull request per dependency: the navigator's choice (2026-11-24). Cerebro's
+# dependabot-sweep merges a pull request whose CI passed and files a red one as a bugfix bead
+# (`.cerebro/cerebro/agents/orchestrator.md`, "Dependabot pull requests").
+#
+# The .cerebro/cerebro submodule is deliberately absent: the fleet harness changes how every agent
+# works, so bumping it stays a deliberate act by the navigator.
+version: 2
+updates:
+  # The pnpm workspace: package.json, pnpm-workspace.yaml and pnpm-lock.yaml at the root cover
+  # apps/* and packages/*.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+
+  # The Cargo workspace: Cargo.toml and Cargo.lock at the root cover crates/* and
+  # apps/desktop/src-tauri.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "daily"
+
+  # "/" reads .github/workflows; the composite action has to be named on its own.
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/playwright-browser"
+    schedule:
+      interval: "daily"
