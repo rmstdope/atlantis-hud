@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import type { AppUpdateControl } from "@atlantis/shared";
 import { useWebAppUpdate } from "./useWebAppUpdate";
@@ -12,8 +12,8 @@ vi.mock("virtual:pwa-register/react", () => ({
 describe("useWebAppUpdate", () => {
   let workerState: ServiceWorkerState;
   let onStateChange: EventListener | undefined;
-  let reload: ReturnType<typeof vi.fn>;
-  let updateServiceWorker: ReturnType<typeof vi.fn>;
+  let reload: Mock<() => void>;
+  let updateServiceWorker: Mock<(reloadPage?: boolean) => Promise<void>>;
   let control: AppUpdateControl | undefined;
 
   const waitingWorker = {
@@ -37,8 +37,8 @@ describe("useWebAppUpdate", () => {
   beforeEach(() => {
     workerState = "installed";
     onStateChange = undefined;
-    reload = vi.fn();
-    updateServiceWorker = vi.fn();
+    reload = vi.fn<() => void>();
+    updateServiceWorker = vi.fn<(reloadPage?: boolean) => Promise<void>>();
     control = undefined;
     vi.stubGlobal("window", { location: { reload } });
     vi.mocked(useRegisterSW).mockImplementation((options) => {
