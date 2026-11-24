@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const WORKFLOWS = join(process.cwd(), ".github", "workflows");
 
 const EXPECTED_MAJORS = {
-  "actions/checkout": 5,
+  "actions/checkout": 7,
   "actions/cache": 5,
   "actions/setup-node": 7,
   "actions/upload-artifact": 6,

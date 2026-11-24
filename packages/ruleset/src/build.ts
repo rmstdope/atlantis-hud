@@ -50,7 +50,37 @@ export type BuildInput = {
    * database's flags (`newAgeSkillUses`). Absent for a data page, whose prose is read instead.
    */
   skillUses?: Record<string, SkillUse>;
+  /**
+   * Terrains the world's engine makes but its rules page never names, and what each holds
+   * (ah-69p86). Absent for a world whose page names every terrain it has.
+   */
+  engineTerrains?: EngineTerrains;
 };
+
+/** Terrains read from the game engine's source rather than its pages, and where they were read. */
+export type EngineTerrains = { source: string; terrains: RegionResources };
+
+/**
+ * The page's terrain table with the engine's terrains added. A terrain the page states as well is
+ * refused: the page is what the game publishes, and a supplement it has caught up with is one to
+ * delete rather than one to keep quietly overruling it.
+ */
+function withEngineTerrains(page: RegionResources, engine: EngineTerrains | undefined): RegionResources {
+  if (engine === undefined) {
+    return page;
+  }
+  const merged: RegionResources = Object.assign(Object.create(null) as RegionResources, page);
+  for (const [terrain, resources] of Object.entries(engine.terrains)) {
+    if (Object.hasOwn(page, terrain)) {
+      throw new RulesetScrapeError(
+        `the rules page now states terrain ${terrain}, which is also supplied from ${engine.source}; ` +
+          "remove the supplement"
+      );
+    }
+    merged[terrain] = resources;
+  }
+  return merged;
+}
 
 const DEFAULT_RISK: RiskThresholds = {
   scraped: false,
@@ -183,6 +213,19 @@ function applySkillUses(skills: SkillReference, uses: Record<string, SkillUse>):
   }
 }
 
+/** The note's sentence naming each terrain the engine supplied, or nothing when none was. */
+function engineNote(engine: EngineTerrains | undefined): string {
+  const terrains = Object.keys(engine?.terrains ?? {});
+  if (engine === undefined || terrains.length === 0) {
+    return "";
+  }
+  return (
+    " Terrains the rules page does not name, read from the game engine instead: " +
+    terrains.map((terrain) => `${terrain}: ${engine.source}`).join("; ") +
+    "."
+  );
+}
+
 export function buildRuleset(input: BuildInput): Ruleset {
   // Movement first: it is the part that stops the run, and there is no point reading a catalogue
   // for a ruleset we are going to refuse anyway.
@@ -191,7 +234,7 @@ export function buildRuleset(input: BuildInput): Ruleset {
   const fee = parseMaintenanceFee(input.rulesHtml);
   const factionPoints = parseFactionPoints(input.rulesHtml);
   const weather = parseWeatherGap(input.rulesHtml);
-  const regionResources = parseRegionResources(input.rulesHtml);
+  const regionResources = withEngineTerrains(parseRegionResources(input.rulesHtml), input.engineTerrains);
   const items = parseItemReference(input.dataHtml);
   // Buildings come from the data page too - the game's own object list, not the rules page's
   // generic table - so this reads after the items and before the race check below, which is the
@@ -259,7 +302,8 @@ export function buildRuleset(input: BuildInput): Ruleset {
         "blocks are scraped from the URLs above. Food maintenance: the rules page prices one " +
         `unit of food at ${maintenance.value} silver, and that is what the four food items ` +
         "carry here, whatever their own data-page descriptions say. Re-run the fetch rather than " +
-        "hand-editing the generated ruleset."
+        "hand-editing the generated ruleset." +
+        engineNote(input.engineTerrains)
     },
     orderLanguage: input.orderLanguage,
     movement,
