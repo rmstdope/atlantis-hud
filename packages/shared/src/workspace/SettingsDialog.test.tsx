@@ -180,34 +180,35 @@ function tag(html: string, testid: string): string {
     throw new Error(`no element carries data-testid="${testid}"`);
   }
 
-  describe("the Settings dialog width", () => {
-    it("keeps every tab on one line when the viewport has room, without overflowing a narrow one", () => {
-      const html = renderToStaticMarkup(
-        <SettingsDialog
-          platformLabel="Web"
-          appUpdate={UNSUPPORTED_UPDATES}
-          openExternal={() => undefined}
-          game={null}
-          busy={false}
-          error={null}
-          onChangeMapSizes={async () => true}
-          onCheckRuleset={NO_GAPS_CHECK}
-          onChangeRuleset={async () => undefined}
-          onDismiss={() => {}}
-        />
-      );
-      const panel = tag(html, "settings-panel");
-
-      expect(panel).toContain("w-[40rem]");
-      expect(panel).toContain("max-w-[94vw]");
-      expect(panel).toContain("border-brass/60");
-      expect(panel).toContain("shadow-xl");
-      expect(html).toContain('class="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"');
-      expect(tag(html, "settings-tab-global")).toContain("border-brass bg-brass/10 text-brass");
-    });
-  });
   return match[0];
 }
+
+describe("the Settings dialog width", () => {
+  it("keeps every tab on one line when the viewport has room, without overflowing a narrow one", () => {
+    const html = renderToStaticMarkup(
+      <SettingsDialog
+        platformLabel="Web"
+        appUpdate={UNSUPPORTED_UPDATES}
+        openExternal={() => undefined}
+        game={null}
+        busy={false}
+        error={null}
+        onChangeMapSizes={async () => true}
+        onCheckRuleset={NO_GAPS_CHECK}
+        onChangeRuleset={async () => undefined}
+        onDismiss={() => {}}
+      />
+    );
+    const panel = tag(html, "settings-panel");
+
+    expect(panel).toContain("w-[40rem]");
+    expect(panel).toContain("max-w-[94vw]");
+    expect(panel).toContain("border-brass/60");
+    expect(panel).toContain("shadow-xl");
+    expect(html).toContain('class="mt-2 flex flex-wrap gap-1 rounded border border-edge bg-panel p-1"');
+    expect(tag(html, "settings-tab-global")).toContain("border-brass bg-brass/10 text-brass");
+  });
+});
 
 describe("the pane transparency setting", () => {
   afterEach(() => {
