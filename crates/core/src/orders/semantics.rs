@@ -46412,6 +46412,38 @@ BUILD
         );
     }
 
+    /// New Origins counts a lake as water too: SAIL refuses only a region that is not
+    /// `IsCoastalOrLakeside` (`../Atlantis monthorders.cpp`), and the engine gives `lake` the
+    /// similar type `R_OCEAN` (`../Atlantis gamedata.cpp`), so a sail onto one is legal (ah-qpud9).
+    #[test]
+    fn a_sail_onto_a_lake_is_no_warning_in_new_origins() {
+        let regions = vec![ReportRegion {
+            exits: vec![Exit {
+                direction: "North".to_string(),
+                terrain: "lake".to_string(),
+                coordinate: Coordinate { x: 7, y: 51, z: 1 },
+                province: "Inhead".to_string(),
+                settlement: None,
+            }],
+            ..region(vec![unit("3493")])
+        }];
+
+        let onto = |terrain: &str| {
+            let mut regions = regions.clone();
+            regions[0].exits[0].terrain = terrain.to_string();
+            check_against(&ruleset(), regions, "unit 3493\nSAIL N\n")
+                .into_iter()
+                .filter(|finding| finding.code == codes::SAIL_BETWEEN_LAND_HEXES)
+                .count()
+        };
+        assert_eq!(onto("lake"), 0, "a lake shore is a shore in New Origins");
+        assert_eq!(
+            onto("mountain"),
+            1,
+            "a step with no water at either end still warns"
+        );
+    }
+
     /// The check never speaks where the report has not told it enough - and the `by_coordinate`
     /// gate is pinned with it.
     ///

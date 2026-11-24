@@ -59,8 +59,8 @@ describe("waterTerrainsOf", () => {
     });
   });
 
-  it("reads no extra water from the Origins ruleset", () => {
-    expect(waterTerrainsOf(ruleset("ruleset.json"))).toEqual({ ocean: "ocean", alsoWater: [] });
+  it("reads the engine's lake as extra water from the Origins ruleset (ah-qpud9)", () => {
+    expect(waterTerrainsOf(ruleset("ruleset.json"))).toEqual({ ocean: "ocean", alsoWater: ["lake"] });
   });
 
   it("falls back to the default on null, non-JSON and a missing ocean rule", () => {

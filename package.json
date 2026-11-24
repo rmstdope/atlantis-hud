@@ -38,10 +38,10 @@
     "@wdio/mocha-framework": "^9.20.0",
     "@wdio/spec-reporter": "^9.20.0",
     "eslint": "^9.34.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "6.2.5",
     "sharp": "^0.35.5",
-    "tsx": "^4.23.11",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.2",
     "vitest": "^5.1.1"
   }
