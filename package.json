@@ -29,7 +29,7 @@
     "@playwright/test": "^1.55.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^8.40.0",
     "@typescript-eslint/parser": "^8.40.0",
     "@wdio/cli": "^9.20.0",
