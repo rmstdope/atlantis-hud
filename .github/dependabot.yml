@@ -14,6 +14,16 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    # The one exception to one pull request per dependency (ah-6gn7c): react-dom moving ahead of
+    # react broke CI on #1978 (fixed by hand in ah-h05yn), so the four React packages bump together.
+    # Exact names, so no other react-* package is swept in.
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
 
   # The Cargo workspace: Cargo.toml and Cargo.lock at the root cover crates/* and
   # apps/desktop/src-tauri.
