@@ -136,12 +136,6 @@ export const UNSCRAPED_NAMES: Readonly<
     { kind: "terrain", key: terrainEntryId("nexus"), source: "rules/world_nexus" },
     { kind: "terrain", key: terrainEntryId("barren"), source: "rules/annihilate: converted into barren land" },
     {
-      kind: "terrain",
-      key: terrainEntryId("lake"),
-      // No committed page names it (ah-69p86, gh-1961); the engine makes lakes in New Origins worlds.
-      source: "../Atlantis neworigins/map.cpp: lake->region->type = R_LAKE"
-    },
-    {
       kind: "skill",
       key: "BRTL",
       // No committed page names it; this New Origins report has a unit that knows and may study it.

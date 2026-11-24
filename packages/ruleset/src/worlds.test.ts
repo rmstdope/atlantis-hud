@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { worldBuildInput } from "./worlds";
+import { ENGINE_TERRAINS, worldBuildInput } from "./worlds";
 
 const fixture = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../../../tests/fixtures/ruleset/${name}`, import.meta.url)), "utf8");
@@ -43,7 +43,21 @@ describe("worldBuildInput", () => {
       rulesHtml: "<p>rules</p>",
       dataHtml: page,
       orderLanguage: "new-origins",
+      engineTerrains: ENGINE_TERRAINS["new-origins"],
       ...SOURCE
     });
+  });
+
+  it("gives New Origins its lakes from the engine, and New Age none (ah-69p86)", () => {
+    // ../Atlantis gamedata.cpp:4742: lake holds fish 100%, admantium (data/ADMT) 30%, mithril 30%.
+    expect(ENGINE_TERRAINS["new-origins"]?.terrains).toEqual({
+      lake: [
+        { name: "fish", chance: 100 },
+        { name: "admantium", chance: 30 },
+        { name: "mithril", chance: 30 }
+      ]
+    });
+    expect(ENGINE_TERRAINS["new-age-arcanum"]).toBeUndefined();
+    expect(ENGINE_TERRAINS["new-age-trident"]).toBeUndefined();
   });
 });

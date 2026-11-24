@@ -9,7 +9,7 @@
 import { newAgeDataPage, newAgeSkillUses, parseNewAgeDatabase } from "./newage";
 import type { SkillUse } from "./generated/SkillUse";
 import type { OrderLanguage } from "./generated/OrderLanguage";
-import type { BuildInput } from "./build";
+import type { BuildInput, EngineTerrains } from "./build";
 
 /** Where a world's catalogue comes from: an HTML data page, or a JSON database. */
 export type CatalogueSource = "data-page" | "database";
@@ -99,6 +99,28 @@ function catalogueInput(
   return { dataHtml: newAgeDataPage(database), skillUses: newAgeSkillUses(database) };
 }
 
+/**
+ * Terrains a world's engine makes that its rules page never names, by the world's order language,
+ * which the scrape CLI is given as surely as `atlantis verify` and the committed-ruleset test are.
+ *
+ * New Origins lakes (ah-69p86, gh-1961): `pnpm run atlantis rules --search lake` and `data lake`
+ * find nothing, yet the engine makes them (`../Atlantis neworigins/map.cpp`:
+ * `lake->region->type = R_LAKE`) and players' reports show them. What one holds is its row in the
+ * engine's terrain table. Lake movement is not supplied here; ah-qpud9 carries it.
+ */
+export const ENGINE_TERRAINS: Readonly<Partial<Record<OrderLanguage, EngineTerrains>>> = {
+  "new-origins": {
+    source: "../Atlantis gamedata.cpp, the lake row of the terrain table",
+    terrains: {
+      lake: [
+        { name: "fish", chance: 100 },
+        { name: "admantium", chance: 30 },
+        { name: "mithril", chance: 30 }
+      ]
+    }
+  }
+};
+
 /** Everything a world's ruleset is built from, as its caller has it in hand. */
 export type WorldSources = {
   catalogueSource: CatalogueSource;
@@ -123,7 +145,8 @@ export function worldBuildInput(sources: WorldSources): BuildInput {
     rulesUrl,
     dataUrl,
     orderLanguage: sources.orderLanguage,
-    fetchedAt
+    fetchedAt,
+    ...(ENGINE_TERRAINS[sources.orderLanguage] ? { engineTerrains: ENGINE_TERRAINS[sources.orderLanguage] } : {})
   };
 }
 
