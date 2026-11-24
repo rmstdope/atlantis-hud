@@ -7,7 +7,7 @@
   "dependencies": {
     "@atlantis/core-client": "workspace:*",
     "@codemirror/autocomplete": "^6.20.3",
-    "@codemirror/commands": "^6.10.4",
+    "@codemirror/commands": "^6.11.1",
     "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
