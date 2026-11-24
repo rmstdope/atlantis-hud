@@ -410,7 +410,7 @@ jobs:
 
       - name: Download the WebAssembly core
         if: needs.changes.outputs.code == 'true' && needs.wasm.result == 'success'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: wasm-core
           path: packages/browser-core/src/wasm
@@ -479,7 +479,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download the WebAssembly core
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: wasm-core
           path: packages/browser-core/src/wasm
@@ -524,7 +524,7 @@ jobs:
           version: 9.12.0
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/playwright-browser
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: web-container-site
           path: apps/web/dist
@@ -668,7 +668,7 @@ jobs:
         run: pnpm exec tsc -p tests/native/tsconfig.json
 
       - name: Download the WebAssembly core
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: wasm-core
           path: packages/browser-core/src/wasm
