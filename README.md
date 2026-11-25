@@ -257,8 +257,9 @@ git tag v0.2.0 && git push origin v0.2.0
 ```
 
 That builds a macOS `.dmg`, a Linux `.AppImage` and a Windows installer, attaches them to a GitHub
-Release, together with the web tarball and the deployment manifest for the website. The first step of the job checks that
-the tag and the two files agree, so a half-done bump fails in seconds rather than after the compile.
+Release, together with the web tarball and the deployment manifest for the website. The first step
+of the job checks that the tag and the two files agree, so a half-done bump fails in seconds rather
+than after the compile.
 
 There is one macOS download, not two: the bundle is universal, so it runs on Apple Silicon and on
 Intel (#56). The job asserts both slices are really in it before publishing anything.
