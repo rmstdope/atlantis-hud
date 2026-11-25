@@ -54,8 +54,8 @@ importers:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.5(jiti@2.7.0))
       fake-indexeddb:
-        specifier: 6.2.5
-        version: 6.2.5
+        specifier: 6.2.8
+        version: 6.2.8
       sharp:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@22.20.1)
@@ -171,8 +171,8 @@ importers:
         specifier: ^22.10.2
         version: 22.20.1
       fake-indexeddb:
-        specifier: 6.2.5
-        version: 6.2.5
+        specifier: 6.2.8
+        version: 6.2.8
 
   packages/core-client: {}
 
@@ -2787,8 +2787,8 @@ packages:
     engines: {node: '>= 10.17.0'}
     hasBin: true
 
-  fake-indexeddb@6.2.5:
-    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+  fake-indexeddb@6.2.8:
+    resolution: {integrity: sha512-mpVW/HLUqwKXJ6F/s0hMgdK1eQfM4ncTHDioNGHWL0WKV3VcZCoZq1NKgboBbAge07aRCO7L48yziKssL59XEQ==}
     engines: {node: '>=18'}
 
   fast-deep-equal@2.0.1:
@@ -7537,7 +7537,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fake-indexeddb@6.2.5: {}
+  fake-indexeddb@6.2.8: {}
 
   fast-deep-equal@2.0.1: {}
 
