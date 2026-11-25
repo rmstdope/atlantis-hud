@@ -99,11 +99,25 @@ fn a_walking_route_that_stays_on_land_is_not_warned_about() {
     assert!(t39("unit 4333\nMOVE NE\n").is_empty());
 }
 
-/// The positive control: what the planner lets cross the water is not warned about either.
+/// The positive control: a flier crossing the lake to land on the far plain is not warned about.
+/// Only crossing: `rules/tableitemweights` drowns a flier that ends its movement over water, which
+/// is not this warning's business.
 #[test]
-fn a_flier_over_a_lake_is_not_warned_about() {
+fn a_flier_across_a_lake_is_not_warned_about() {
     let flier = lake_in_a_line_with(
         "* Wings (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 15/0/15/0.",
     );
-    assert!(water_diagnostics(&flier, "unit 900\nMOVE SE\n").is_empty());
+    assert!(water_diagnostics(&flier, "unit 900\nMOVE SE SE\n").is_empty());
+}
+
+/// ADVANCE walks the same route as MOVE (`rules/advance`), so the same step is refused.
+#[test]
+fn an_advance_into_the_ocean_is_warned_about() {
+    let found = t39("unit 4333\nADVANCE SE\n");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "(38,42) is ocean, and this unit would need a ship to be there."
+    );
 }

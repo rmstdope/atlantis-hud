@@ -63,8 +63,10 @@ pub fn message(watered: &WateredMove) -> String {
 
 /// Every own walking unit's first step onto water it cannot enter without a ship.
 ///
-/// Only the plain refusal is warned about: a step the planner calls doubtful (depth unknown, swim
-/// capacity unstated) or refuses for a load or deep water is left alone here.
+/// Only the plain refusal is warned about. Left alone here: a step the planner calls doubtful
+/// (depth unknown, swim capacity unstated) or refuses for a load or deep water; water past an `IN`
+/// passage, since the trace's `steps` hold only the steps before it; and a flier ending its move
+/// over water, which is a drowning rather than a missing ship.
 pub(crate) fn watered_moves_on(
     report: &ParsedReport,
     ruleset: &Ruleset,
