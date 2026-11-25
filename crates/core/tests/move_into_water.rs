@@ -100,14 +100,33 @@ fn a_walking_route_that_stays_on_land_is_not_warned_about() {
 }
 
 /// The positive control: a flier crossing the lake to land on the far plain is not warned about.
-/// Only crossing: `rules/tableitemweights` drowns a flier that ends its movement over water, which
-/// is not this warning's business.
+/// `rules/tableitemweights` only drowns a flier that ends its movement over water.
 #[test]
 fn a_flier_across_a_lake_is_not_warned_about() {
     let flier = lake_in_a_line_with(
         "* Wings (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 15/0/15/0.",
     );
     assert!(water_diagnostics(&flier, "unit 900\nMOVE SE SE\n").is_empty());
+}
+
+/// `ah-lxq6w`. `rules/tableitemweights`: "flying units must end their movement on land or else
+/// drown." A flier whose MOVE stops on the lake is warned, in the Plan move panel's own words for
+/// the same refusal (`PlannerPanel.tsx`, `flightWouldEndOverOcean`).
+#[test]
+fn a_flier_ending_its_move_over_a_lake_is_warned_about() {
+    let flier = lake_in_a_line_with(
+        "* Wings (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 15/0/15/0.",
+    );
+    let found = water_diagnostics(&flier, "unit 900\nMOVE SE\n");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "A single MOVE order would leave this unit over the lake at (2,2) when the month ran \
+         out, and a unit that ends a turn over water drowns."
+    );
+    assert_eq!(found[0].line_start, Some(2));
+    assert_eq!(found[0].severity, OrderDiagnosticSeverity::Warning);
 }
 
 /// ADVANCE walks the same route as MOVE (`rules/advance`), so the same step is refused.
