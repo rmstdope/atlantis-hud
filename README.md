@@ -239,23 +239,13 @@ Full detail, and the reasoning, in `docs/issue-10-release-contracts.md`.
 
 ### The web application
 
-Published by hand, from the Actions tab: **Deploy web** → Run workflow, on `main`. It refuses to run
-on any other branch. The job builds, runs the PWA suite against the build it is about to upload, and
-then uploads it over SFTP to `https://atlantis-hud.kurelid.se` and checks the live site is serving
-what it just sent.
+Published to `https://atlantis-hud.rmstdope.eu`, by hand. A tag builds the web container image and
+attaches a `deployment.json` naming it to the release; deploying it is a command run from an operator
+machine. `deploy/README.md` has the commands and how the image keeps older clients working.
 
-It needs three secrets and one variable configured on the repository:
-
-| Name | Kind |
-| --- | --- |
-| `ONECOM_FTP_SERVER` | secret — the SSH/SFTP hostname |
-| `ONECOM_FTP_USERNAME` | secret |
-| `ONECOM_FTP_PASSWORD` | secret |
-| `ONECOM_FTP_SERVER_DIR` | variable — the directory the domain serves |
-| `ONECOM_SFTP_PORT` | variable, optional — defaults to 22 |
-
-The `FTP` in those names is a fossil: the pipeline originally used FTPS, which one.com does not
-answer (#43). They hold SFTP credentials.
+`https://atlantis-hud.kurelid.se`, the first address, stays up frozen at v0.35.0, and no release
+after it is published there (ah-iufcs). A player still on it is shown how to save their games and
+move.
 
 ### The desktop application
 
@@ -267,15 +257,11 @@ git tag v0.2.0 && git push origin v0.2.0
 ```
 
 That builds a macOS `.dmg`, a Linux `.AppImage` and a Windows installer, attaches them to a GitHub
-Release, **and then publishes the website from the same tag**. The first step of the job checks that
+Release, together with the web tarball and the deployment manifest for the website. The first step of the job checks that
 the tag and the two files agree, so a half-done bump fails in seconds rather than after the compile.
 
 There is one macOS download, not two: the bundle is universal, so it runs on Apple Silicon and on
 Intel (#56). The job asserts both slices are really in it before publishing anything.
-
-The website step runs only if every desktop bundle built, so a release is all or nothing. When a
-desktop build fails but a web fix is waiting, run **Deploy web** by hand — that is what the manual
-trigger is for.
 
 To build one locally:
 

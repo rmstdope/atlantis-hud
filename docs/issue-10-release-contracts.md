@@ -115,11 +115,16 @@ against, and it is the widest reach the webview supports.
 
 ## What publishes what
 
+> **Retired at v0.35.0 (ah-iufcs).** The one.com deployment below - `deploy.yml`, the `web` job
+> of `release.yml`, and the configuration it read - is gone. atlantis-hud.kurelid.se stays frozen at
+> v0.35.0, and releases are published only to atlantis-hud.rmstdope.eu, by hand, from the image the
+> release builds (`deploy/README.md`). What follows is kept as the record of how it worked.
+
 | Trigger | Workflow | Produces |
 | --- | --- | --- |
 | Every push and pull request | `ci.yml` | Nothing. Gates only, now including a production build. |
-| `workflow_dispatch` on `main` | `deploy.yml` | The web application at `https://atlantis-hud.kurelid.se` |
-| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage`, a Windows installer and a self-hosting web tarball, **and then** the web application |
+| `workflow_dispatch` on `main` | `deploy.yml` (removed by ah-iufcs) | The web application at `https://atlantis-hud.kurelid.se` |
+| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage`, a Windows installer and a self-hosting web tarball, and the web container image with its `deployment.json` (until v0.35.0, **and then** the web application at kurelid.se) |
 
 ### Tagging publishes both (issue #46)
 

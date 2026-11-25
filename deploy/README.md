@@ -1,8 +1,9 @@
-# Additional manual deployment on rmstdope.eu
+# Manual deployment on rmstdope.eu
 
-The existing desktop release and automatic SFTP deployment to
-`https://atlantis-hud.kurelid.se` remain unchanged. This adds a separate,
-**manually deployed** target at `https://atlantis-hud.rmstdope.eu`.
+`https://atlantis-hud.rmstdope.eu` is where the web application is published,
+and it is **deployed by hand**. The automatic SFTP deployment to
+`https://atlantis-hud.kurelid.se` ended with v0.35.0 (ah-iufcs): that site
+stays up, frozen at v0.35.0, and no later release reaches it.
 
 ## Release and deploy
 
@@ -20,9 +21,8 @@ grant the deployment host a separate package-read credential.
 
 After the desktop/web GitHub release publishes and the image checks succeed,
 `publish-deployment` attaches `deployment.json` to the release. It contains the
-tag, full source commit and immutable image digest. This does not wait for or
-depend on one.com's upload, and a new-container failure does not block the
-existing `publish` or `web` jobs.
+tag, full source commit and immutable image digest. A new-container failure
+does not block the `publish` job.
 
 From a configured operator machine, with the updated `rmstdope-infra` checkout:
 
