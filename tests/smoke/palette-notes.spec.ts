@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { loadReport, selectHex, STANDARD_TURN } from "./gameSetup";
+import { loadReport, selectHex, STANDARD_TURN, writeHexNote } from "./gameSetup";
 
 /**
  * ah-mlls.5: the notes a player wrote - on a hex, or on a mage in the study planner - found by a
@@ -12,14 +12,6 @@ import { loadReport, selectHex, STANDARD_TURN } from "./gameSetup";
 
 /** Six of Seven, a mage of the player's faction (95) in the standard turn. */
 const MAGE = "881";
-
-async function writeHexNote(page: Page, text: string) {
-  await page.getByTestId("region-note-add").click();
-  await page.getByTestId("region-note-editor").locator("textarea").fill(text);
-  await page.keyboard.press("ControlOrMeta+Enter");
-  // The editor closing is what proves the write landed (see workspace.spec.ts).
-  await expect(page.getByTestId("region-note-editor")).toHaveCount(0);
-}
 
 async function search(page: Page, query: string) {
   await page.keyboard.press("ControlOrMeta+k");

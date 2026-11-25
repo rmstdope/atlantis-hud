@@ -74,7 +74,7 @@ export const FETCHED_REPORT_NAME = "this turn's report from New Origins";
 
 /** `Turn 84 has arrived. …` - the newer-turn question. */
 export function newerTurnQuestion(currentTurn: number, incomingTurn: number): string {
-  return `Turn ${incomingTurn} has arrived. Opening it replaces turn ${currentTurn} on screen, and anything you have changed since it was loaded.`;
+  return `Turn ${incomingTurn} has arrived. Opening it replaces turn ${currentTurn} on screen. Your notes come with you, and your turn ${currentTurn} orders are kept.`;
 }
 
 /** `Keep turn 83` */
@@ -89,7 +89,7 @@ export function openTurnLabel(incomingTurn: number): string {
 
 /** `New Origins still has turn 83 — …` - the same-turn question. */
 export function sameTurnQuestion(turnNumber: number): string {
-  return `New Origins still has turn ${turnNumber} — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.`;
+  return `New Origins still has turn ${turnNumber} — the turn you already have. Loading it again refreshes the report on screen. Your orders and notes stay as they are.`;
 }
 
 export const KEEP_WHAT_I_HAVE = "Keep what I have";

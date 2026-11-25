@@ -1,7 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { readReport, reportTurn } from "@atlantis/fixtures";
 
-import { clearGames, createGame } from "./gameSetup";
+import {
+  clearGames,
+  createGame,
+  DRONE,
+  DRONE_HEX,
+  DRONE_HEX_NOTE,
+  expectOrders,
+  openOrders,
+  selectHex,
+  storedOrderText,
+  typeDroneOrderAndNote
+} from "./gameSetup";
 import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
@@ -23,6 +34,7 @@ const TURN_71 = readReport("g7f95t71");
 /** The turns HUD shows for those two reports, from the fixtures (ah-iuofk). */
 const OLDER_TURN = reportTurn("g7f95t70");
 const NEWER_TURN = reportTurn("g7f95t71");
+
 
 const DOWNLOAD_URL = "https://atlantis-pbem.com/game/download-report";
 
@@ -153,8 +165,8 @@ test("asks before a newer turn replaces what is on screen, and files it when kep
   await replyWith(page, { status: 200, body: TURN_71 });
   await fetchWith(page);
 
-  await expect(page.getByTestId("neworigins-fetch-question")).toContainText(
-    `Turn ${NEWER_TURN} has arrived. Opening it replaces turn ${OLDER_TURN} on screen`
+  await expect(page.getByTestId("neworigins-fetch-question")).toHaveText(
+    `Turn ${NEWER_TURN} has arrived. Opening it replaces turn ${OLDER_TURN} on screen. Your notes come with you, and your turn ${OLDER_TURN} orders are kept.`
   );
   await expect(page.getByTestId("neworigins-fetch-keep")).toHaveText(`Keep turn ${OLDER_TURN}`);
   await page.getByTestId("neworigins-fetch-keep").click();
@@ -171,6 +183,7 @@ test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ pa
   await fetchWith(page);
   await expect(page.getByTestId("import-status")).toContainText(`turn ${OLDER_TURN} loaded —`);
 
+  await typeDroneOrderAndNote(page);
   await replyWith(page, { status: 200, body: TURN_71 });
   await fetchWith(page);
   await expect(page.getByTestId("neworigins-fetch-open")).toHaveText(`Open turn ${NEWER_TURN}`);
@@ -178,6 +191,11 @@ test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ pa
 
   await expect(page.getByTestId("import-status")).toContainText(`turn ${NEWER_TURN} loaded —`);
   await expect(page.getByTestId("turn-chip")).toContainText(String(NEWER_TURN));
+  // "Your notes come with you": the hex note shows on the new turn.
+  await selectHex(page, DRONE_HEX);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
+  // "your turn N orders are kept": still stored for the turn that was on screen.
+  expect(await storedOrderText(page, "New Origins game", "95", OLDER_TURN)).toContain("@entertain");
 });
 
 test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
@@ -187,13 +205,23 @@ test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }
   await expect(page.getByTestId("import-status")).toContainText(`turn ${OLDER_TURN} loaded —`);
 
   await fetchWith(page);
-  await expect(page.getByTestId("neworigins-fetch-question")).toContainText(
-    "the turn you already have"
+  await expect(page.getByTestId("neworigins-fetch-question")).toHaveText(
+    `New Origins still has turn ${OLDER_TURN} — the turn you already have. Loading it again refreshes the report on screen. Your orders and notes stay as they are.`
   );
   await expect(page.getByTestId("neworigins-fetch-keep")).toHaveText("Keep what I have");
   await page.getByTestId("neworigins-fetch-keep").click();
 
   await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${OLDER_TURN}.`);
+
+  await typeDroneOrderAndNote(page);
+  await fetchWith(page);
+  await expect(page.getByTestId("neworigins-fetch-open")).toHaveText("Load it again");
+  await page.getByTestId("neworigins-fetch-open").click();
+  await expect(page.getByTestId("import-status")).toContainText(`turn ${OLDER_TURN} loaded —`);
+  // "Your orders and notes stay as they are."
+  await openOrders(page, DRONE, DRONE_HEX);
+  await expectOrders(page, /@entertain/u);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
 });
 
 test("files an older turn without asking", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {

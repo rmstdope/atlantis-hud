@@ -1,7 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { readReport, reportTurn } from "@atlantis/fixtures";
 
-import { clearGames, closeRulesetCheck, createGame } from "./gameSetup";
+import {
+  clearGames,
+  closeRulesetCheck,
+  createGame,
+  DRONE,
+  DRONE_HEX,
+  DRONE_HEX_NOTE,
+  expectOrders,
+  openOrders,
+  selectHex,
+  storedOrderText,
+  typeDroneOrderAndNote
+} from "./gameSetup";
 import { DESKTOP_SHELL_TAG } from "./shells";
 
 /**
@@ -447,7 +459,8 @@ async function turn70OnScreen(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("newage-fetch-panel")).toHaveCount(0);
 }
 
-const NEWER_QUESTION = `Turn ${T72_TURN} has arrived. Opening it replaces turn ${T70_TURN} on screen, and anything you have changed since it was loaded.`;
+const NEWER_QUESTION = `Turn ${T72_TURN} has arrived. Opening it replaces turn ${T70_TURN} on screen. Your notes come with you, and your turn ${T70_TURN} orders are kept.`;
+
 
 test("asks before a newer turn replaces what is on screen, and stores it when kept", { tag: DESKTOP_SHELL_TAG }, async ({
   page
@@ -474,13 +487,20 @@ test("asks before a newer turn replaces what is on screen, and stores it when ke
 
 test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await turn70OnScreen(page);
+  await typeDroneOrderAndNote(page);
   await replyWith(page, { status: 200, body: TURN_72 });
   await fetchWith(page);
 
+  await expect(page.getByTestId("newage-fetch-question")).toHaveText(NEWER_QUESTION);
   await page.getByTestId("newage-fetch-open").click();
 
   await expect(page.getByTestId("import-status")).toContainText(`turn ${T72_TURN} loaded — `);
   await expect(page.getByTestId("turn-chip")).toContainText(String(T72_TURN));
+  // "Your notes come with you": the hex note shows on the new turn.
+  await selectHex(page, DRONE_HEX);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
+  // "your turn N orders are kept": still stored for the turn that was on screen.
+  expect(await storedOrderText(page, "Arcanum game", "95", T70_TURN)).toContain("@entertain");
 });
 
 test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
@@ -488,16 +508,21 @@ test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }
   await fetchWith(page);
 
   await expect(page.getByTestId("newage-fetch-question")).toHaveText(
-    `Arcanum still has turn ${T70_TURN} — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.`
+    `Arcanum still has turn ${T70_TURN} — the turn you already have. Loading it again refreshes the report on screen. Your orders and notes stay as they are.`
   );
   await expect(page.getByTestId("newage-fetch-keep")).toHaveText("Keep what I have");
   await page.getByTestId("newage-fetch-keep").click();
   await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${T70_TURN}.`);
 
+  await typeDroneOrderAndNote(page);
   await fetchWith(page);
   await expect(page.getByTestId("newage-fetch-open")).toHaveText("Load it again");
   await page.getByTestId("newage-fetch-open").click();
   await expect(page.getByTestId("import-status")).toContainText(`turn ${T70_TURN} loaded — `);
+  // "Your orders and notes stay as they are."
+  await openOrders(page, DRONE, DRONE_HEX);
+  await expectOrders(page, /@entertain/u);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
 });
 
 test("Escape while it asks keeps nothing and says nothing", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
@@ -533,7 +558,7 @@ test("All reports asks once, after storing every earlier turn, and never lets on
   await fetchWith(page, { scope: "history" });
 
   await expect(page.getByTestId("newage-fetch-question")).toHaveText(
-    `Turn ${T72_TURN} has arrived, along with 1 earlier turn, which is stored for history. Opening turn ${T72_TURN} replaces turn ${T70_TURN} on screen, and anything you have changed since it was loaded.`
+    `Turn ${T72_TURN} has arrived, along with 1 earlier turn, which is stored for history. Opening turn ${T72_TURN} replaces turn ${T70_TURN} on screen. Your notes come with you, and your turn ${T70_TURN} orders are kept.`
   );
   await expect(page.getByTestId("turn-chip")).toContainText(String(T70_TURN));
   await page.getByTestId("newage-fetch-keep").click();
