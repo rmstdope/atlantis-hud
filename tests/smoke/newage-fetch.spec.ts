@@ -5,13 +5,14 @@ import {
   clearGames,
   closeRulesetCheck,
   createGame,
+  DRONE,
+  DRONE_HEX,
+  DRONE_HEX_NOTE,
   expectOrders,
-  fillOrders,
   openOrders,
-  saveNow,
   selectHex,
   storedOrderText,
-  writeHexNote
+  typeDroneOrderAndNote
 } from "./gameSetup";
 import { DESKTOP_SHELL_TAG } from "./shells";
 
@@ -460,21 +461,6 @@ async function turn70OnScreen(page: import("@playwright/test").Page) {
 
 const NEWER_QUESTION = `Turn ${T72_TURN} has arrived. Opening it replaces turn ${T70_TURN} on screen. Your notes come with you, and your turn ${T70_TURN} orders are kept.`;
 
-/** Drone, a unit of faction 95 standing in swamp (10,50) on turns 70, 71 and 72 alike. */
-const DRONE = "13432";
-const DRONE_HEX = "1:10,50";
-const HEX_NOTE = "Lizardmen trade here.";
-
-/**
- * Types an order for Drone and writes a note on its hex, so a walk can prove what the fetch
- * questions promise about them (ah-kh3pz).
- */
-async function typeOrderAndNote(page: import("@playwright/test").Page) {
-  await openOrders(page, DRONE, DRONE_HEX);
-  await fillOrders(page, "@work\n@entertain");
-  await saveNow(page);
-  await writeHexNote(page, HEX_NOTE);
-}
 
 test("asks before a newer turn replaces what is on screen, and stores it when kept", { tag: DESKTOP_SHELL_TAG }, async ({
   page
@@ -501,7 +487,7 @@ test("asks before a newer turn replaces what is on screen, and stores it when ke
 
 test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
   await turn70OnScreen(page);
-  await typeOrderAndNote(page);
+  await typeDroneOrderAndNote(page);
   await replyWith(page, { status: 200, body: TURN_72 });
   await fetchWith(page);
 
@@ -512,7 +498,7 @@ test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ pa
   await expect(page.getByTestId("turn-chip")).toContainText(String(T72_TURN));
   // "Your notes come with you": the hex note shows on the new turn.
   await selectHex(page, DRONE_HEX);
-  await expect(page.getByTestId("region-note").filter({ hasText: HEX_NOTE })).toHaveCount(1);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
   // "your turn N orders are kept": still stored for the turn that was on screen.
   expect(await storedOrderText(page, "Arcanum game", "95", T70_TURN)).toContain("@entertain");
 });
@@ -528,7 +514,7 @@ test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }
   await page.getByTestId("newage-fetch-keep").click();
   await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${T70_TURN}.`);
 
-  await typeOrderAndNote(page);
+  await typeDroneOrderAndNote(page);
   await fetchWith(page);
   await expect(page.getByTestId("newage-fetch-open")).toHaveText("Load it again");
   await page.getByTestId("newage-fetch-open").click();
@@ -536,7 +522,7 @@ test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }
   // "Your orders and notes stay as they are."
   await openOrders(page, DRONE, DRONE_HEX);
   await expectOrders(page, /@entertain/u);
-  await expect(page.getByTestId("region-note").filter({ hasText: HEX_NOTE })).toHaveCount(1);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
 });
 
 test("Escape while it asks keeps nothing and says nothing", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {

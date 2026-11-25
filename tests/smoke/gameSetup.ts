@@ -518,3 +518,19 @@ export const freezeClock = async (page: Page): Promise<void> => {
     }
   }
 };
+
+/** Drone, a unit of faction 95 standing in swamp (10,50) on turns 70, 71 and 72 of game 7 alike. */
+export const DRONE = "13432";
+export const DRONE_HEX = "1:10,50";
+export const DRONE_HEX_NOTE = "Lizardmen trade here.";
+
+/**
+ * Types an order for Drone and writes a note on its hex, so the fetch walks can prove what the
+ * fetch questions promise about orders and notes (ah-kh3pz). The order's marker is `@entertain`.
+ */
+export async function typeDroneOrderAndNote(page: Page) {
+  await openOrders(page, DRONE, DRONE_HEX);
+  await fillOrders(page, "@work\n@entertain");
+  await saveNow(page);
+  await writeHexNote(page, DRONE_HEX_NOTE);
+}

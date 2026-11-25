@@ -4,13 +4,14 @@ import { readReport, reportTurn } from "@atlantis/fixtures";
 import {
   clearGames,
   createGame,
+  DRONE,
+  DRONE_HEX,
+  DRONE_HEX_NOTE,
   expectOrders,
-  fillOrders,
   openOrders,
-  saveNow,
   selectHex,
   storedOrderText,
-  writeHexNote
+  typeDroneOrderAndNote
 } from "./gameSetup";
 import { DESKTOP_SHELL_TAG } from "./shells";
 
@@ -34,21 +35,6 @@ const TURN_71 = readReport("g7f95t71");
 const OLDER_TURN = reportTurn("g7f95t70");
 const NEWER_TURN = reportTurn("g7f95t71");
 
-/** Drone, a unit of faction 95 standing in swamp (10,50) on turns 70 and 71 alike. */
-const DRONE = "13432";
-const DRONE_HEX = "1:10,50";
-const HEX_NOTE = "Lizardmen trade here.";
-
-/**
- * Types an order for Drone and writes a note on its hex, so a walk can prove what the fetch
- * questions promise about them (ah-kh3pz).
- */
-async function typeOrderAndNote(page: import("@playwright/test").Page) {
-  await openOrders(page, DRONE, DRONE_HEX);
-  await fillOrders(page, "@work\n@entertain");
-  await saveNow(page);
-  await writeHexNote(page, HEX_NOTE);
-}
 
 const DOWNLOAD_URL = "https://atlantis-pbem.com/game/download-report";
 
@@ -197,7 +183,7 @@ test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ pa
   await fetchWith(page);
   await expect(page.getByTestId("import-status")).toContainText(`turn ${OLDER_TURN} loaded —`);
 
-  await typeOrderAndNote(page);
+  await typeDroneOrderAndNote(page);
   await replyWith(page, { status: 200, body: TURN_71 });
   await fetchWith(page);
   await expect(page.getByTestId("neworigins-fetch-open")).toHaveText(`Open turn ${NEWER_TURN}`);
@@ -207,7 +193,7 @@ test("opens a newer turn when asked to", { tag: DESKTOP_SHELL_TAG }, async ({ pa
   await expect(page.getByTestId("turn-chip")).toContainText(String(NEWER_TURN));
   // "Your notes come with you": the hex note shows on the new turn.
   await selectHex(page, DRONE_HEX);
-  await expect(page.getByTestId("region-note").filter({ hasText: HEX_NOTE })).toHaveCount(1);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
   // "your turn N orders are kept": still stored for the turn that was on screen.
   expect(await storedOrderText(page, "New Origins game", "95", OLDER_TURN)).toContain("@entertain");
 });
@@ -227,7 +213,7 @@ test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }
 
   await expect(page.getByTestId("import-status")).toHaveText(`still showing turn ${OLDER_TURN}.`);
 
-  await typeOrderAndNote(page);
+  await typeDroneOrderAndNote(page);
   await fetchWith(page);
   await expect(page.getByTestId("neworigins-fetch-open")).toHaveText("Load it again");
   await page.getByTestId("neworigins-fetch-open").click();
@@ -235,7 +221,7 @@ test("offers a reload when the same turn comes back", { tag: DESKTOP_SHELL_TAG }
   // "Your orders and notes stay as they are."
   await openOrders(page, DRONE, DRONE_HEX);
   await expectOrders(page, /@entertain/u);
-  await expect(page.getByTestId("region-note").filter({ hasText: HEX_NOTE })).toHaveCount(1);
+  await expect(page.getByTestId("region-note").filter({ hasText: DRONE_HEX_NOTE })).toHaveCount(1);
 });
 
 test("files an older turn without asking", { tag: DESKTOP_SHELL_TAG }, async ({ page }) => {
