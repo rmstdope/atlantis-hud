@@ -306,9 +306,8 @@ jobs:
 
   # Builds the self-contained web deployment tarball attached to the release, so anyone who wants
   # to host the client themselves can unpack one file into a served directory rather than
-  # reproducing the Rust/wasm-pack/pnpm toolchain (ah-4sh). Modelled on `deploy.yml`'s build half,
-  # since it needs the same bytes deploy.yml publishes - but this job produces an artifact instead
-  # of uploading anywhere, and `deploy.yml` itself is untouched.
+  # reproducing the Rust/wasm-pack/pnpm toolchain (ah-4sh). These are also the bytes `web-image`
+  # packs into the container that atlantis-hud.rmstdope.eu is deployed from (deploy/README.md).
   web-tarball:
     name: Web self-hosting tarball
     if: github.ref_type == 'tag'
@@ -374,8 +373,7 @@ jobs:
         run: pnpm run build:web
 
       # Against the very bytes that are about to be packed, not a rebuild of them - the release
-      # must not attach an untested build. deploy.yml repeats this on an identical build later, but
-      # that runs after publish, too late to stop a broken asset reaching the release page.
+      # must not attach an untested build.
       - name: Verify the build that is about to be packed
         run: pnpm run test:pwa
 
@@ -597,22 +595,3 @@ jobs:
             Download `atlantis-hud-web-v<version>.tar.gz`, unpack it, and serve the `site/` directory from
             the root of an HTTPS domain. The included README covers server requirements; nginx and Apache
             samples are inside.
-
-  # The website goes out with the release, from the same tag, in the same run.
-  #
-  # `needs: publish`, so a release is all or nothing: if either desktop bundle does not build, the
-  # site is not republished either and the tag can be deleted and redone without anything having
-  # escaped. The cost is real and worth naming - a Rust compile error, or a flaky runner, holds back
-  # a web fix that was otherwise ready. `Deploy web` can still be run by hand when that happens,
-  # which is the release valve.
-  #
-  # This calls deploy.yml rather than repeating it, so the tagged publish is the same publish as the
-  # manual one: the same guards, the same PWA suite against the same bytes, the same check that the
-  # live site changed.
-  web:
-    name: Website
-    needs: publish
-    if: github.ref_type == 'tag'
-    uses: ./.github/workflows/deploy.yml
-    # The called workflow needs the one.com credentials, and they are the caller's to pass.
-    secrets: inherit

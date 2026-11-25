@@ -51,7 +51,7 @@ export const DESKTOP_BUNDLE_JOBS = ["macos", "linux", "windows"] as const;
 export const LAUNCH_CHECK_STEP = "Launch the built bundle and check its window opens (R55)";
 
 /** The jobs that publish or deploy something, which a pull-request run must skip. */
-export const PUBLISHING_JOBS = ["web-tarball", "web-image", "publish", "publish-deployment", "web"] as const;
+export const PUBLISHING_JOBS = ["web-tarball", "web-image", "publish", "publish-deployment"] as const;
 
 /** The guard that keeps a job to a tag push. */
 export const TAG_GUARD = "if: github.ref_type == 'tag'";
