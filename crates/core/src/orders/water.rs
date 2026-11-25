@@ -1,4 +1,5 @@
-//! A MOVE that would walk a unit onto water it needs a ship for (`ah-cwyyq`).
+//! A MOVE that would walk a unit onto water it needs a ship for (`ah-cwyyq`), or leave a flier
+//! over water when its month runs out (`ah-lxq6w`).
 //!
 //! `rules/move`: "A move can fail because the unit runs out of movement points, because the unit
 //! attempts to move into the ocean, or because the unit attempts to enter a structure, and is
@@ -20,7 +21,7 @@ use crate::report::model::Coordinate;
 use crate::report::ParsedReport;
 
 /// A unit whose own chained MOVE/ADVANCE route steps onto water it would need a ship for, at the
-/// first such step.
+/// first such step, or a flier whose month runs out over water, at the step it ends on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WateredMove {
     /// Which directional step is refused: the 0-based index among the `MoveStep::Go` entries of
@@ -31,7 +32,7 @@ pub struct WateredMove {
     /// Its terrain, as the map names it.
     pub terrain: String,
     /// Whether the route ends there, which is what decides between "would need a ship to be there"
-    /// and "is in the way".
+    /// and "is in the way". Always `false` for a drowning, which has one sentence.
     pub destination: bool,
     /// A flier whose month runs out over this hex, rather than a unit that needs a ship to enter
     /// it (`ah-lxq6w`, `rules/tableitemweights`: "flying units must end their movement on land or
@@ -76,7 +77,8 @@ pub fn message(watered: &WateredMove) -> String {
     }
 }
 
-/// Every own walking unit's first step onto water it cannot enter without a ship.
+/// Every own unit's first step onto water it cannot enter without a ship, or a flier's first
+/// month that runs out over water.
 ///
 /// Only the plain refusal is warned about. Left alone here: a step the planner calls doubtful
 /// (depth unknown, swim capacity unstated) or refuses for a load or deep water; water past an `IN`
@@ -175,7 +177,7 @@ fn drowning(
                 go_step: index,
                 coordinate: step.to,
                 terrain: step.terrain.clone(),
-                destination: index + 1 == path.steps.len(),
+                destination: false,
                 drowns: true,
             });
         }
@@ -219,7 +221,7 @@ mod tests {
             go_step: 0,
             coordinate: at(38, 42),
             terrain: "Ocean".into(),
-            destination: true,
+            destination: false,
             drowns: true,
         };
         assert_eq!(

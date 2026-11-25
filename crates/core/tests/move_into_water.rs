@@ -129,6 +129,54 @@ fn a_flier_ending_its_move_over_a_lake_is_warned_about() {
     assert_eq!(found[0].severity, OrderDiagnosticSeverity::Warning);
 }
 
+/// `ah-lxq6w`, the case the month walk exists for. `rules/movement_normal`: "flying units have
+/// four" movement points, so five hexes of ocean cannot be crossed in one month. The route does
+/// reach land, but its first month runs out over the fourth ocean hex, and that is where the flier
+/// drowns (`rules/tableitemweights`).
+#[test]
+fn a_flier_whose_month_runs_out_over_the_ocean_is_warned_about() {
+    let sea = 5;
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : ocean (2,2) in Atlantis Ocean.\n\n");
+    text.push_str("* Wings (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 15/0/15/0.\n\n");
+    for index in 0..sea {
+        let (x, y) = (2 + index, 2 + index);
+        let behind = if index == 0 { "plain" } else { "ocean" };
+        let ahead = if index == sea - 1 { "plain" } else { "ocean" };
+        text.push_str(&format!(
+            "ocean ({x},{y}) in Atlantis Ocean.\n\nExits:\n  \
+             Northwest : {behind} ({},{}) in Nowhere.\n  \
+             Southeast : {ahead} ({},{}) in Nowhere.\n\n",
+            x - 1,
+            y - 1,
+            x + 1,
+            y + 1
+        ));
+    }
+    let (fx, fy) = (2 + sea, 2 + sea);
+    text.push_str(&format!(
+        "plain ({fx},{fy}) in Nowhere, 10 peasants (orcs), $5.\n\n\
+         Exits:\n  Northwest : ocean ({},{}) in Atlantis Ocean.\n",
+        fx - 1,
+        fy - 1
+    ));
+
+    let found = water_diagnostics(&text, "unit 900\nMOVE SE SE SE\nMOVE SE SE SE\n");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "A single MOVE order would leave this unit over the sea at (5,5) when the month ran \
+         out, and a unit that ends a turn over water drowns."
+    );
+    assert_eq!(
+        found[0].line_start,
+        Some(3),
+        "the second MOVE holds the fourth step"
+    );
+}
+
 /// ADVANCE walks the same route as MOVE (`rules/advance`), so the same step is refused.
 #[test]
 fn an_advance_into_the_ocean_is_warned_about() {
