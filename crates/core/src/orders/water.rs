@@ -1,4 +1,5 @@
-//! A MOVE that would walk a unit onto water it needs a ship for (`ah-cwyyq`).
+//! A MOVE that would walk a unit onto water it needs a ship for (`ah-cwyyq`), or leave a flier
+//! over water when its month runs out (`ah-lxq6w`).
 //!
 //! `rules/move`: "A move can fail because the unit runs out of movement points, because the unit
 //! attempts to move into the ocean, or because the unit attempts to enter a structure, and is
@@ -20,7 +21,7 @@ use crate::report::model::Coordinate;
 use crate::report::ParsedReport;
 
 /// A unit whose own chained MOVE/ADVANCE route steps onto water it would need a ship for, at the
-/// first such step.
+/// first such step, or a flier whose month runs out over water, at the step it ends on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WateredMove {
     /// Which directional step is refused: the 0-based index among the `MoveStep::Go` entries of
@@ -31,8 +32,12 @@ pub struct WateredMove {
     /// Its terrain, as the map names it.
     pub terrain: String,
     /// Whether the route ends there, which is what decides between "would need a ship to be there"
-    /// and "is in the way".
+    /// and "is in the way". Always `false` for a drowning, which has one sentence.
     pub destination: bool,
+    /// A flier whose month runs out over this hex, rather than a unit that needs a ship to enter
+    /// it (`ah-lxq6w`, `rules/tableitemweights`: "flying units must end their movement on land or
+    /// else drown").
+    pub drowns: bool,
 }
 
 /// Keyed by the report's unit number. Empty is "nothing known", the default.
@@ -44,7 +49,18 @@ pub type WateredMoves = BTreeMap<String, WateredMove>;
 pub fn message(watered: &WateredMove) -> String {
     let word = watered.terrain.to_lowercase();
     let (x, y) = (watered.coordinate.x, watered.coordinate.y);
-    if watered.destination {
+    if watered.drowns {
+        // `flightWouldEndOverOcean`, with the panel's `definiteWater`.
+        let definite = if word == "ocean" {
+            "the sea".to_string()
+        } else {
+            format!("the {word}")
+        };
+        format!(
+            "A single MOVE order would leave this unit over {definite} at ({x},{y}) when the \
+             month ran out, and a unit that ends a turn over water drowns."
+        )
+    } else if watered.destination {
         let indefinite = if word == "ocean" {
             word
         } else {
@@ -61,12 +77,15 @@ pub fn message(watered: &WateredMove) -> String {
     }
 }
 
-/// Every own walking unit's first step onto water it cannot enter without a ship.
+/// Every own unit's first step onto water it cannot enter without a ship, or a flier's first
+/// month that runs out over water.
 ///
 /// Only the plain refusal is warned about. Left alone here: a step the planner calls doubtful
 /// (depth unknown, swim capacity unstated) or refuses for a load or deep water; water past an `IN`
-/// passage, since the trace's `steps` hold only the steps before it; and a flier ending its move
-/// over water, which is a drowning rather than a missing ship.
+/// passage, since the trace's `steps` hold only the steps before it.
+///
+/// A flier is warned instead when one of its months runs out over water, as the planner refuses
+/// the same route (`RouteProblem::FlightWouldEndOverOcean`): it drowns (`rules/tableitemweights`).
 pub(crate) fn watered_moves_on(
     report: &ParsedReport,
     ruleset: &Ruleset,
@@ -91,6 +110,12 @@ pub(crate) fn watered_moves_on(
         else {
             continue;
         };
+        if path.mode == Some(MovementMode::Fly) && ruleset.flight_must_end_on_land() {
+            if let Some(drowned) = drowning(ruleset, map, &path) {
+                watered.insert(unit.unit_id.clone(), drowned);
+            }
+            continue;
+        }
         let Some(index) = refused_water_step(ruleset, map, unit, &path) else {
             continue;
         };
@@ -107,6 +132,7 @@ pub(crate) fn watered_moves_on(
                 coordinate: step.to,
                 terrain: step.terrain.clone(),
                 destination: index + 1 == go_steps,
+                drowns: false,
             },
         );
     }
@@ -142,6 +168,40 @@ pub(crate) fn refused_water_step(
         .then_some(index)
 }
 
+/// The first month a flier's route runs out over water, judged as the planner judges it: by the
+/// terrain the map knows at the hex the month ends at. A guessed terrain is not judged.
+fn drowning(
+    ruleset: &Ruleset,
+    map: &MapKnowledge,
+    path: &crate::movement::trace::TracedPath,
+) -> Option<WateredMove> {
+    let mut taken = 0;
+    for leg in &path.months {
+        taken += leg.steps;
+        if leg.steps == 0 {
+            continue;
+        }
+        let index = taken - 1;
+        let step = path.steps.get(index)?;
+        if step.estimated || step.to != leg.ends_at {
+            continue;
+        }
+        let wet = map
+            .hex(leg.ends_at)
+            .is_some_and(|hex| ruleset.is_water(&hex.terrain));
+        if wet {
+            return Some(WateredMove {
+                go_step: index,
+                coordinate: step.to,
+                terrain: step.terrain.clone(),
+                destination: false,
+                drowns: true,
+            });
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -157,6 +217,7 @@ mod tests {
             coordinate: at(38, 42),
             terrain: "Ocean".into(),
             destination: true,
+            drowns: false,
         };
         assert_eq!(
             message(&ocean),
@@ -168,6 +229,22 @@ mod tests {
                 ..ocean
             }),
             "The sea at (38,42) is in the way, and crossing it needs a ship."
+        );
+    }
+
+    #[test]
+    fn a_drowning_says_so_in_the_planners_words() {
+        let sea = WateredMove {
+            go_step: 0,
+            coordinate: at(38, 42),
+            terrain: "Ocean".into(),
+            destination: false,
+            drowns: true,
+        };
+        assert_eq!(
+            message(&sea),
+            "A single MOVE order would leave this unit over the sea at (38,42) when the month ran \
+             out, and a unit that ends a turn over water drowns."
         );
     }
 }
