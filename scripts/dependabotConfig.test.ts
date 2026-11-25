@@ -82,10 +82,17 @@ describe("Dependabot bumps the @wdio packages together", () => {
     expect(npm.text).toMatch(/^ {6}wdio-security:\n(?: {8,}.*\n)*? {8}applies-to: security-updates$/m);
   });
 
-  it("the repository does depend on @wdio packages, so the group has something to cover", () => {
+  it("every @wdio package the repository depends on is matched by the group", () => {
     const names = ["dependencies", "devDependencies"].flatMap((key) =>
       Object.keys(PACKAGE_JSON[key] ?? {})
     );
-    expect(names.filter((name) => name.startsWith("@wdio/")).length).toBeGreaterThan(1);
+    const wdio = names.filter((name) => name.startsWith("@wdio/"));
+    expect(wdio.length).toBeGreaterThan(1);
+    // Dependabot's patterns are globs whose only wildcard is `*`.
+    const globs = (groupPatterns(npm.text, "wdio") ?? []).map(
+      (pattern) =>
+        new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\/]/g, "\\$&")).join(".*")}$`)
+    );
+    for (const name of wdio) expect(globs.some((glob) => glob.test(name)), name).toBe(true);
   });
 });
