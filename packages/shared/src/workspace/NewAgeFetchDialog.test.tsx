@@ -153,7 +153,7 @@ describe("NewAgeFetchDialog, asking before the screen is replaced (ah-1y7yi)", (
     const markup = draw(askNewer);
 
     expect(markup).toContain(
-      "Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded."
+      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your turn 83 orders and notes are kept with turn 83."
     );
     expect(markup).toContain("Fetch from New Age: Arcanum");
     expect(markup).toContain("atlantis-newage.com · turn 83");
@@ -184,7 +184,7 @@ describe("NewAgeFetchDialog, asking before the screen is replaced (ah-1y7yi)", (
     const markup = draw({ kind: "askSame", turnNumber: 83, earlierStored: 0, notFetched: 0 });
 
     expect(markup).toContain(
-      "Arcanum still has turn 83 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since."
+      "Arcanum still has turn 83 — the turn you already have. Loading it again refreshes the report on screen. Your orders and notes stay as they are."
     );
     expect(markup).toMatch(/data-testid="newage-fetch-keep"[^>]*>Keep what I have</);
     expect(markup).toMatch(/data-testid="newage-fetch-open"[^>]*>Load it again</);

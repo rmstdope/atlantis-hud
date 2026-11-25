@@ -54,12 +54,12 @@ describe("the words", () => {
     expect(FETCH_CONFIRM).toBe("Fetch");
     expect(FETCH_WORKING).toBe("Fetching this turn's report from New Origins…");
     expect(newerTurnQuestion(83, 84)).toBe(
-      "Turn 84 has arrived. Opening it replaces turn 83 on screen, and anything you have changed since it was loaded."
+      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your turn 83 orders and notes are kept with turn 83."
     );
     expect(keepTurnLabel(83)).toBe("Keep turn 83");
     expect(openTurnLabel(84)).toBe("Open turn 84");
     expect(sameTurnQuestion(83)).toBe(
-      "New Origins still has turn 83 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since."
+      "New Origins still has turn 83 — the turn you already have. Loading it again refreshes the report on screen. Your orders and notes stay as they are."
     );
     expect(KEEP_WHAT_I_HAVE).toBe("Keep what I have");
     expect(LOAD_IT_AGAIN).toBe("Load it again");

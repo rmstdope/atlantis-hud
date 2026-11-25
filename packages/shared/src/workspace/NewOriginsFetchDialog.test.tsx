@@ -82,7 +82,9 @@ describe("NewOriginsFetchDialog", () => {
     const markup = draw({ kind: "askNewer", currentTurn: 83, incomingTurn: 84 });
 
     expect(markup).toContain('data-testid="neworigins-fetch-question"');
-    expect(markup).toContain("Turn 84 has arrived. Opening it replaces turn 83 on screen");
+    expect(markup).toContain(
+      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your turn 83 orders and notes are kept with turn 83."
+    );
     expect(markup).toContain("Keep turn 83");
     expect(markup).toContain("Open turn 84");
     expect(markup).toContain('data-testid="neworigins-fetch-keep"');
