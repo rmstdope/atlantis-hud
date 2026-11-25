@@ -252,6 +252,11 @@ pub mod codes {
     /// A MOVE whose step would cross a side of a hex a report proves has no exit. Always on: the
     /// agreed experience gives this warning no switch, so it is in [`ALWAYS_ON`] and not in [`ALL`].
     pub const MOVE_INTO_A_WALL: Code = Code("move-into-a-wall");
+    /// A MOVE whose step would walk the unit onto water it needs a ship for (`rules/move`: "A move
+    /// can fail ... because the unit attempts to move into the ocean"; `ah-cwyyq`). Always on, as
+    /// [`MOVE_INTO_A_WALL`] is: a route the game will stop is not a preference, so it is in
+    /// [`ALWAYS_ON`] and not in [`ALL`].
+    pub const MOVE_INTO_WATER: Code = Code("move-into-water");
 
     /// A FACTION order the game will refuse: too many points, or more mages, apprentices or
     /// quartermasters than the new points allow (`rules/faction`). Always on: the agreed experience
@@ -448,8 +453,9 @@ pub mod codes {
 
     /// Codes with no switch. Kept out of [`ALL`] on purpose: every entry of `ALL` is generated into
     /// the settings dialog as a toggle, and these are warnings the player cannot turn off.
-    pub const ALWAYS_ON: [Code; 16] = [
+    pub const ALWAYS_ON: [Code; 17] = [
         MOVE_INTO_A_WALL,
+        MOVE_INTO_WATER,
         FACTION_ORDER_WILL_FAIL,
         UNKNOWN_SKILL,
         EXPLORE_BELOW_THE_SURFACE,
@@ -498,6 +504,9 @@ pub struct CheckOptions {
     /// Each own unit whose MOVE crosses a wall a report proves, from `effects::walled_moves`.
     /// Empty by default: a caller without the remembered map warns about no wall.
     pub walled_moves: super::walls::WalledMoves,
+    /// Each own unit whose MOVE steps onto water it needs a ship for, from `effects::watered_moves`
+    /// (`ah-cwyyq`). Empty by default: a caller without the remembered map warns about no water.
+    pub watered_moves: super::water::WateredMoves,
     /// What the known map says about founding a village in each region holding an own unit, once
     /// the document writes a `CREATE`, from `village_site::village_sites` (`ah-m24v`). Empty by default: a caller without the
     /// remembered map cannot rule out a settlement nearby, so every founding is unsure.
@@ -538,6 +547,7 @@ impl Default for CheckOptions {
             known_passages: Vec::new(),
             month_end: super::transport::MonthEndHexes::new(),
             walled_moves: super::walls::WalledMoves::new(),
+            watered_moves: super::water::WateredMoves::new(),
             village_sites: super::village_site::VillageSites::new(),
         }
     }
@@ -1160,6 +1170,7 @@ pub fn review_turn(
         check_sail_route(hex, report, &sail_map, ruleset, &options, &mut findings);
         check_passages(hex, &by_coordinate, &options, &mut findings);
         check_walls(hex, &options, &mut findings);
+        check_water(hex, &options, &mut findings);
         check_movement(hex, ledger, ruleset, &options, &mut findings);
 
         // Within a hex, what sits on a line comes first and in line order; what belongs to the hex
@@ -29200,6 +29211,40 @@ fn check_walls(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding
             hex,
             codes::MOVE_INTO_A_WALL,
             super::walls::message(walled),
+            Some(placed),
+        ));
+    }
+}
+
+/// A MOVE that walks a unit onto water it needs a ship for, on the line holding the refused step.
+///
+/// Worked out beside the remembered map (`effects::watered_moves`) and only placed here, exactly as
+/// [`check_walls`] places a wall.
+fn check_water(hex: &Hex<'_>, options: &CheckOptions, findings: &mut Vec<Finding>) {
+    if options.watered_moves.is_empty() || !options.emits(codes::MOVE_INTO_WATER) {
+        return;
+    }
+    for ordered in &hex.units {
+        let Some(watered) = options.watered_moves.get(&ordered.unit.unit_id) else {
+            continue;
+        };
+        let mut seen = 0;
+        let Some(placed) = ordered.intents.iter().find(|placed| match &placed.intent {
+            Intent::Move { steps } => {
+                seen += steps
+                    .iter()
+                    .filter(|step| matches!(step, MoveStep::Go(_)))
+                    .count();
+                seen > watered.go_step
+            }
+            _ => false,
+        }) else {
+            continue;
+        };
+        findings.push(ordered.finding(
+            hex,
+            codes::MOVE_INTO_WATER,
+            super::water::message(watered),
             Some(placed),
         ));
     }

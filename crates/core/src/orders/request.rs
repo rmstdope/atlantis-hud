@@ -81,6 +81,7 @@ pub fn validate_orders_request(
             .unwrap_or_default(),
         month_end: Default::default(),
         walled_moves: Default::default(),
+        watered_moves: Default::default(),
         village_sites: Default::default(),
     };
 
@@ -137,6 +138,17 @@ pub fn validate_orders_request(
         // sighting shows. An error is nothing known - bad config, not bad orders - and no wall is
         // warned about (`ah-wq2e.4`).
         options.walled_moves = super::effects::walled_moves(
+            cache,
+            rules,
+            raw,
+            remembered,
+            &request.raw_orders,
+            options.geometry,
+        )
+        .unwrap_or_default();
+        // Every own unit whose MOVE steps onto water it needs a ship for. An error is nothing
+        // known, and no water is warned about (`ah-cwyyq`).
+        options.watered_moves = super::effects::watered_moves(
             cache,
             rules,
             raw,

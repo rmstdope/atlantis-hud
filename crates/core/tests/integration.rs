@@ -95,6 +95,7 @@ mod meals_are_cooked;
 mod merge_reports;
 mod month_long_orders_settle_in_report_order;
 mod move_into_a_wall;
+mod move_into_water;
 mod new_students;
 mod no_guard_at_sea;
 mod numbered_production;

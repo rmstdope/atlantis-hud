@@ -1,0 +1,109 @@
+//! `ah-cwyyq`. A typed MOVE onto water is warned about, as the Plan move planner already refuses it.
+//!
+//! `rules/move`: "A move can fail because the unit runs out of movement points, because the unit
+//! attempts to move into the ocean, or because the unit attempts to enter a structure, and is
+//! rejected." New Origins' engine treats a lake as water for that too (`ah-qpud9`).
+//!
+//! In `neworigins-3.0.0-g5-f21-t39`, Unit (4333) is a walker on plain (37,41) in Blarnfashire, whose
+//! Southeast exit is ocean (38,42) and whose Southwest exit is plain (36,42).
+
+use atlantis_hud_core::cache::ReportCache;
+use atlantis_hud_core::orders::request::{validate_orders_request, ValidateOrdersRequest};
+use atlantis_hud_core::{OrderDiagnostic, OrderDiagnosticSeverity};
+
+const CODE: &str = "move-into-water";
+
+fn water_diagnostics(report: &str, orders: &str) -> Vec<OrderDiagnostic> {
+    let request = ValidateOrdersRequest {
+        raw_orders: orders.into(),
+        ruleset_json: Some(atlantis_hud_fixtures::RULESET_JSON.into()),
+        raw_report: Some(report.into()),
+        remembered_json: Some("[]".into()),
+        ..Default::default()
+    };
+    validate_orders_request(&mut ReportCache::new(), &request)
+        .diagnostics
+        .into_iter()
+        .filter(|diagnostic| diagnostic.code == CODE)
+        .collect()
+}
+
+fn t39(orders: &str) -> Vec<OrderDiagnostic> {
+    water_diagnostics(atlantis_hud_fixtures::G5_F21_T39.text, orders)
+}
+
+/// plain (1,1) - lake (2,2) - plain (3,3), with a walker in the first.
+fn lake_in_a_line() -> String {
+    lake_in_a_line_with("* Boots (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 0/0/15/0.")
+}
+
+fn lake_in_a_line_with(unit: &str) -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : lake (2,2) in Nowhere.\n\n");
+    text.push_str(unit);
+    text.push_str("\n\n");
+    text.push_str("lake (2,2) in Nowhere.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (1,1) in Nowhere.\n  \
+         Southeast : plain (3,3) in Nowhere.\n\n",
+    );
+    text.push_str("plain (3,3) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : lake (2,2) in Nowhere.\n");
+    text
+}
+
+#[test]
+fn a_move_into_the_ocean_is_warned_about() {
+    let found = t39("unit 4333\nMOVE SE\n");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "(38,42) is ocean, and this unit would need a ship to be there."
+    );
+    assert_eq!(found[0].line_start, Some(2));
+    assert_eq!(found[0].severity, OrderDiagnosticSeverity::Warning);
+}
+
+#[test]
+fn a_move_into_a_lake_is_warned_about() {
+    let found = water_diagnostics(&lake_in_a_line(), "unit 900\nMOVE SE\n");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "(2,2) is a lake, and this unit would need a ship to be there."
+    );
+}
+
+#[test]
+fn a_move_across_a_lake_names_the_lake_in_the_way() {
+    let found = water_diagnostics(&lake_in_a_line(), "unit 900\nMOVE SE\nMOVE SE\n");
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].message,
+        "The lake at (2,2) is in the way, and crossing it needs a ship."
+    );
+    assert_eq!(
+        found[0].line_start,
+        Some(2),
+        "the first MOVE holds the wet step"
+    );
+}
+
+#[test]
+fn a_walking_route_that_stays_on_land_is_not_warned_about() {
+    assert!(t39("unit 4333\nMOVE SW\n").is_empty());
+    assert!(t39("unit 4333\nMOVE NE\n").is_empty());
+}
+
+/// The positive control: what the planner lets cross the water is not warned about either.
+#[test]
+fn a_flier_over_a_lake_is_not_warned_about() {
+    let flier = lake_in_a_line_with(
+        "* Wings (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 15/0/15/0.",
+    );
+    assert!(water_diagnostics(&flier, "unit 900\nMOVE SE\n").is_empty());
+}
