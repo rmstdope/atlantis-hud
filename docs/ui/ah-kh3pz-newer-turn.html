@@ -1,0 +1,94 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Newer Turn Words</title>
+<style>
+:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+  --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main { max-width:1320px; margin:0 auto; }
+h1 { font-size:26px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+header p + p { margin-top:8px; }
+h3.sec { margin:42px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+.card h2 { font-size:15.5px; margin-bottom:5px; }
+.card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+.concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+.cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+.cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+.ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; margin-bottom:10px; }
+.ui h4 { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; font-family:inherit; }
+.ui .meta { color:var(--ink-soft); margin-bottom:9px; }
+.ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+.ui .field { margin-bottom:9px; }
+.ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+  color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+.ui input::placeholder { color:var(--ink-dim); }
+.ui .hint { color:var(--ink-dim); margin:2px 0 9px; }
+.ui .danger { color:var(--danger); margin:2px 0 9px; }
+.ui .body { color:var(--ink-soft); margin:8px 0 4px; }
+.ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font:inherit; }
+.ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+.banner { background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:11px 13px;
+  font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink-soft); }
+.banner b { color:var(--ink); }
+.banner .foot { display:flex; gap:8px; margin-top:10px; }
+.btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+.btn.primary { border-color:var(--brass); color:var(--brass); }
+.hdr { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+  font-family:system-ui,sans-serif; font-size:12.5px;
+  background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px; }
+.hdr .chip { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:3px 9px; }
+.hdr .chip.brass { border-color:var(--brass); color:var(--brass); }
+.status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+  border-radius:5px; padding:6px 10px; color:var(--ink-soft); margin-top:6px; }
+.status.ok { color:var(--ok); } .status.bad { color:var(--danger); }
+.caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; max-width:100ch; }
+.tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+  font-family:system-ui,sans-serif; display:block; margin:14px 0 5px; }
+table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:6px; font-family:system-ui,sans-serif; }
+th, td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+th { color:var(--brass); font-weight:normal; letter-spacing:.6px; }
+td { color:var(--ink-soft); } td b { color:var(--ink); font-weight:600; }
+.rej { color:var(--ink-soft); font-size:13.5px; max-width:100ch; }
+.rej li { margin:7px 0 7px 18px; }
+.rej li b { color:var(--ink); }
+</style>
+<style>
+.ask { border-left:3px solid var(--brass); padding:5px 8px; margin:2px 0 9px; color:var(--ink); background:rgba(217,164,65,.07); }
+.strip { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:8px 11px; font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); margin-top:6px; }
+.strip .grow { flex:1; min-width:200px; }
+.app { border:1px solid var(--edge); border-radius:8px; padding:8px; background:var(--ground); position:relative; }
+.app .map { height:120px; border:1px dashed var(--edge); border-radius:6px; margin-top:6px; color:var(--ink-dim); font-family:system-ui,sans-serif; font-size:12px; display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:46px 30px 14px; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; border-radius:6px; }
+.overlay .ui { width:300px; margin:0; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+</style>
+<style>.btn.focus{outline:2px solid var(--brass);outline-offset:2px}</style>
+<header><h1>When a newer turn arrives <span>what we can honestly promise</span></h1>
+<p>We agreed the newer-turn question would say "Your turn 21 orders and notes are kept with turn 21", and that turn 21 would come back when picked from the turn list. Two things turned out differently. <b>The turn list cannot take you back to turn 21</b>: it only compares an older turn with the one on screen. Turn 21's orders are kept, and the assistant can still read them, but the player has no way to open them again. <b>Hex notes are not tied to a turn</b>: they belong to the game, so they come along to turn 22 rather than staying with turn 21.</p>
+<p><b>Agreed 2026-11-25: Option A.</b> Options B and C are shown only as the rejected alternatives.</p><p>The same-turn question ("Load it again … Your orders and notes stay as they are.") is unaffected and stays as agreed. Only the newer-turn sentence is open.</p></header><main>
+
+<h3 class="sec">The newer-turn question · turn 22 arrives over turn 21</h3><p>Each option shows the plain case and the "All reports" case. Only the closing sentence differs between options.</p>
+<div class="cards3">
+<div class="card"><h2><em>Option A · Recommended</em>Say where each goes</h2><p class="concept">Notes travel with the player; orders are kept, without promising a way back to them.</p>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 22 has arrived. Opening it replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 22</span></div></div>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 24</span></div></div>
+<p class="caption">Cost: a slightly longer sentence. Every word is true today, and nothing is promised that the screen can't show.</p></div>
+
+<div class="card"><h2><em>Option B</em>Say only what is replaced</h2><p class="concept">Drop the reassurance; just say turn 22 takes turn 21's place.</p>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 22 has arrived. Opening it replaces turn 21 on screen.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 22</span></div></div>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 24</span></div></div>
+<p class="caption">Cost: shortest and true, but a player who fears losing their typing gets no answer and may hold back from opening the new turn.</p></div>
+
+<div class="card"><h2><em>Option C</em>Keep the agreed words</h2><p class="concept">As agreed before; only the "comes back from the turn list" promise is dropped from what the builder checks.</p>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 22 has arrived. Opening it replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 22</span></div></div>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 24</span></div></div>
+<p class="caption">Cost: no new words, but "notes are kept with turn 21" suggests the notes stay behind, when they actually show on turn 22.</p></div>
+</div>
+<p class="caption">Not drawn: a way to reopen turn 21 from the turn list. That would be a new piece of work of its own, not a wording change. Unchanged in every option: the buttons, their labels, focus starting on Keep, Escape, the status lines, and the narrow-window stacking. New Origins reads the same.</p>
+</main>
