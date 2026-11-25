@@ -116,22 +116,10 @@ pub(crate) fn watered_moves_on(
             }
             continue;
         }
-        let (Some(mode), Some(index)) = (path.mode, path.blocked_from) else {
+        let Some(index) = refused_water_step(ruleset, map, unit, &path) else {
             continue;
         };
-        if mode == MovementMode::Sail {
-            continue;
-        }
-        let Some(step) = path.steps.get(index) else {
-            continue;
-        };
-        if step.estimated || !step.over_water {
-            continue;
-        }
-        let journey = Journey::enforced(mode, Hull::Bound).with_swim(swim_ability(unit, ruleset));
-        if water_verdict(ruleset, map, journey, step.to, &step.terrain) != WaterVerdict::NeedsShip {
-            continue;
-        }
+        let step = &path.steps[index];
         let go_steps = route
             .steps
             .iter()
@@ -149,6 +137,35 @@ pub(crate) fn watered_moves_on(
         );
     }
     watered
+}
+
+/// The index, among `path`'s steps, of the first step a walker takes onto water it needs a ship
+/// for, the step `rules/move` says fails ("A move can fail because ... the unit attempts to move
+/// into the ocean"). Nothing for a fleet, for a step whose terrain is guessed, and for a step the
+/// planner only doubts or refuses for another reason: those are left alone, as the warning leaves
+/// them.
+///
+/// The one answer to "where does the sea stop this walker", read by the `move-into-water` warning
+/// and by the units table's month end (`ah-71z6y`).
+pub(crate) fn refused_water_step(
+    ruleset: &Ruleset,
+    map: &MapKnowledge,
+    unit: &crate::report::model::ReportUnit,
+    path: &crate::movement::trace::TracedPath,
+) -> Option<usize> {
+    let (Some(mode), Some(index)) = (path.mode, path.blocked_from) else {
+        return None;
+    };
+    if mode == MovementMode::Sail {
+        return None;
+    }
+    let step = path.steps.get(index)?;
+    if step.estimated || !step.over_water {
+        return None;
+    }
+    let journey = Journey::enforced(mode, Hull::Bound).with_swim(swim_ability(unit, ruleset));
+    (water_verdict(ruleset, map, journey, step.to, &step.terrain) == WaterVerdict::NeedsShip)
+        .then_some(index)
 }
 
 /// The first month a flier's route runs out over water, judged as the planner judges it: by the

@@ -188,3 +188,127 @@ fn an_advance_into_the_ocean_is_warned_about() {
         "(38,42) is ocean, and this unit would need a ship to be there."
     );
 }
+
+/// Where each row of `unit_id` stands in the units table, with its status and the hex it departs
+/// to.
+fn rows_of(
+    report: &str,
+    orders: &str,
+    unit_id: &str,
+) -> Vec<(
+    String,
+    atlantis_hud_core::orders::effects::UnitPreviewStatus,
+    Option<String>,
+)> {
+    atlantis_hud_core::orders::effects::preview_orders_for_remembered_report(
+        &mut ReportCache::new(),
+        atlantis_hud_fixtures::RULESET_JSON,
+        report,
+        "[]",
+        orders,
+    )
+    .expect("the ruleset loads")
+    .regions
+    .iter()
+    .flat_map(|region| {
+        region
+            .units
+            .iter()
+            .filter(|row| row.unit.unit_id == unit_id)
+            .map(|row| {
+                (
+                    region.region_id.clone(),
+                    row.status,
+                    row.departing_to.clone(),
+                )
+            })
+    })
+    .collect()
+}
+
+/// `ah-71z6y`. The move the warning above calls refused fails (`rules/move`: "the unit will move
+/// multiple times ... until one of the moves fails. A move can fail because ... the unit attempts
+/// to move into the ocean"), so the units table keeps the walker on its plain rather than showing
+/// it arriving in the sea.
+#[test]
+fn the_units_table_keeps_a_walker_moved_into_the_ocean_on_land() {
+    let rows = rows_of(
+        atlantis_hud_fixtures::G5_F21_T39.text,
+        "unit 4333\nMOVE SE\n",
+        "4333",
+    );
+    assert!(
+        rows.iter().all(|(region, status, to)| region == "1:37,41"
+            && *status == atlantis_hud_core::orders::effects::UnitPreviewStatus::Present
+            && to.is_none()),
+        "{rows:?}"
+    );
+}
+
+/// The control: the same walker's step onto the plain to the southwest still leaves.
+#[test]
+fn the_units_table_still_moves_a_walker_onto_land() {
+    let rows = rows_of(
+        atlantis_hud_fixtures::G5_F21_T39.text,
+        "unit 4333\nMOVE SW\n",
+        "4333",
+    );
+    assert!(
+        rows.iter().any(|(region, status, to)| region == "1:37,41"
+            && *status == atlantis_hud_core::orders::effects::UnitPreviewStatus::Departing
+            && to.as_deref() == Some("1:36,42")),
+        "{rows:?}"
+    );
+}
+
+/// A walker told across a lake stops on its own shore: the first step fails and the second is
+/// never taken.
+#[test]
+fn the_units_table_keeps_a_walker_moved_across_a_lake_on_its_shore() {
+    let rows = rows_of(&lake_in_a_line(), "unit 900\nMOVE SE SE\n", "900");
+    assert!(
+        rows.iter().all(|(region, status, to)| region == "1:1,1"
+            && *status == atlantis_hud_core::orders::effects::UnitPreviewStatus::Present
+            && to.is_none()),
+        "{rows:?}"
+    );
+}
+
+/// plain (1,1) - plain (2,2) - lake (3,3) - plain (4,4), with a walker in the first.
+fn land_then_lake() -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n");
+    text.push_str("* Boots (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 0/0/15/0.\n\n");
+    text.push_str("plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (1,1) in Nowhere.\n  \
+         Southeast : lake (3,3) in Nowhere.\n\n",
+    );
+    text.push_str("lake (3,3) in Nowhere.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (2,2) in Nowhere.\n  \
+         Southeast : plain (4,4) in Nowhere.\n\n",
+    );
+    text.push_str("plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : lake (3,3) in Nowhere.\n");
+    text
+}
+
+/// A walker that takes a land step before the water stops on the last land hex: the first move
+/// succeeds and the second fails (`rules/move`).
+#[test]
+fn the_units_table_stops_a_walker_on_the_last_land_hex_before_the_water() {
+    let rows = rows_of(&land_then_lake(), "unit 900\nMOVE SE SE SE\n", "900");
+    assert!(
+        rows.iter().any(|(region, status, to)| region == "1:1,1"
+            && *status == atlantis_hud_core::orders::effects::UnitPreviewStatus::Departing
+            && to.as_deref() == Some("1:2,2")),
+        "{rows:?}"
+    );
+    assert!(
+        rows.iter()
+            .all(|(region, _, _)| region == "1:1,1" || region == "1:2,2"),
+        "{rows:?}"
+    );
+}
