@@ -33,7 +33,7 @@ export function installedPackagesAreCurrent(root) {
   return installed !== null && wanted !== null && installed.equals(wanted);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   if (!installedPackagesAreCurrent(root)) {
     console.log("node_modules is older than pnpm-lock.yaml; installing the locked packages first");
