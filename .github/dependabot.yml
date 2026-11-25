@@ -1,7 +1,7 @@
 # Dependabot version updates (ah-9yj4w).
 #
 # Daily, one pull request per dependency: the navigator's choice (2026-11-24), except the React
-# packages, grouped on the npm entry below (ah-6gn7c). Cerebro's
+# packages (ah-6gn7c) and the @wdio packages (ah-m2l9m), grouped on the npm entry below. Cerebro's
 # dependabot-sweep merges a pull request whose CI passed and files a red one as a bugfix bead
 # (`.cerebro/cerebro/agents/orchestrator.md`, "Dependabot pull requests").
 #
@@ -15,7 +15,7 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
-    # The one exception to one pull request per dependency (ah-6gn7c): react-dom moving ahead of
+    # The first exception to one pull request per dependency (ah-6gn7c): react-dom moving ahead of
     # react broke CI on #1978 (fixed by hand in ah-h05yn), so the four React packages bump together.
     # Exact names, so no other react-* package is swept in.
     groups:
@@ -32,6 +32,16 @@ updates:
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
+        applies-to: security-updates
+      # The second exception (ah-m2l9m): @wdio/spec-reporter 10 merged on its own (#2004) while
+      # @wdio/cli 10 failed the native typecheck (#2003), leaving WebdriverIO 9 and 10 side by side.
+      # A pattern, so a @wdio package added later is covered too.
+      wdio:
+        patterns:
+          - "@wdio/*"
+      wdio-security:
+        patterns:
+          - "@wdio/*"
         applies-to: security-updates
 
   # The Cargo workspace: Cargo.toml and Cargo.lock at the root cover crates/* and
