@@ -36,7 +36,7 @@
     "@wdio/globals": "^9.20.0",
     "@wdio/local-runner": "^9.20.0",
     "@wdio/mocha-framework": "^9.20.0",
-    "@wdio/spec-reporter": "^9.20.0",
+    "@wdio/spec-reporter": "^10.2.0",
     "eslint": "^9.34.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fake-indexeddb": "6.2.5",
