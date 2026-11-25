@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../../scripts/ensure-wasm.mjs && vite --port 4184 --strictPort",
-    "build": "pnpm run build:wasm && vite build",
+    "dev": "node ../../scripts/ensure-deps.mjs && node ../../scripts/ensure-wasm.mjs && vite --port 4184 --strictPort",
+    "build": "node ../../scripts/ensure-deps.mjs && pnpm run build:wasm && vite build",
     "preview": "vite preview --port 4174",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json",
