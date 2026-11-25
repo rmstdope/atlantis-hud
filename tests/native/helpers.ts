@@ -41,7 +41,8 @@ export interface InvokeResult {
  * WebdriverIO 10 removed `executeAsync`; an `async` function handed to `execute` takes its place
  * and, on a classic session such as this one, is sent as that same Execute Async Script command.
  * It recognises the function by its `AsyncFunction` constructor, so the callback must stay a
- * native `async` function (the ES2022 target keeps it one).
+ * native `async` function. It does because wdio's tsx loader transpiles for the running Node, not
+ * because of the tsconfig target, which only governs the typecheck.
  */
 export async function invokeNative(
   command: string,
