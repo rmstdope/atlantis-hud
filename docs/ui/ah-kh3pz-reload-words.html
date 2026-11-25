@@ -1,0 +1,96 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reload Keeps Orders</title>
+<style>
+:root { --ground:#10151c; --panel:#171d26; --raised:#1c232e; --edge:#26303d; --ink:#dbe3ec;
+  --ink-soft:#a3b0c0; --ink-dim:#8a97a8; --brass:#d9a441; --ok:#4fb783; --danger:#d97070; }
+* { box-sizing:border-box; margin:0; }
+body { background:var(--ground); color:var(--ink); font:15px/1.55 Georgia,'Times New Roman',serif; padding:32px 24px 64px; }
+header, main { max-width:1320px; margin:0 auto; }
+h1 { font-size:26px; } h1 span { color:var(--brass); }
+header p { color:var(--ink-soft); max-width:100ch; margin-top:10px; font-size:14px; }
+header p + p { margin-top:8px; }
+h3.sec { margin:42px 0 4px; font-size:13px; letter-spacing:1.8px; text-transform:uppercase; color:var(--brass); }
+h3.sec + p { color:var(--ink-soft); font-size:13px; margin-bottom:14px; max-width:100ch; }
+.card { background:var(--panel); border:1px solid var(--edge); border-radius:10px; padding:16px; }
+.card h2 { font-size:15.5px; margin-bottom:5px; }
+.card h2 em { color:var(--brass); font-style:normal; font-size:11.5px; letter-spacing:1.5px; margin-right:8px; }
+.concept { color:var(--ink-soft); font-size:12.5px; margin-bottom:12px; }
+.cards2 { display:grid; grid-template-columns:repeat(2,1fr); gap:18px; align-items:start; }
+.cards3 { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; align-items:start; }
+.ui { background:var(--raised); border:1px solid var(--edge); border-radius:6px;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif; font-size:12.5px; padding:11px; margin-bottom:10px; }
+.ui h4 { font-size:13px; font-weight:600; color:var(--ink); margin-bottom:4px; font-family:inherit; }
+.ui .meta { color:var(--ink-soft); margin-bottom:9px; }
+.ui label { display:block; color:var(--ink-soft); margin-bottom:3px; }
+.ui .field { margin-bottom:9px; }
+.ui input[type=text], .ui input[type=password] { width:100%; background:var(--panel); border:1px solid var(--edge);
+  color:var(--ink); border-radius:4px; padding:4px 6px; font:inherit; }
+.ui input::placeholder { color:var(--ink-dim); }
+.ui .hint { color:var(--ink-dim); margin:2px 0 9px; }
+.ui .danger { color:var(--danger); margin:2px 0 9px; }
+.ui .body { color:var(--ink-soft); margin:8px 0 4px; }
+.ui .foot { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.ui .btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font:inherit; }
+.ui .btn.primary { border-color:var(--brass); color:var(--brass); }
+.banner { background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:11px 13px;
+  font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink-soft); }
+.banner b { color:var(--ink); }
+.banner .foot { display:flex; gap:8px; margin-top:10px; }
+.btn { border:1px solid var(--edge); background:var(--panel); color:var(--ink-soft);
+  border-radius:4px; padding:4px 10px; font-family:system-ui,sans-serif; font-size:12.5px; }
+.btn.primary { border-color:var(--brass); color:var(--brass); }
+.hdr { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+  font-family:system-ui,sans-serif; font-size:12.5px;
+  background:var(--raised); border:1px solid var(--edge); border-radius:6px; padding:9px 11px; }
+.hdr .chip { border:1px solid var(--edge); background:var(--panel); color:var(--ink); border-radius:4px; padding:3px 9px; }
+.hdr .chip.brass { border-color:var(--brass); color:var(--brass); }
+.status { font-family:system-ui,sans-serif; font-size:12px; background:var(--panel); border:1px solid var(--edge);
+  border-radius:5px; padding:6px 10px; color:var(--ink-soft); margin-top:6px; }
+.status.ok { color:var(--ok); } .status.bad { color:var(--danger); }
+.caption { color:var(--ink-dim); font-size:11.5px; margin-top:8px; font-family:system-ui,sans-serif; max-width:100ch; }
+.tag { font-size:10.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--ink-dim);
+  font-family:system-ui,sans-serif; display:block; margin:14px 0 5px; }
+table { border-collapse:collapse; font-size:12.5px; width:100%; margin-top:6px; font-family:system-ui,sans-serif; }
+th, td { border:1px solid var(--edge); padding:6px 9px; text-align:left; vertical-align:top; }
+th { color:var(--brass); font-weight:normal; letter-spacing:.6px; }
+td { color:var(--ink-soft); } td b { color:var(--ink); font-weight:600; }
+.rej { color:var(--ink-soft); font-size:13.5px; max-width:100ch; }
+.rej li { margin:7px 0 7px 18px; }
+.rej li b { color:var(--ink); }
+</style>
+<style>
+.ask { border-left:3px solid var(--brass); padding:5px 8px; margin:2px 0 9px; color:var(--ink); background:rgba(217,164,65,.07); }
+.strip { display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--raised); border:1px solid var(--brass); border-radius:6px; padding:8px 11px; font-family:system-ui,sans-serif; font-size:12.5px; color:var(--ink); margin-top:6px; }
+.strip .grow { flex:1; min-width:200px; }
+.app { border:1px solid var(--edge); border-radius:8px; padding:8px; background:var(--ground); position:relative; }
+.app .map { height:120px; border:1px dashed var(--edge); border-radius:6px; margin-top:6px; color:var(--ink-dim); font-family:system-ui,sans-serif; font-size:12px; display:flex; align-items:center; justify-content:center; }
+.overlay { position:absolute; inset:46px 30px 14px; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; border-radius:6px; }
+.overlay .ui { width:300px; margin:0; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+</style>
+<style>.btn.focus{outline:2px solid var(--brass);outline-offset:2px}</style>
+<header><h1>Fetching the same turn again <span>what a reload really replaces</span></h1>
+<p>Today, when Fetch brings back the turn you already have, the question warns that loading it again throws away "anything you have changed since". It doesn't. Orders you typed, hex notes and study plans are stored apart from the report, so they come through a reload untouched. New Age and New Origins share the sentence. The drawings use New Age's Trident world on turn 21. New Origins is the same, with "New Origins" in place of "Trident".</p><p><b>Agreed 2026-11-25: Option A and Option 2A, naming what is kept as "orders and notes".</b> Option B and Option 2B are shown only as the rejected alternatives.</p></header><main>
+
+<h3 class="sec">Question 1 · The same-turn question</h3><p>The player pressed Fetch and the server still has turn 21. Three orders have been typed since turn 21 was loaded.</p>
+<div class="cards3">
+<div class="card"><h2><em>Today</em>For comparison</h2><div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Trident still has turn 21 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.</p><div class="foot"><span class="btn focus">Keep what I have</span><span class="btn primary">Load it again</span></div></div><p class="caption">After "Load it again", the three typed orders are still there. The warning was wrong.</p></div>
+
+<div class="card"><h2><em>Option A · Recommended</em>Say what is kept</h2><p class="concept">The reload works as it does today. The words now say what it replaces and what it keeps.</p><div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Trident still has turn 21 — the turn you already have. Loading it again refreshes the report on screen. Your orders and notes stay as they are.</p><div class="foot"><span class="btn focus">Keep what I have</span><span class="btn primary">Load it again</span></div></div>
+<table><tr><th>After "Load it again"</th></tr><tr><td>A fresh copy of turn 21's report replaces the map and units. <b>The three typed orders are still in the orders panel.</b> Status line as today: <b>turn 21 loaded — 14 regions, 37 units.</b></td></tr></table>
+<p class="caption">Cost: none, beyond the words. Nothing the player typed can be lost by reloading.</p></div>
+
+<div class="card"><h2><em>Option B</em>Make the warning true</h2><p class="concept">The words stay as they are. The reload throws away the orders typed since, and the orders panel starts again from the report.</p><div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Trident still has turn 21 — the turn you already have. Loading it again replaces what is on screen, and anything you have changed since.</p><div class="foot"><span class="btn focus">Keep what I have</span><span class="btn primary">Load it again</span></div></div>
+<table><tr><th>After "Load it again"</th></tr><tr><td>A fresh copy of turn 21 replaces the map and units. <b>The three typed orders are gone</b>, and the orders panel shows the report's own orders again.</td></tr></table>
+<p class="caption">Cost: one press of the brass button wipes a turn's typing, with no undo. The HUD keeps orders through a restart everywhere else.</p></div>
+</div>
+
+<h3 class="sec">Question 2 · The newer-turn question says the same thing</h3><p>When turn 22 arrives over turn 21, the question also warns about "anything you have changed since it was loaded". That is untrue as well: turn 21's orders stay filed with turn 21 and come back when you pick turn 21 from the turn list. Should this piece of work correct that sentence as well?</p>
+<div class="cards2">
+<div class="card"><h2><em>Option 2A · Recommended</em>Correct both sentences</h2><div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 22 has arrived. Opening it replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 22</span></div></div>
+<div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 24</span></div></div>
+<p class="caption">Cost: two more sentences change in this piece of work, the plain one and the "All reports" one. The buttons and what they do stay the same.</p></div>
+<div class="card"><h2><em>Option 2B</em>Only the same-turn question</h2><div class="ui"><h4>Fetch from New Age: Trident</h4><p class="meta">trident.atlantis-pbem.com · turn 21</p><p class="body">Turn 22 has arrived. Opening it replaces turn 21 on screen, and anything you have changed since it was loaded.</p><div class="foot"><span class="btn focus">Keep turn 21</span><span class="btn primary">Open turn 22</span></div></div><p class="caption">Cost: the newer-turn question keeps a warning that isn't true, and the two questions now disagree about whether typed orders survive.</p></div>
+</div>
+<p class="caption">Unchanged in every option: the buttons, their labels, where focus starts (Keep), what Escape does, the status lines, and how the buttons stack in a narrow window.</p>
+</main>
