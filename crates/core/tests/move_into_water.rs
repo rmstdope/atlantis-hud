@@ -206,3 +206,42 @@ fn the_units_table_keeps_a_walker_moved_across_a_lake_on_its_shore() {
         "{rows:?}"
     );
 }
+
+/// plain (1,1) - plain (2,2) - lake (3,3) - plain (4,4), with a walker in the first.
+fn land_then_lake() -> String {
+    let mut text = String::from("Foo (1) Report\n\n");
+    text.push_str("plain (1,1) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Southeast : plain (2,2) in Nowhere.\n\n");
+    text.push_str("* Boots (900), Foo (1), 1 orcs [ORC]. Weight: 10. Capacity: 0/0/15/0.\n\n");
+    text.push_str("plain (2,2) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (1,1) in Nowhere.\n  \
+         Southeast : lake (3,3) in Nowhere.\n\n",
+    );
+    text.push_str("lake (3,3) in Nowhere.\n\n");
+    text.push_str(
+        "Exits:\n  Northwest : plain (2,2) in Nowhere.\n  \
+         Southeast : plain (4,4) in Nowhere.\n\n",
+    );
+    text.push_str("plain (4,4) in Nowhere, 10 peasants (orcs), $5.\n\n");
+    text.push_str("Exits:\n  Northwest : lake (3,3) in Nowhere.\n");
+    text
+}
+
+/// A walker that takes a land step before the water stops on the last land hex: the first move
+/// succeeds and the second fails (`rules/move`).
+#[test]
+fn the_units_table_stops_a_walker_on_the_last_land_hex_before_the_water() {
+    let rows = rows_of(&land_then_lake(), "unit 900\nMOVE SE SE SE\n", "900");
+    assert!(
+        rows.iter().any(|(region, status, to)| region == "1:1,1"
+            && *status == atlantis_hud_core::orders::effects::UnitPreviewStatus::Departing
+            && to.as_deref() == Some("1:2,2")),
+        "{rows:?}"
+    );
+    assert!(
+        rows.iter()
+            .all(|(region, _, _)| region == "1:1,1" || region == "1:2,2"),
+        "{rows:?}"
+    );
+}
