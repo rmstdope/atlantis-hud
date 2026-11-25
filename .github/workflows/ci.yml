@@ -198,7 +198,7 @@ jobs:
         run: node scripts/ensure-wasm.mjs
 
       - name: Upload the WebAssembly core
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: wasm-core
           path: packages/browser-core/src/wasm
@@ -433,7 +433,7 @@ jobs:
 
       - name: Upload the report of a failed run
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.project }}-${{ matrix.shardIndex }}
           path: test-results
@@ -493,7 +493,7 @@ jobs:
         run: pnpm run test:pwa
 
       - name: Upload the tested production site for container verification
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: web-container-site
           path: apps/web/dist
@@ -502,7 +502,7 @@ jobs:
 
       - name: Upload the report of a failed run
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-pwa
           path: test-results
@@ -693,7 +693,7 @@ jobs:
 
       - name: Upload the results of a failed run
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: native-e2e-results
           path: test-results/native

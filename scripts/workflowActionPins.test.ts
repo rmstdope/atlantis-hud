@@ -10,7 +10,7 @@ const EXPECTED_MAJORS = {
   "actions/checkout": 7,
   "actions/cache": 6,
   "actions/setup-node": 7,
-  "actions/upload-artifact": 6,
+  "actions/upload-artifact": 7,
   "actions/download-artifact": 8,
   "pnpm/action-setup": 6
 } as const;
