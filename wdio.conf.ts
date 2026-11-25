@@ -86,7 +86,7 @@ export const config: WebdriverIO.Config = {
       "tauri:options": {
         application: APP_BINARY
       },
-      // WebKitWebDriver speaks classic WebDriver only; without this, wdio 9 probes for BiDi
+      // WebKitWebDriver speaks classic WebDriver only; without this, wdio probes for BiDi
       // and the session handshake hangs.
       "wdio:enforceWebDriverClassic": true
     } as WebdriverIO.Capabilities

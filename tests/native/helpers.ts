@@ -34,16 +34,22 @@ export interface InvokeResult {
  * Async Script command in flight, carrying the rejection text as a WebDriverError, an in-page
  * `.catch` notwithstanding. The abort also consumes it — whereas a rejection that settles with
  * no script command in flight becomes sticky page state that poisons every later evaluation in
- * the session. So the invoke is deliberately kept inside `executeAsync`, and the WebDriverError
- * is converted back into a value here on the Node side, where it can no longer hurt anything.
+ * the session. So the invoke is deliberately kept inside an Execute Async Script command, and the
+ * WebDriverError is converted back into a value here on the Node side, where it can no longer
+ * hurt anything.
+ *
+ * WebdriverIO 10 removed `executeAsync`; an `async` function handed to `execute` takes its place
+ * and, on a classic session such as this one, is sent as that same Execute Async Script command.
+ * It recognises the function by its `AsyncFunction` constructor, so the callback must stay a
+ * native `async` function (the ES2022 target keeps it one).
  */
 export async function invokeNative(
   command: string,
   args: Record<string, unknown> = {}
 ): Promise<InvokeResult> {
   try {
-    return await browser.executeAsync<InvokeResult, [string, Record<string, unknown>]>(
-      (cmd, cmdArgs, done) => {
+    return await browser.execute(
+      async (cmd: string, cmdArgs: Record<string, unknown>): Promise<InvokeResult> => {
         const tauri = (
           window as unknown as {
             __TAURI_INTERNALS__?: {
@@ -52,13 +58,13 @@ export async function invokeNative(
           }
         ).__TAURI_INTERNALS__;
         if (!tauri) {
-          done({ ok: false, error: "__TAURI_INTERNALS__ is missing: not running under Tauri" });
-          return;
+          return { ok: false, error: "__TAURI_INTERNALS__ is missing: not running under Tauri" };
         }
-        tauri
-          .invoke(cmd, cmdArgs)
-          .then((value) => done({ ok: true, value }))
-          .catch((error: unknown) => done({ ok: false, error: String(error) }));
+        try {
+          return { ok: true, value: await tauri.invoke(cmd, cmdArgs) };
+        } catch (error) {
+          return { ok: false, error: String(error) };
+        }
       },
       command,
       args
