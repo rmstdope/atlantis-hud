@@ -61,6 +61,7 @@ mod a_transport_of_an_item_the_game_will_not_ship;
 mod a_transport_of_goods_only_the_engine_refuses;
 mod a_transport_to_a_unit_that_cannot_receive_it;
 mod a_unit_read_without_its_money;
+mod a_walker_refused_by_water_still_shares;
 mod an_arriving_crew_lends_upkeep_after_the_residents;
 mod an_arriving_sharers_build;
 mod an_evicted_unit_stands_outside;
