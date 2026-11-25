@@ -208,7 +208,8 @@ export async function loadReport(
  * others regardless, which is why this keeps working for any hex on the level.
  */
 export async function selectHex(page: Page, regionId: string) {
-  const hex = page.getByRole("button", { name: `hex ${regionId}` });
+  // Exact, because a hex with notes also carries a pin named "notes on hex <id>" (ah-kh3pz).
+  const hex = page.getByRole("button", { name: `hex ${regionId}`, exact: true });
   await hex.focus();
   await hex.press("Enter");
 }
@@ -357,6 +358,60 @@ export async function saveNow(page: Page) {
 /** The negative twin of `expectOrders`, for "this text must not be in the draft". */
 export async function expectOrdersNot(page: Page, pattern: RegExp) {
   await expect.poll(() => ordersText(page)).not.toMatch(pattern);
+}
+
+/** Writes a note on the selected hex, and waits for the editor to close - the proof it landed. */
+export async function writeHexNote(page: Page, text: string) {
+  await page.getByTestId("region-note-add").click();
+  await page.getByTestId("region-note-editor").locator("textarea").fill(text);
+  await page.keyboard.press("ControlOrMeta+Enter");
+  // The editor closing is what proves the write landed (see workspace.spec.ts).
+  await expect(page.getByTestId("region-note-editor")).toHaveCount(0);
+}
+
+/**
+ * The order draft stored for one faction and turn of a game, read straight from its database, or
+ * `null` when there is none. This is the row the assistant's `get_orders` reads for that turn, so
+ * it proves a turn's orders are still kept after another turn took the screen (ah-kh3pz).
+ */
+export async function storedOrderText(
+  page: Page,
+  gameName: string,
+  factionId: string,
+  turnNumber: number
+): Promise<string | null> {
+  return page.evaluate(
+    async ({ gameName, factionId, turnNumber }) => {
+      const openDatabase = (name: string) =>
+        new Promise<IDBDatabase>((resolve, reject) => {
+          const open = indexedDB.open(name);
+          open.onsuccess = () => resolve(open.result);
+          open.onerror = () => reject(open.error);
+        });
+      const read = <T>(database: IDBDatabase, store: string, run: (s: IDBObjectStore) => IDBRequest) =>
+        new Promise<T>((resolve, reject) => {
+          const request = run(database.transaction(store, "readonly").objectStore(store));
+          request.onsuccess = () => resolve(request.result as T);
+          request.onerror = () => reject(request.error);
+        });
+
+      const registry = await openDatabase("atlantis-hud");
+      const games = await read<
+        Array<{ databasePath: string; manifest: { metadata: { gameName: string } } }>
+      >(registry, "games", (store) => store.getAll());
+      registry.close();
+      const game = games.find((entry) => entry.manifest.metadata.gameName === gameName);
+      if (!game) return null;
+
+      const database = await openDatabase(`atlantis-hud-${game.databasePath.replace(/^idb:\/\//u, "")}`);
+      const draft = await read<{ orderText: string } | undefined>(database, "orderDrafts", (store) =>
+        store.get([factionId, turnNumber])
+      );
+      database.close();
+      return draft?.orderText ?? null;
+    },
+    { gameName, factionId, turnNumber }
+  );
 }
 
 /** Where a panel is on screen, having asserted it is on screen at all. */
