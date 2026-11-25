@@ -21,17 +21,29 @@ use atlantis_hud_core::report::orders::extract_orders_template;
 
 const MAP: &str = r#"{"width":72,"height":96,"wrapX":false,"wrapY":false}"#;
 
-/// The report's own template, with 4333's `@entertain` replaced by `order`.
+/// The report's own template, with 4333's `@entertain` replaced by `order`. Only 4333's block is
+/// touched: three other units' blocks end in the same skill line and `@entertain`, and 4329 among
+/// them would walk onto (37,41) under MOVE SE and pay for 8551's study itself.
 fn orders_with_4333_ordered(order: &str) -> String {
     let template = extract_orders_template(atlantis_hud_fixtures::G5_F21_T39.text)
         .expect("the report carries a template")
         .text;
-    let orders = template.replace(
-        "entertainment [ENTE] 2 (90).\n@entertain\n",
-        &format!("entertainment [ENTE] 2 (90).\n{order}\n"),
+    let block = template
+        .find("unit 4333\n")
+        .expect("the template has a block for 4333");
+    let at = block
+        + template[block..]
+            .find("@entertain\n")
+            .expect("4333's block ends in @entertain");
+    assert!(
+        !template[block..at].contains("\nunit "),
+        "the @entertain found is 4333's own"
     );
-    assert_ne!(orders, template, "the template's block for 4333 was found");
-    orders
+    format!(
+        "{}{order}\n{}",
+        &template[..at],
+        &template[at + "@entertain\n".len()..]
+    )
 }
 
 /// Where the silver checks take 4333 to stand at month end, the hex its sharing counts in
