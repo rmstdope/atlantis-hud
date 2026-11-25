@@ -2088,8 +2088,14 @@ fn decide_movement(
                             });
                             sail_month_end(report_map, ruleset, hull, path.from, steps)
                         });
-                    match month_end(&path, sailed) {
-                        Some(month_end) if month_end.id() != entry.unit.region_id => {
+                    // A walker's step onto water it needs a ship for fails, and so does every
+                    // step after it (`rules/move`, `ah-71z6y`), judged as `move-into-water` judges it.
+                    let refused = sailed
+                        .is_none()
+                        .then(|| super::water::refused_water_step(ruleset, map, &entry.unit, &path))
+                        .flatten();
+                    match month_end(&path, sailed, refused) {
+                        Some((month_end, _)) if month_end.id() != entry.unit.region_id => {
                             arrival = Some(month_end.id());
                             ends_at = Some(month_end);
                             status = UnitPreviewStatus::Departing;
@@ -2098,8 +2104,8 @@ fn decide_movement(
                         // still a walk: every step stands the unit in the open of the hex it enters
                         // (`monthorders.cpp` `DoAMoveOrder`), so where it ends the month is recorded,
                         // which is how the transport check knows it left its structure (`ah-1jl9`).
-                        Some(back) => {
-                            if path.months.first().is_some_and(|month| month.steps > 0) {
+                        Some((back, taken)) => {
+                            if taken > 0 {
                                 ends_at = Some(back);
                             }
                         }
@@ -2217,16 +2223,26 @@ fn sail_month_end(
     crate::movement::sailing::fleet_month_end(map, ruleset, journey, from, steps)
 }
 
-/// Where the coming month ends: the trace's first month, cut short where the game stops a fleet
-/// before it gets that far.
+/// Where the coming month ends, and how many directional steps the unit takes to get there: the
+/// trace's first month, cut short where the game stops a fleet before it gets that far, or where a
+/// walker's `refused` step onto water fails (`rules/move`: "the unit will move multiple times ...
+/// until one of the moves fails"; `ah-71z6y`).
 fn month_end(
     path: &crate::movement::trace::TracedPath,
     sailed: Option<crate::movement::sailing::FleetMonthEnd>,
-) -> Option<crate::report::model::Coordinate> {
+    refused: Option<usize>,
+) -> Option<(crate::report::model::Coordinate, usize)> {
     let month = path.months.first()?;
+    if let Some(refused) = refused.filter(|refused| *refused < month.steps) {
+        let before = refused
+            .checked_sub(1)
+            .and_then(|index| path.steps.get(index))
+            .map_or(path.from, |step| step.to);
+        return Some((before, refused));
+    }
     Some(match sailed {
-        Some(sailed) => sailed.within_month(month.steps, month.ends_at),
-        None => month.ends_at,
+        Some(sailed) => (sailed.within_month(month.steps, month.ends_at), month.steps),
+        None => (month.ends_at, month.steps),
     })
 }
 
