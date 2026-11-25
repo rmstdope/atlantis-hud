@@ -5,6 +5,10 @@
  * and react-dom moving ahead of react broke CI (#1978, fixed by hand in ah-h05yn). The npm entry
  * of `.github/dependabot.yml` therefore groups the four React packages (ah-6gn7c).
  *
+ * The @wdio packages are grouped the same way (ah-m2l9m): @wdio/spec-reporter 10 merged on its own
+ * (#2004) while @wdio/cli 10 failed the native typecheck (#2003), leaving WebdriverIO 9 and 10 side
+ * by side on main. A pattern, so a @wdio package added later is covered too.
+ *
  * The file is read as text: no YAML parser is a dependency, and one test does not earn one.
  */
 import { readFileSync } from "node:fs";
@@ -14,6 +18,11 @@ import { describe, expect, it } from "vitest";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const CONFIG = readFileSync(join(REPO, ".github", "dependabot.yml"), "utf8");
+
+const PACKAGE_JSON = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as Record<
+  string,
+  Record<string, string> | undefined
+>;
 
 const REACT_PACKAGES = ["react", "react-dom", "@types/react", "@types/react-dom"];
 
@@ -58,5 +67,25 @@ describe("Dependabot bumps the React packages together", () => {
     const others = entries().filter((entry) => entry.ecosystem !== "npm");
     expect(others.length).toBeGreaterThan(0);
     for (const entry of others) expect(groupPatterns(entry.text, "react")).toBeUndefined();
+  });
+});
+
+describe("Dependabot bumps the @wdio packages together", () => {
+  const [npm] = entries().filter((entry) => entry.ecosystem === "npm");
+
+  it("the npm entry groups every @wdio package into one pull request", () => {
+    expect(groupPatterns(npm.text, "wdio")).toEqual(["@wdio/*"]);
+  });
+
+  it("security updates to the @wdio packages are grouped too", () => {
+    expect(groupPatterns(npm.text, "wdio-security")).toEqual(["@wdio/*"]);
+    expect(npm.text).toMatch(/^ {6}wdio-security:\n(?: {8,}.*\n)*? {8}applies-to: security-updates$/m);
+  });
+
+  it("the repository does depend on @wdio packages, so the group has something to cover", () => {
+    const names = ["dependencies", "devDependencies"].flatMap((key) =>
+      Object.keys(PACKAGE_JSON[key] ?? {})
+    );
+    expect(names.filter((name) => name.startsWith("@wdio/")).length).toBeGreaterThan(1);
   });
 });
