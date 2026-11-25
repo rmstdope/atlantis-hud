@@ -153,7 +153,7 @@ describe("NewAgeFetchDialog, asking before the screen is replaced (ah-1y7yi)", (
     const markup = draw(askNewer);
 
     expect(markup).toContain(
-      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your turn 83 orders and notes are kept with turn 83."
+      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your notes come with you, and your turn 83 orders are kept."
     );
     expect(markup).toContain("Fetch from New Age: Arcanum");
     expect(markup).toContain("atlantis-newage.com · turn 83");

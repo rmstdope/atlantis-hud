@@ -117,26 +117,26 @@ describe("newAgeFetchView - asking before the screen is replaced (ah-1y7yi)", ()
     expect(
       newAgeNewerTurnQuestion({ ...newer(0, 0), incomingTurn: 22 })
     ).toBe(
-      "Turn 22 has arrived. Opening it replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21."
+      "Turn 22 has arrived. Opening it replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept."
     );
   });
 
   it("counts the earlier turns rather than listing them", () => {
     expect(newAgeNewerTurnQuestion(newer(2, 0))).toBe(
-      "Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21."
+      "Turn 24 has arrived, along with 2 earlier turns, which are stored for history. Opening turn 24 replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept."
     );
     expect(newAgeNewerTurnQuestion(newer(1, 0))).toBe(
-      "Turn 24 has arrived, along with 1 earlier turn, which is stored for history. Opening turn 24 replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21."
+      "Turn 24 has arrived, along with 1 earlier turn, which is stored for history. Opening turn 24 replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept."
     );
   });
 
   it("counts the turns that could not be fetched", () => {
     expect(newAgeNewerTurnQuestion(newer(4, 1))).toBe(
-      "Turn 24 has arrived, along with 4 earlier turns, which are stored for history. 1 turn could not be fetched. Opening turn 24 replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21."
+      "Turn 24 has arrived, along with 4 earlier turns, which are stored for history. 1 turn could not be fetched. Opening turn 24 replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept."
     );
     expect(newAgeNewerTurnQuestion(newer(4, 2))).toContain(" 2 turns could not be fetched. ");
     expect(newAgeNewerTurnQuestion(newer(0, 2))).toBe(
-      "Turn 24 has arrived. 2 turns could not be fetched. Opening turn 24 replaces turn 21 on screen. Your turn 21 orders and notes are kept with turn 21."
+      "Turn 24 has arrived. 2 turns could not be fetched. Opening turn 24 replaces turn 21 on screen. Your notes come with you, and your turn 21 orders are kept."
     );
   });
 

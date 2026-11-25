@@ -54,7 +54,7 @@ describe("the words", () => {
     expect(FETCH_CONFIRM).toBe("Fetch");
     expect(FETCH_WORKING).toBe("Fetching this turn's report from New Origins…");
     expect(newerTurnQuestion(83, 84)).toBe(
-      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your turn 83 orders and notes are kept with turn 83."
+      "Turn 84 has arrived. Opening it replaces turn 83 on screen. Your notes come with you, and your turn 83 orders are kept."
     );
     expect(keepTurnLabel(83)).toBe("Keep turn 83");
     expect(openTurnLabel(84)).toBe("Open turn 84");

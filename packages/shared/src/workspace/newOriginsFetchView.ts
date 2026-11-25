@@ -74,7 +74,7 @@ export const FETCHED_REPORT_NAME = "this turn's report from New Origins";
 
 /** `Turn 84 has arrived. …` - the newer-turn question. */
 export function newerTurnQuestion(currentTurn: number, incomingTurn: number): string {
-  return `Turn ${incomingTurn} has arrived. Opening it replaces turn ${currentTurn} on screen. Your turn ${currentTurn} orders and notes are kept with turn ${currentTurn}.`;
+  return `Turn ${incomingTurn} has arrived. Opening it replaces turn ${currentTurn} on screen. Your notes come with you, and your turn ${currentTurn} orders are kept.`;
 }
 
 /** `Keep turn 83` */

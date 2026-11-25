@@ -170,7 +170,7 @@ export function newAgeNewerTurnQuestion(
       ? `Turn ${incomingTurn} has arrived.`
       : `Turn ${incomingTurn} has arrived, along with ${earlierStored} earlier turn${earlierStored === 1 ? ", which is" : "s, which are"} stored for history.`;
   const failed = notFetched === 0 ? "" : ` ${turnCount(notFetched)} could not be fetched.`;
-  return `${arrived}${failed} Opening turn ${incomingTurn} replaces turn ${currentTurn} on screen. Your turn ${currentTurn} orders and notes are kept with turn ${currentTurn}.`;
+  return `${arrived}${failed} Opening turn ${incomingTurn} replaces turn ${currentTurn} on screen. Your notes come with you, and your turn ${currentTurn} orders are kept.`;
 }
 
 /** `Trident still has turn 21 — …` - the same-turn question, naming the world. */
