@@ -1865,6 +1865,45 @@ pub fn walled_moves(
     ))
 }
 
+/// Every own unit whose MOVE would step onto water it needs a ship for (`ah-cwyyq`), for a caller
+/// that checks orders but draws no map. Empty when the document writes no directional MOVE/ADVANCE
+/// step, as [`walled_moves`] is.
+///
+/// # Errors
+///
+/// As [`shipment_measures`].
+pub fn watered_moves(
+    cache: &mut ReportCache,
+    ruleset_json: &str,
+    raw_report: &str,
+    remembered_json: &str,
+    orders_document: &str,
+    geometry: Option<crate::movement::graph::MapGeometry>,
+) -> Result<super::water::WateredMoves, String> {
+    use crate::movement::graph::MapKnowledge;
+
+    let ruleset = cache
+        .ruleset(ruleset_json)
+        .map_err(|error| error.to_string())?;
+    let remembered: Vec<crate::movement::graph::RememberedRegion> =
+        serde_json::from_str(remembered_json)
+            .map_err(|error| format!("remembered regions could not be read: {error}"))?;
+    if !moves_anywhere(orders_document, &ruleset) {
+        return Ok(super::water::WateredMoves::new());
+    }
+
+    let report = cache.classified(raw_report, ruleset_json);
+    let map = MapKnowledge::from_remembered(&report, &remembered).with_geometry(geometry);
+    let ordered = crate::movement::fleet::OrderedUnits::of_month(
+        &report,
+        orders_document,
+        Some(ruleset.as_ref()),
+    );
+    Ok(super::water::watered_moves_on(
+        &report, &ruleset, &map, &ordered,
+    ))
+}
+
 /// What the known map says about founding a village in each region holding an own unit, once the
 /// document writes a `CREATE`, for a caller that checks orders but draws no map (`ah-m24v`). Empty when the document founds nothing, which keeps
 /// the known map off the keystroke path, as [`walled_moves`] does.

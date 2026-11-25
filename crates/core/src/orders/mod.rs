@@ -65,6 +65,7 @@ pub mod vocabulary;
 pub mod walk;
 /// A MOVE that would cross a wall a report proves (`ah-wq2e.4`).
 pub mod walls;
+pub mod water;
 
 pub use completion::{
     completions_at_caret, order_argument_completions, CaretCompletions, CaretPosition,
