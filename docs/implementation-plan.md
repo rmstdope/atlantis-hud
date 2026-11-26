@@ -13,7 +13,9 @@
 - SVG map renderer (PixiJS until #58; a canvas cannot keep text sharp under zoom)
 - SQLite on desktop and on web (WASM + OPFS)
 - Offline-first, no backend in milestone 1
-- PWA early, deployed to atlantis-hud.kurelid.se (one.com) over FTPS from GitHub Actions
+- PWA early, deployed to atlantis-hud.rmstdope.eu as a container image built by the release workflow
+  and deployed by hand (`deploy/README.md`). atlantis-hud.kurelid.se (one.com, SFTP from GitHub
+  Actions) was the first address; it is frozen at v0.35.0 and no longer published to (ah-iufcs)
 - Tailwind + headless UI primitives
 - Zustand + TanStack Query
 - CodeMirror 6 for orders editor

@@ -1,7 +1,14 @@
 # Deployment and release (issue #10)
 
-The web application is installable, works with the network cut, and can be published to
-`atlantis-hud.kurelid.se`. The desktop application can be built into macOS and Linux bundles and
+> **The one.com deployment is retired at v0.35.0 (ah-iufcs).** `deploy.yml`, the `web` job of
+> `release.yml` and the `ONECOM_*` configuration they read are gone; atlantis-hud.kurelid.se stays up,
+> frozen at v0.35.0. Releases are published only to atlantis-hud.rmstdope.eu, by hand, from the image
+> the release builds (`deploy/README.md`). The parts of this document about publishing to one.com - the
+> deploy workflow and its guard, *Uploading is SFTP*, *Tagging publishes both*, the release valve and
+> the `ONECOM_*` rows - are kept as the record of how it worked. The rest is current.
+
+The web application is installable, works with the network cut, and was published to
+`atlantis-hud.kurelid.se` (since v0.35.0, `atlantis-hud.rmstdope.eu`). The desktop application can be built into macOS and Linux bundles and
 attached to a GitHub Release. Both shells show the version they are running and offer a way to look
 for a newer one.
 
@@ -118,8 +125,8 @@ against, and it is the widest reach the webview supports.
 | Trigger | Workflow | Produces |
 | --- | --- | --- |
 | Every push and pull request | `ci.yml` | Nothing. Gates only, now including a production build. |
-| `workflow_dispatch` on `main` | `deploy.yml` | The web application at `https://atlantis-hud.kurelid.se` |
-| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage`, a Windows installer and a self-hosting web tarball, **and then** the web application |
+| `workflow_dispatch` on `main` | `deploy.yml` (removed by ah-iufcs) | The web application at `https://atlantis-hud.kurelid.se` |
+| A `v*` tag | `release.yml` | A GitHub Release with a universal macOS `.dmg`, a Linux `.AppImage`, a Windows installer and a self-hosting web tarball, and the web container image with its `deployment.json` (until v0.35.0, **and then** the web application at kurelid.se) |
 
 ### Tagging publishes both (issue #46)
 
@@ -130,12 +137,11 @@ there is no second copy to drift.
 
 ### The release tarball (ah-4sh)
 
-`release.yml`'s `web-tarball` job builds `apps/web/dist/` the same way `deploy.yml` does, packs it
-with a deployment README and nginx/Apache samples into
-`atlantis-hud-web-v<version>.tar.gz`, and the `publish` job attaches it to the release alongside
-the three desktop bundles. It is a separate build from the one that republishes
-`atlantis-hud.kurelid.se` — `deploy.yml` is untouched — so a release ships four downloads: the
-three installers and one tarball anyone can unpack onto their own HTTPS server. See
+`release.yml`'s `web-tarball` job builds `apps/web/dist/`, PWA-tests it, packs it with a deployment
+README and nginx/Apache samples into `atlantis-hud-web-v<version>.tar.gz`, and the `publish` job
+attaches it to the release alongside the three desktop bundles, so a release ships four downloads:
+the three installers and one tarball anyone can unpack onto their own HTTPS server. The same bytes
+are what `web-image` packs into the container atlantis-hud.rmstdope.eu is deployed from. See
 `docs/self-hosting/README.md` for what a self-hoster is told.
 
 `needs: publish`, so a release is all or nothing. If either desktop bundle does not build, the site
@@ -153,11 +159,11 @@ history, which is why the checkout is `fetch-depth: 0`.
 
 | Name | Kind | What it is |
 | --- | --- | --- |
-| `ONECOM_FTP_SERVER` | secret | one.com SSH/SFTP hostname |
-| `ONECOM_FTP_USERNAME` | secret | SFTP user for the subdomain's webspace |
-| `ONECOM_FTP_PASSWORD` | secret | that user's password |
-| `ONECOM_FTP_SERVER_DIR` | variable | remote directory the domain serves, e.g. `/webroots/36700328/` |
-| `ONECOM_SFTP_PORT` | variable | optional; defaults to 22 |
+| `ONECOM_FTP_SERVER` | secret | retired (ah-iufcs); one.com SSH/SFTP hostname |
+| `ONECOM_FTP_USERNAME` | secret | retired; SFTP user for the subdomain's webspace |
+| `ONECOM_FTP_PASSWORD` | secret | retired; that user's password |
+| `ONECOM_FTP_SERVER_DIR` | variable | retired; remote directory the domain serves, e.g. `/webroots/36700328/` |
+| `ONECOM_SFTP_PORT` | variable | retired; optional; defaults to 22 |
 | `APPLE_*` (six) | secrets | Absent. Signing stays off until they exist. |
 
 The `FTP` in those three names is a fossil of the original FTPS design. They were already configured
