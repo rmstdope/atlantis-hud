@@ -42,7 +42,7 @@
     "fake-indexeddb": "6.2.8",
     "sharp": "^0.35.5",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.2",
+    "typescript": "^6.0.3",
     "vitest": "^5.1.1"
   }
 }
