@@ -16,6 +16,12 @@ stored games, the human-check hand-off, exploring near the change, and the shape
 One place it overrides verify-bead outright: an occupied web port is not a refusal here (*When the
 declared port is taken*).
 
+**Under Copilot**, the browser integration is Copilot's `use-browser`, as verify-bead's *Prepare*
+says: read every "Chrome" and "the Chrome integration" below as `use-browser`, its tab list,
+JavaScript tool and file-upload tool as `use-browser`'s own. The rules keep what they protect
+whichever tool drives the browser, and a step `use-browser` cannot do is a blocker, never a skipped
+check.
+
 The navigator's minutes are spent only on what a person must judge. Everything an agent can check
 in the running web shell, you check yourself; a question that asks them to read a cell you could
 have screenshotted is time taken from them for nothing.
