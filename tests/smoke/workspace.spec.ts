@@ -4399,6 +4399,22 @@ test("the attacks chip shows who of ours an attack typed into the orders would m
   await expect(page.getByTestId("attack-group-backline")).toContainText(
     "gave the order, so it fights although it is avoiding"
   );
+  // ah-wlia8: on a wide window a reason that fits sits on the unit's line, as the mockup draws it;
+  // a narrow one wraps it under the unit. Boxes, not text, so the native shell's driver agrees.
+  const unitLine = page.getByTestId("attack-unit-18642");
+  const reason = page.getByTestId("attack-group-backline").getByText("gave the order, so it fights although it is avoiding");
+  const topOf = async (locator: Locator) => {
+    const box = await locator.boundingBox();
+    if (box === null) throw new Error("an attack line has no box");
+    return box.y;
+  };
+  const tops = async () => [await topOf(unitLine), await topOf(reason)];
+  const [unitTop, reasonTop] = await tops();
+  expect(Math.abs(reasonTop - unitTop)).toBeLessThan(4);
+  const wide = page.viewportSize();
+  await page.setViewportSize({ width: 600, height: 720 });
+  await expect.poll(async () => { const [u, r] = await tops(); return r - u; }).toBeGreaterThan(8);
+  if (wide !== null) await page.setViewportSize(wide);
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

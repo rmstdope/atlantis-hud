@@ -10,7 +10,7 @@ import {
   attackTitleText,
   groupHeading,
   missingTargetBannerText,
-  unitLineText,
+  unitLineParts,
   lineWarning,
   readUnitAttackOrders,
   unitRole,
@@ -471,9 +471,9 @@ describe("the words of the Attacks window", () => {
     expect(groupHeading("out", [])).toBe("Will not fight — none");
   });
 
-  it("writes a unit's line with its men and role", () => {
-    expect(unitLineText(unit(20))).toBe("Raiders (812) · 20 men · melee, ranged");
-    expect(unitLineText(unit(1))).toBe("Raiders (812) · 1 man · melee, ranged");
+  it("splits the unit's line into name, number, men and role, for the window to style apart", () => {
+    expect(unitLineParts(unit(20))).toEqual({ name: "Raiders", number: "(812)", men: "20 men", role: "melee, ranged" });
+    expect(unitLineParts(unit(1)).men).toBe("1 man");
   });
 
   it("writes the row, the title and the banners", () => {

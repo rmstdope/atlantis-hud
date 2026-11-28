@@ -490,9 +490,9 @@ export function groupHeading(group: MusterGroup, units: readonly MusterUnit[]): 
   return `${GROUP_NAMES[group]} — ${count(units.length, "unit")}, ${count(men, "man", "men")}`;
 }
 
-/** "Raiders (812) · 20 men · melee, ranged". */
-export function unitLineText(unit: MusterUnit): string {
-  return `${unit.name} (${unit.unitId}) · ${count(unit.men, "man", "men")} · ${unit.role}`;
+/** The unit's line in the pieces the window styles apart (ah-wlia8): "Raiders", "(812)", "20 men", the role. */
+export function unitLineParts(unit: MusterUnit): { name: string; number: string; men: string; role: string } {
+  return { name: unit.name, number: `(${unit.unitId})`, men: count(unit.men, "man", "men"), role: unit.role };
 }
 
 type Named = Pick<AttackView, "attackerId" | "attackerName" | "hex" | "targets">;
