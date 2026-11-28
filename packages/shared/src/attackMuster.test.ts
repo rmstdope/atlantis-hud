@@ -8,6 +8,7 @@ import {
   attacksBarText,
   attacksInOrders,
   attackTitleText,
+  backlineNote,
   groupHeading,
   missingTargetBannerText,
   unitLineParts,
@@ -264,6 +265,18 @@ describe("who of ours joins an attack (rules/com_muster)", () => {
     ]);
   });
 
+  it("with no frontline, warns no behind unit that it cannot fight (rules/com_thebattle)", () => {
+    const [view] = attacks(
+      world({ here: [own("812", "Raiders", 20, { flags: ["behind"] }), own("821", "Swordsmen", 8)] }),
+      ["unit 812", "ATTACK 1203", "unit 821", "BEHIND 1"]
+    );
+    expect(view!.frontline).toEqual([]);
+    expect(view!.backline.map((unit) => [unit.name, unit.role, unit.reasons, unit.warning])).toEqual([
+      ["Raiders", "melee", ["gave the order"], null],
+      ["Swordsmen", "melee", ["set by BEHIND 1 in your orders"], null]
+    ]);
+  });
+
   it("lets the attacker fight although it is avoiding, and says so", () => {
     const [view] = attacks(world({ here: [own("812", "Raiders", 20, { flags: ["avoiding"] })] }), [
       "unit 812",
@@ -485,6 +498,18 @@ describe("the words of the Attacks window", () => {
     );
     expect(missingTargetBannerText("1204", view)).toBe(
       "Unit 1204 is not in Plain (12,4) in this report. The attack happens only if Raiders can see it there."
+    );
+  });
+});
+
+describe("the Backline's line", () => {
+  const someone = { unitId: "812" } as MusterUnit;
+  it("says the backline can only shoot or cast while a frontline stands", () => {
+    expect(backlineNote({ frontline: [someone] })).toBe("Can only shoot or cast spells until the frontline falls.");
+  });
+  it("says standing behind has no effect with no frontline", () => {
+    expect(backlineNote({ frontline: [] })).toBe(
+      "With no frontline, standing behind has no effect: these units fight as if in front."
     );
   });
 });

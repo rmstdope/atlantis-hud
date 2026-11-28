@@ -112,6 +112,16 @@ describe("the Attacks window", () => {
     expect(/<button[^>]*data-testid="attack-unit-812"[^>]*>/.exec(html)?.[0]).not.toContain("underline");
   });
 
+  it("says standing behind has no effect when the Frontline is empty", () => {
+    const { text } = render([
+      view({ frontline: [], backline: [unit({ reasons: ["gave the order"] })] })
+    ]);
+    expect(text).toContain(
+      "Frontline — none Backline — 1 unit, 20 men With no frontline, standing behind has no effect: these units fight as if in front."
+    );
+    expect(text).not.toContain("Can only shoot or cast spells");
+  });
+
   it("leaves out an empty Backline and says when nobody stays out", () => {
     const { text } = render([view()]);
     expect(text).not.toContain("Backline");

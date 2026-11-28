@@ -444,6 +444,10 @@ export function attacksInOrders(input: {
       }
     }
 
+    // `rules/com_thebattle`: "Once all front-line units have been wiped out, then the Behind flag
+    // no longer has any effect", so with no frontline a melee unit behind can fight after all.
+    const behind = frontline.length === 0 ? backline.map((unit) => ({ ...unit, warning: null })) : backline;
+
     return {
       key: attacker.unitId,
       attackerId: attacker.unitId,
@@ -455,7 +459,7 @@ export function attacksInOrders(input: {
       allies: [...allies].map(([id, name]) => ({ id, name })),
       withdraws,
       frontline,
-      backline,
+      backline: behind,
       out
     };
   }
@@ -488,6 +492,16 @@ export function groupHeading(group: MusterGroup, units: readonly MusterUnit[]): 
   }
   const men = units.reduce((sum, unit) => sum + unit.men, 0);
   return `${GROUP_NAMES[group]} — ${count(units.length, "unit")}, ${count(men, "man", "men")}`;
+}
+
+/**
+ * The dim line under the Backline heading. With no frontline the Behind flag has no effect
+ * (`rules/com_thebattle`), so the line says that instead of what the backline cannot do.
+ */
+export function backlineNote(view: Pick<AttackView, "frontline">): string {
+  return view.frontline.length === 0
+    ? "With no frontline, standing behind has no effect: these units fight as if in front."
+    : "Can only shoot or cast spells until the frontline falls.";
 }
 
 /** The unit's line in the pieces the window styles apart (ah-wlia8): "Raiders", "(812)", "20 men", the role. */

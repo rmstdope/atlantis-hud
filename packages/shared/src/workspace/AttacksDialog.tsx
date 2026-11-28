@@ -4,6 +4,7 @@ import {
   attackRowText,
   attacksBarText,
   attackTitleText,
+  backlineNote,
   groupHeading,
   missingTargetBannerText,
   unitLineParts,
@@ -149,7 +150,7 @@ function AttackDetail({
           <Group group="frontline" units={attack.frontline} onGoToUnit={onGoToUnit} />
           {attack.backline.length > 0 ? (
             <Group group="backline" units={attack.backline} onGoToUnit={onGoToUnit}>
-              <p className="text-ink-dim">Can only shoot or cast spells until the frontline falls.</p>
+              <p className="text-ink-dim">{backlineNote(attack)}</p>
             </Group>
           ) : null}
           <Group group="out" units={attack.out} onGoToUnit={onGoToUnit}>
