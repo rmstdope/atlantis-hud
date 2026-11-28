@@ -1,0 +1,145 @@
+<!doctype html>
+<!--
+  The house frame of a detailed drawing (cb-buko; the agreed look is docs/ui/cb-buko-tabs.html and
+  cb-buko-states.html). scripts/ux-sheet fills the two marker lines below; nothing else writes here.
+  Every class starts with `ux-' and only `body' is styled by element, so what is drawn inside a tab
+  keeps the product's own look.
+-->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How should a long note or warning sit with its unit? · A clearer attack window</title>
+<style>
+  body{margin:0;padding:1px 8px;background:#f4f4f5}
+  .ux-page{max-width:980px;margin:14px auto 30px;background:#fff;border:1px solid #e4e4e7;border-radius:10px}
+  .ux-head,.ux-tabs,.ux-intro{font-family:system-ui,-apple-system,sans-serif;line-height:normal;text-align:left;color:#18181b}
+  .ux-head{padding:14px 16px 0}
+  .ux-work{font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:.04em}
+  .ux-heading{margin:2px 0 10px;font-size:19px}
+  .ux-tabrow{position:relative}
+  .ux-tabrow::before,.ux-tabrow::after{content:"";position:absolute;top:0;bottom:1px;width:44px;pointer-events:none;opacity:0}
+  .ux-tabrow::before{left:0;background:linear-gradient(to left,rgba(255,255,255,0),#fff)}
+  .ux-tabrow::after{right:0;background:linear-gradient(to right,rgba(255,255,255,0),#fff)}
+  .ux-tabrow.ux-more-left::before,.ux-tabrow.ux-more-right::after{opacity:1}
+  .ux-tabs{display:flex;gap:4px;border-bottom:1px solid #e4e4e7;padding:0 16px;overflow-x:auto}
+  .ux-tab{flex:none;border:0;border-radius:0;background:none;margin:0;font:inherit;font-size:14px;padding:8px 12px;color:#52525b;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+  .ux-tab[aria-selected="true"]{color:#18181b;border-bottom-color:#7c3aed;font-weight:600}
+  .ux-tag{display:inline-block;font-size:11px;border-radius:999px;padding:1px 7px;margin-left:6px;font-weight:600}
+  .ux-rec{background:#ede9fe;color:#5b21b6}
+  .ux-agreed{background:#dcfce7;color:#166534}
+  .ux-panel[hidden]{display:none!important}
+  .ux-intro{padding:12px 16px 4px}
+  .ux-name{margin:0;font-size:16px}
+  .ux-cost{margin:3px 0 0;font-size:13px;color:#52525b}
+  .ux-why{margin:3px 0 0;font-size:13px;color:#5b21b6}
+  .ux-draw{padding:12px 16px 16px}
+</style></head><body>
+
+<style>
+.win{background:#2a323d;color:#d4dce6;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid #46525f;border-radius:4px;max-width:1100px;margin:0 auto}
+.bar{display:flex;gap:8px;padding:6px 10px;border-bottom:1px solid #46525f;color:#a8b4c2}.bar span:last-child{margin-left:auto}
+.body{display:grid;grid-template-columns:15rem 1fr}
+.rail{border-right:1px solid #46525f}.rail div{padding:6px 10px;border-bottom:1px solid #333d49}.rail .sel{background:rgba(90,169,222,.15)}
+.dim{color:#99a4b2}.num{color:#5aa9de}.nm{text-decoration:underline dotted;text-underline-offset:3px}
+.detail{padding:12px 14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.title{font-size:14px}.link{color:#5aa9de;text-decoration:underline dotted}
+.card{border:1px solid #46525f;border-left:4px solid #e0b25a;border-radius:4px;background:#222933}
+.card.out{border-left-color:#e06c6c}
+.card h3{margin:0;padding:7px 10px;font:inherit;text-transform:uppercase;letter-spacing:.06em;color:#e0b25a;display:flex;gap:10px;border-bottom:1px solid #333d49}
+.card.out h3{color:#e06c6c}.card h3 .dim{text-transform:none;letter-spacing:0}
+.card .help{padding:4px 10px 0;color:#99a4b2}
+.warn{color:#e5a64a}.mark{color:#e5a64a;font-weight:bold}
+@media (max-width:700px){.body{grid-template-columns:1fr}.rail{border-right:0;border-bottom:1px solid #46525f}}
+</style><style>.a-rows{padding:4px 0}.a-row{display:grid;grid-template-columns:1.2em 12rem 3rem 8.5rem 1fr;gap:0 10px;padding:4px 10px;align-items:baseline}
+.a-row:nth-child(even){background:rgba(255,255,255,.03)}.a-men{text-align:right}.oute{color:#e06c6c}
+@media (max-width:700px){.a-row{grid-template-columns:1.2em 1fr 3rem}.a-row>span:nth-child(4){grid-column:2}.a-note{grid-column:2/4}}</style><style>.b-rows{padding:4px 0}.b-row{display:grid;grid-template-columns:1.2em 12rem 3rem 8.5rem minmax(0,1fr);gap:0 10px;padding:4px 10px;align-items:baseline}
+.b-row:nth-child(even){background:rgba(255,255,255,.03)}.b-men{text-align:right}.b-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.oute{color:#e06c6c}
+@media (max-width:700px){.b-row{grid-template-columns:1.2em 1fr 3rem}.b-row>span:nth-child(4){grid-column:2}.b-note{grid-column:2/4}}</style><style>.c-row{padding:6px 10px;border-top:1px solid #333d49}.c-rows .c-row:first-child{border-top:0}.c-sub{padding-left:1.6em;font-size:12px}.oute{color:#e06c6c}</style>
+<div class="ux-page">
+<header class="ux-head">
+<div class="ux-work">A clearer attack window</div>
+<h1 class="ux-heading">How should a long note or warning sit with its unit?</h1>
+</header>
+<div class="ux-tabrow"><div class="ux-tabs" role="tablist">
+<button type="button" class="ux-tab" role="tab" data-ux-tab="A" id="ux-tab-A" aria-controls="ux-panel-A" aria-selected="true" tabindex="0">A — Note column that wraps<span class="ux-tag ux-rec">Recommended</span><span class="ux-tag ux-agreed">Agreed</span></button>
+<button type="button" class="ux-tab" role="tab" data-ux-tab="B" id="ux-tab-B" aria-controls="ux-panel-B" aria-selected="false" tabindex="-1">B — One line, cut short</button>
+<button type="button" class="ux-tab" role="tab" data-ux-tab="C" id="ux-tab-C" aria-controls="ux-panel-C" aria-selected="false" tabindex="-1">C — Note on its own line beneath</button>
+</div></div>
+<section class="ux-panel" role="tabpanel" id="ux-panel-A" aria-labelledby="ux-tab-A">
+<div class="ux-intro">
+<h2 class="ux-name">A — Note column that wraps<span class="ux-tag ux-rec">Recommended</span><span class="ux-tag ux-agreed">Agreed</span></h2>
+<p class="ux-cost">a row grows taller when its note is long, but the note stays inside its own column, beside its unit</p>
+<p class="ux-why">Recommended: the standard table pattern; nothing is hidden, and the striping shows which lines belong together</p>
+</div>
+<div class="ux-draw">
+<div class="win"><div class="bar"><span>Attacks · 2 in your orders</span><span>✕</span></div><div class="body"><div class="rail"><div class="sel">Raiders (812) → Bandits (1203)<br><span class="dim">Plain (10,11)</span></div><div>Hawks (901) → Orcs (77)<br><span class="dim">Hills (14,9)</span></div></div><div class="detail">
+<div><div class="title">Raiders (812) attacks Bandits (1203)</div><div class="dim">in Plain (10,11) · <span class="link">show on map</span></div></div>
+<section class="card "><h3>Frontline <span class="dim">4 units · 48 men</span></h3><div class="a-rows"><div class="a-row"><span class="mark"></span><span><span class="nm">Raiders</span> <span class="num">(812)</span></span><span class="dim a-men">20</span><span>melee</span><span class="a-note"></span></div><div class="a-row"><span class="mark"></span><span><span class="nm">Guards</span> <span class="num">(815)</span></span><span class="dim a-men">15</span><span>melee</span><span class="a-note"><div class="dim">from Plain (10,12)</div></span></div><div class="a-row"><span class="mark">!</span><span><span class="nm">Scouts</span> <span class="num">(820)</span></span><span class="dim a-men">5</span><span>ranged</span><span class="a-note"><div class="warn">ranged in the frontline: could stand in the backline, safe until the frontline falls</div></span></div><div class="a-row"><span class="mark">!</span><span><span class="nm">Wagoneers</span> <span class="num">(822)</span></span><span class="dim a-men">8</span><span>non-combatant</span><span class="a-note"><div class="warn">non-combatant in the frontline: likely to be cut down</div><div class="dim">from Forest (11,12), if they can reach the battle</div></span></div></div></section><section class="card "><h3>Backline <span class="dim">2 units · 11 men</span></h3><div class="help">Can only shoot or cast spells until the frontline falls.</div><div class="a-rows"><div class="a-row"><span class="mark"></span><span><span class="nm">Longbows</span> <span class="num">(830)</span></span><span class="dim a-men">10</span><span>ranged</span><span class="a-note"><div class="dim">set by BEHIND 1 in your orders</div></span></div><div class="a-row"><span class="mark"></span><span><span class="nm">Ash the Wise</span> <span class="num">(831)</span></span><span class="dim a-men">1</span><span>mage</span><span class="a-note"><div class="dim">set by BEHIND 1 in your orders</div></span></div></div></section><section class="card out"><h3>Will not fight <span class="dim">2 units · 15 men</span></h3><div class="a-rows"><div class="a-row"><span class="mark"></span><span><span class="nm">Traders</span> <span class="num">(840)</span></span><span class="dim a-men">3</span><span></span><span class="a-note"><div class="oute">avoiding — set by AVOID 1 in your orders</div></span></div><div class="a-row"><span class="mark"></span><span><span class="nm">Pikemen</span> <span class="num">(845)</span></span><span class="dim a-men">12</span><span></span><span class="a-note"><div class="oute">in Forest (11,12) — none of your units in Plain (10,11) will take aid</div></span></div></div></section><div class="dim">Click a unit to go to it.</div></div></div></div>
+</div>
+</section>
+<section class="ux-panel" role="tabpanel" id="ux-panel-B" aria-labelledby="ux-tab-B" hidden>
+<div class="ux-intro">
+<h2 class="ux-name">B — One line, cut short</h2>
+<p class="ux-cost">every row is exactly one line, but long notes and warnings are cut off and the full text needs a hover, which a phone does not have</p>
+</div>
+<div class="ux-draw">
+<div class="win"><div class="bar"><span>Attacks · 2 in your orders</span><span>✕</span></div><div class="body"><div class="rail"><div class="sel">Raiders (812) → Bandits (1203)<br><span class="dim">Plain (10,11)</span></div><div>Hawks (901) → Orcs (77)<br><span class="dim">Hills (14,9)</span></div></div><div class="detail">
+<div><div class="title">Raiders (812) attacks Bandits (1203)</div><div class="dim">in Plain (10,11) · <span class="link">show on map</span></div></div>
+<section class="card "><h3>Frontline <span class="dim">4 units · 48 men</span></h3><div class="b-rows"><div class="b-row"><span class="mark"></span><span><span class="nm">Raiders</span> <span class="num">(812)</span></span><span class="dim b-men">20</span><span>melee</span><span class="dim b-note" title=""></span></div><div class="b-row"><span class="mark"></span><span><span class="nm">Guards</span> <span class="num">(815)</span></span><span class="dim b-men">15</span><span>melee</span><span class="dim b-note" title="from Plain (10,12)">from Plain (10,12)</span></div><div class="b-row"><span class="mark">!</span><span><span class="nm">Scouts</span> <span class="num">(820)</span></span><span class="dim b-men">5</span><span>ranged</span><span class="warn b-note" title="ranged in the frontline: could stand in the backline, safe until the frontline falls">ranged in the frontline: could stand in the backline, safe until the frontline falls</span></div><div class="b-row"><span class="mark">!</span><span><span class="nm">Wagoneers</span> <span class="num">(822)</span></span><span class="dim b-men">8</span><span>non-combatant</span><span class="warn b-note" title="non-combatant in the frontline: likely to be cut down">non-combatant in the frontline: likely to be cut down</span></div></div></section><section class="card "><h3>Backline <span class="dim">2 units · 11 men</span></h3><div class="help">Can only shoot or cast spells until the frontline falls.</div><div class="b-rows"><div class="b-row"><span class="mark"></span><span><span class="nm">Longbows</span> <span class="num">(830)</span></span><span class="dim b-men">10</span><span>ranged</span><span class="dim b-note" title="set by BEHIND 1 in your orders">set by BEHIND 1 in your orders</span></div><div class="b-row"><span class="mark"></span><span><span class="nm">Ash the Wise</span> <span class="num">(831)</span></span><span class="dim b-men">1</span><span>mage</span><span class="dim b-note" title="set by BEHIND 1 in your orders">set by BEHIND 1 in your orders</span></div></div></section><section class="card out"><h3>Will not fight <span class="dim">2 units · 15 men</span></h3><div class="b-rows"><div class="b-row"><span class="mark"></span><span><span class="nm">Traders</span> <span class="num">(840)</span></span><span class="dim b-men">3</span><span></span><span class="oute b-note" title="avoiding — set by AVOID 1 in your orders">avoiding — set by AVOID 1 in your orders</span></div><div class="b-row"><span class="mark"></span><span><span class="nm">Pikemen</span> <span class="num">(845)</span></span><span class="dim b-men">12</span><span></span><span class="oute b-note" title="in Forest (11,12) — none of your units in Plain (10,11) will take aid">in Forest (11,12) — none of your units in Plain (10,11) will take aid</span></div></div></section><div class="dim">Click a unit to go to it.</div></div></div></div>
+</div>
+</section>
+<section class="ux-panel" role="tabpanel" id="ux-panel-C" aria-labelledby="ux-tab-C" hidden>
+<div class="ux-intro">
+<h2 class="ux-name">C — Note on its own line beneath</h2>
+<p class="ux-cost">no columns to line up; every note gets the full width under its unit, so the list is taller</p>
+</div>
+<div class="ux-draw">
+<div class="win"><div class="bar"><span>Attacks · 2 in your orders</span><span>✕</span></div><div class="body"><div class="rail"><div class="sel">Raiders (812) → Bandits (1203)<br><span class="dim">Plain (10,11)</span></div><div>Hawks (901) → Orcs (77)<br><span class="dim">Hills (14,9)</span></div></div><div class="detail">
+<div><div class="title">Raiders (812) attacks Bandits (1203)</div><div class="dim">in Plain (10,11) · <span class="link">show on map</span></div></div>
+<section class="card "><h3>Frontline <span class="dim">4 units · 48 men</span></h3><div class="c-rows"><div class="c-row"><div><span class="nm">Raiders</span> <span class="num">(812)</span> <span class="dim">· 20 men</span> · melee</div></div><div class="c-row"><div><span class="nm">Guards</span> <span class="num">(815)</span> <span class="dim">· 15 men</span> · melee</div><div class=c-sub><div class="dim">from Plain (10,12)</div></div></div><div class="c-row"><div><span class="nm">Scouts</span> <span class="num">(820)</span> <span class="dim">· 5 men</span> · ranged</div><div class=c-sub><div class="warn">! ranged in the frontline: could stand in the backline, safe until the frontline falls</div></div></div><div class="c-row"><div><span class="nm">Wagoneers</span> <span class="num">(822)</span> <span class="dim">· 8 men</span> · non-combatant</div><div class=c-sub><div class="dim">from Forest (11,12), if they can reach the battle</div><div class="warn">! non-combatant in the frontline: likely to be cut down</div></div></div></div></section><section class="card "><h3>Backline <span class="dim">2 units · 11 men</span></h3><div class="help">Can only shoot or cast spells until the frontline falls.</div><div class="c-rows"><div class="c-row"><div><span class="nm">Longbows</span> <span class="num">(830)</span> <span class="dim">· 10 men</span> · ranged</div><div class=c-sub><div class="dim">set by BEHIND 1 in your orders</div></div></div><div class="c-row"><div><span class="nm">Ash the Wise</span> <span class="num">(831)</span> <span class="dim">· 1 man</span> · mage</div><div class=c-sub><div class="dim">set by BEHIND 1 in your orders</div></div></div></div></section><section class="card out"><h3>Will not fight <span class="dim">2 units · 15 men</span></h3><div class="c-rows"><div class="c-row"><div><span class="nm">Traders</span> <span class="num">(840)</span> <span class="dim">· 3 men</span></div><div class=c-sub><div class="oute">avoiding — set by AVOID 1 in your orders</div></div></div><div class="c-row"><div><span class="nm">Pikemen</span> <span class="num">(845)</span> <span class="dim">· 12 men</span></div><div class=c-sub><div class="oute">in Forest (11,12) — none of your units in Plain (10,11) will take aid</div></div></div></div></section><div class="dim">Click a unit to go to it.</div></div></div></div>
+</div>
+</section>
+</div>
+<script>
+// Tabs: one panel on screen, the left and right arrow keys move between them, nothing persists.
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.ux-tabs > .ux-tab'));
+  if (!tabs.length) return;
+  var row = tabs[0].parentNode, wrap = row.parentNode;
+  function selected(){ return tabs.findIndex(function(t){ return t.getAttribute('aria-selected') === 'true'; }); }
+  // A faded edge on whichever side has tabs out of view.
+  function fade(){
+    wrap.classList.toggle('ux-more-left', row.scrollLeft > 1);
+    wrap.classList.toggle('ux-more-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
+  }
+  // Scrolls the row alone: scrollIntoView would move the page too.
+  function reveal(tab){
+    var t = tab.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (t.left < r.left) row.scrollLeft -= r.left - t.left + 16;
+    else if (t.right > r.right) row.scrollLeft += t.right - r.right + 16;
+    fade();
+  }
+  function select(i){
+    tabs.forEach(function(t, n){
+      t.setAttribute('aria-selected', n === i ? 'true' : 'false');
+      t.tabIndex = n === i ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = n !== i;
+    });
+    reveal(tabs[i]);
+  }
+  tabs.forEach(function(t, i){ t.addEventListener('click', function(){ select(i); }); });
+  document.addEventListener('keydown', function(e){
+    var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    // A control a drawing carries (a field, a button, a slider) keeps its own arrows.
+    if (e.target.closest && e.target.closest('.ux-draw')) return;
+    e.preventDefault();
+    var focused = tabs.indexOf(document.activeElement) >= 0;
+    var i = (selected() + step + tabs.length) % tabs.length;
+    select(i);
+    if (focused) tabs[i].focus({preventScroll: true});
+  });
+  row.addEventListener('scroll', fade);
+  window.addEventListener('resize', fade);
+  window.addEventListener('load', function(){ reveal(tabs[selected()]); });
+  reveal(tabs[selected()]);
+})();
+</script></body></html>

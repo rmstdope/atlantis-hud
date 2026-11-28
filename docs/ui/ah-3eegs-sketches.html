@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  A starter sheet for one round of concept sketches (skills/agree-experience, "Sketching the idea
+  first"; the agreed look is docs/ui/cb-icwi-concept-sketches.html). Copy it to the scratchpad as
+  <id>-sketches-<round>.html, set TITLE and IDEAS, and replace each idea's draw function. Two to
+  four ideas, never one and never more. Set AGREED to the agreed idea's letter only for the copy
+  kept in docs/ui/: it circles that idea in red and writes "agreed" beside it.
+
+  The look is marker on a whiteboard: wobbly doubled strokes, a handwriting typeface, real words on
+  the screen, one blue accent plus hatched fill for what the idea is about, red notes and arrows in
+  the margin. Rectangles and words only; no styling, no exact sizes.
+-->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sketches, round 1 · A clearer attack window</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#fdfcf8;font-family:system-ui,sans-serif;color:#222}
+  header{padding:14px 20px;border-bottom:1px solid #ddd;background:#fff}
+  h1{margin:0;font-size:18px} p{margin:4px 0 0;font-size:13px;color:#555}
+  /* One idea above the other, each at full width, so a sheet reads on a narrow screen (cb-395b). */
+  main{padding:20px;max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+  svg{display:block;width:100%;height:auto;background:#fffef9;border:1px solid #e6e2d6;border-radius:4px}
+</style>
+<script>
+// The hand-drawn helper. Every stroke is drawn twice with a little jitter; the seed is fixed so a
+// sheet looks the same each time it is opened.
+const BLUE = '#1971c2', RED = '#c92a2a', INK = '#1e1e1e';
+function Sketch(svg, o){ this.svg = svg; this.o = Object.assign({stroke: INK, w: 2.4, jit: 1.4, double: true, font: "'Caveat', cursive"}, o || {}); this.seed = 7; }
+Sketch.prototype.r = function(){ this.seed = (this.seed * 9301 + 49297) % 233280; return this.seed / 233280 - 0.5; };
+Sketch.prototype.add = function(tag, attrs, text){ const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text) e.textContent = text; this.svg.appendChild(e); return e; };
+Sketch.prototype.line = function(x1, y1, x2, y2, o){ o = Object.assign({}, this.o, o || {}); for (let p = 0; p < (o.double ? 2 : 1); p++){ const j = o.jit, mx = (x1 + x2) / 2 + this.r() * j * 2, my = (y1 + y2) / 2 + this.r() * j * 2; this.add('path', {d: `M${x1 + this.r() * j},${y1 + this.r() * j} Q${mx},${my} ${x2 + this.r() * j},${y2 + this.r() * j}`, fill: 'none', stroke: o.stroke, 'stroke-width': o.w * (p ? 0.7 : 1), 'stroke-linecap': 'round', opacity: p ? 0.6 : 1}); } };
+Sketch.prototype.rect = function(x, y, w, h, o){ this.line(x, y, x + w, y, o); this.line(x + w, y, x + w, y + h, o); this.line(x + w, y + h, x, y + h, o); this.line(x, y + h, x, y, o); };
+Sketch.prototype.hachure = function(x, y, w, h, color, gap){ gap = gap || 8; for (let i = -h; i < w; i += gap){ const ax = Math.max(x, x + i), ay = y + Math.max(0, -i), bx = Math.min(x + w, x + i + h), by = y + Math.min(h, w - i); this.line(ax, ay, bx, by, {stroke: color || BLUE, w: 1.3, double: false, jit: 0.8}); } };
+Sketch.prototype.text = function(x, y, s, o){ o = Object.assign({size: 22, fill: this.o.stroke, anchor: 'start'}, o || {}); this.add('text', {x, y, 'font-family': this.o.font, 'font-size': o.size, fill: o.fill, 'text-anchor': o.anchor}, s); };
+Sketch.prototype.arrow = function(x1, y1, x2, y2, o){ this.line(x1, y1, x2, y2, o); const a = Math.atan2(y2 - y1, x2 - x1); this.line(x2, y2, x2 - 12 * Math.cos(a - 0.5), y2 - 12 * Math.sin(a - 0.5), o); this.line(x2, y2, x2 - 12 * Math.cos(a + 0.5), y2 - 12 * Math.sin(a + 0.5), o); };
+Sketch.prototype.note = function(x, y, s){ this.text(x, y, s, {fill: RED}); };
+// A loose hand-drawn loop, squarish so it takes in a box's corners: the kept sheet's mark on the agreed idea.
+Sketch.prototype.ring = function(cx, cy, rx, ry){ const f = t => Math.sign(t) * Math.pow(Math.abs(t), 0.3); let d = ''; for (let a = 0; a <= 6.75; a += 0.12){ const k = 1 + this.r() * 0.025 + (a > 6.3 ? 0.04 : 0); d += (a ? ' L' : 'M') + (cx + rx * k * f(Math.cos(a))) + ',' + (cy + ry * k * f(Math.sin(a))); } this.add('path', {d, fill: 'none', stroke: RED, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}); };
+</script></head><body>
+<header><h1 id="title"></h1><p>Rough sketches of the idea. Which idea do we build on?</p></header>
+<main id="sheet"></main>
+<script>
+// ---- Edit from here --------------------------------------------------------------------------
+const TITLE = 'Sketches, round 1 · A clearer attack window';
+const AGREED = 'A';
+const IDEAS = [
+  {letter: 'A', name: 'three cards, one row per unit', cost: 'long notes are cut short; the full note shows on hover', draw(s){
+    s.rect(10, 10, 520, 340); s.text(24, 36, 'Raiders (812) attacks Bandits (1203)', {size: 21});
+    const card = (y, h, title, color, rows) => {
+      s.rect(24, y, 492, h, {stroke: color}); s.line(24, y, 24, y + h, {stroke: color, w: 6});
+      s.text(40, y + 22, title, {fill: color, size: 21});
+      rows.forEach((r, i) => { s.text(40, y + 46 + i * 22, r[0], {size: 18}); s.text(250, y + 46 + i * 22, r[1], {size: 18}); s.text(330, y + 46 + i * 22, r[2], {size: 18, fill: '#888'}); });
+    };
+    card(50, 110, 'FRONTLINE  4 units · 60 men', BLUE, [['Raiders 812','20','melee'],['Guards 815','15','melee'],['! Scouts 820','5','ranged  could go behind…']]);
+    card(172, 80, 'BACKLINE  2 units · 12 men', BLUE, [['Archers 830','10','ranged'],['Mage 831','2','mage']]);
+    card(264, 76, 'WILL NOT FIGHT  1 unit', RED, [['Traders 840','3','avoiding']]);
+    s.note(360, 30, 'columns line up');
+  }},
+  {letter: 'B', name: 'three columns side by side', cost: 'needs a wide window; on a narrow one the columns stack', draw(s){
+    s.rect(10, 10, 520, 340); s.text(24, 36, 'Raiders (812) attacks Bandits (1203)', {size: 21});
+    const col = (x, title, color, units) => {
+      s.text(x, 74, title, {fill: color, size: 20});
+      units.forEach((u, i) => { s.rect(x, 86 + i * 70, 150, 60, {stroke: color}); s.text(x + 8, 108 + i * 70, u[0], {size: 18}); s.text(x + 8, 130 + i * 70, u[1], {size: 16, fill: '#888'}); });
+    };
+    col(24, 'FRONTLINE 60 men', BLUE, [['Raiders 812','20 · melee'],['Guards 815','15 · melee'],['! Scouts 820','5 · ranged']]);
+    col(194, 'BACKLINE 12 men', BLUE, [['Archers 830','10 · ranged'],['Mage 831','2 · mage']]);
+    col(364, 'WILL NOT FIGHT', RED, [['Traders 840','avoiding']]);
+    s.hachure(194, 86, 150, 60, BLUE, 14);
+    s.note(370, 260, 'a note stays'); s.note(370, 284, 'inside its card');
+  }},
+  {letter: 'C', name: 'a battle line drawing, then the list', cost: 'more height; the list sits further down', draw(s){
+    s.rect(10, 10, 520, 340); s.text(24, 36, 'Raiders (812) attacks Bandits (1203)', {size: 21});
+    s.rect(24, 50, 492, 70); s.hachure(24, 50, 160, 70, RED, 12); s.text(60, 92, 'Bandits', {fill: RED});
+    s.hachure(200, 50, 150, 70, BLUE, 12); s.text(222, 80, 'Frontline', {fill: BLUE}); s.text(232, 104, '60 men');
+    s.rect(366, 50, 150, 70, {stroke: BLUE}); s.text(388, 80, 'Backline', {fill: BLUE}); s.text(398, 104, '12 men');
+    s.text(24, 150, 'FRONTLINE', {fill: BLUE, size: 20});
+    s.text(40, 174, 'Raiders 812 · 20 · melee', {size: 18}); s.text(40, 196, '! Scouts 820 · 5 · ranged', {size: 18});
+    s.text(64, 216, 'could stand in the backline, safe…', {size: 16, fill: '#888'});
+    s.line(24, 228, 516, 228, {stroke: '#bbb', w: 1});
+    s.text(24, 252, 'BACKLINE', {fill: BLUE, size: 20}); s.text(40, 276, 'Archers 830 · 10 · ranged', {size: 18});
+    s.line(24, 290, 516, 290, {stroke: '#bbb', w: 1});
+    s.text(24, 316, 'WILL NOT FIGHT', {fill: RED, size: 20}); s.text(40, 338, 'Traders 840 · avoiding', {size: 18});
+    s.note(380, 196, '← note indented'); s.note(380, 216, 'under its unit');
+  }},
+];
+// ---- to here ---------------------------------------------------------------------------------
+document.title = TITLE + ' — sketches';
+document.getElementById('title').textContent = TITLE;
+(function(){
+  // Each idea gets its own SVG, stacked down the page.
+  const sheet = document.getElementById('sheet'), x = 30, scale = 0.7, w = 460, h = 390;
+  IDEAS.forEach(idea => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    sheet.appendChild(svg);
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${x},28) scale(${scale})`);
+    svg.appendChild(g);
+    idea.draw(new Sketch(g));
+    const s = new Sketch(svg);
+    s.text(x + 5, 308, `${idea.letter} — ${idea.name}`, {size: 24});
+    s.text(x + 5, 333, idea.cost, {size: 20, fill: '#666'});
+    if (AGREED === idea.letter){ s.ring(x + 190, 184, 214, 176); s.text(x + 330, 378, 'agreed', {size: 26, fill: RED}); }
+  });
+})();
+</script></body></html>
