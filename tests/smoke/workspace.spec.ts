@@ -4498,11 +4498,15 @@ test("the attacks window keeps a long unit name on one line in Compact view", as
   if (nameBox === null || numberBox === null) throw new Error("the long name has no box");
   // The number is whole, inside the cell.
   expect(numberBox.x + numberBox.width).toBeLessThanOrEqual(nameBox.x + nameBox.width + 1);
-  // In Chromium the name only just fits the 12rem column once it stops wrapping, so a phone-wide
-  // window is where it must give way: still one line, the name overflowing its box, which is where
-  // the ellipsis is drawn.
+  // Whether this name fits the column once it stops wrapping depends on the machine's fonts (it
+  // just does in Chromium on macOS, with room to spare on Linux), so the cut is proven where no font
+  // can fit it: a phone-wide window and the row squeezed to 150px, leaving the name ~3rem. Still one
+  // line, and the name overflows its box, which is where the ellipsis is drawn.
   const wide = page.viewportSize();
   await page.setViewportSize({ width: 320, height: 720 });
+  await page.getByTestId("attack-unit-13997").evaluate((el) => {
+    (el as HTMLElement).style.width = "150px";
+  });
   await expect.poll(async () => (await heightOf("13997")) / (await heightOf("13401"))).toBeLessThan(1.3);
   await expect
     .poll(() => name.locator("span").first().evaluate((el) => el.scrollWidth > el.clientWidth))
