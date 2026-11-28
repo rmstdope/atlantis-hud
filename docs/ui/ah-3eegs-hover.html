@@ -1,0 +1,143 @@
+<!doctype html>
+<!--
+  The house frame of a detailed drawing (cb-buko; the agreed look is docs/ui/cb-buko-tabs.html and
+  cb-buko-states.html). scripts/ux-sheet fills the two marker lines below; nothing else writes here.
+  Every class starts with `ux-' and only `body' is styled by element, so what is drawn inside a tab
+  keeps the product's own look.
+-->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How does a clickable unit show it can be clicked? · A clearer attack window</title>
+<style>
+  body{margin:0;padding:1px 8px;background:#f4f4f5}
+  .ux-page{max-width:980px;margin:14px auto 30px;background:#fff;border:1px solid #e4e4e7;border-radius:10px}
+  .ux-head,.ux-tabs,.ux-intro{font-family:system-ui,-apple-system,sans-serif;line-height:normal;text-align:left;color:#18181b}
+  .ux-head{padding:14px 16px 0}
+  .ux-work{font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:.04em}
+  .ux-heading{margin:2px 0 10px;font-size:19px}
+  .ux-tabrow{position:relative}
+  .ux-tabrow::before,.ux-tabrow::after{content:"";position:absolute;top:0;bottom:1px;width:44px;pointer-events:none;opacity:0}
+  .ux-tabrow::before{left:0;background:linear-gradient(to left,rgba(255,255,255,0),#fff)}
+  .ux-tabrow::after{right:0;background:linear-gradient(to right,rgba(255,255,255,0),#fff)}
+  .ux-tabrow.ux-more-left::before,.ux-tabrow.ux-more-right::after{opacity:1}
+  .ux-tabs{display:flex;gap:4px;border-bottom:1px solid #e4e4e7;padding:0 16px;overflow-x:auto}
+  .ux-tab{flex:none;border:0;border-radius:0;background:none;margin:0;font:inherit;font-size:14px;padding:8px 12px;color:#52525b;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+  .ux-tab[aria-selected="true"]{color:#18181b;border-bottom-color:#7c3aed;font-weight:600}
+  .ux-tag{display:inline-block;font-size:11px;border-radius:999px;padding:1px 7px;margin-left:6px;font-weight:600}
+  .ux-rec{background:#ede9fe;color:#5b21b6}
+  .ux-agreed{background:#dcfce7;color:#166534}
+  .ux-panel[hidden]{display:none!important}
+  .ux-intro{padding:12px 16px 4px}
+  .ux-name{margin:0;font-size:16px}
+  .ux-cost{margin:3px 0 0;font-size:13px;color:#52525b}
+  .ux-why{margin:3px 0 0;font-size:13px;color:#5b21b6}
+  .ux-draw{padding:12px 16px 16px}
+</style></head><body>
+
+<style>
+.win{background:#2a323d;color:#d4dce6;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid #46525f;border-radius:4px;max-width:1100px;margin:0 auto}
+.bar{display:flex;gap:10px;align-items:center;padding:6px 10px;border-bottom:1px solid #46525f;color:#a8b4c2}.sp{flex:1}
+.body{display:grid;grid-template-columns:15rem 1fr}
+.rail{border-right:1px solid #46525f}.rail div{padding:6px 10px;border-bottom:1px solid #333d49}.rail .sel{background:rgba(90,169,222,.15)}
+.dim{color:#99a4b2}.num{color:#5aa9de}.nm{text-decoration:underline dotted;text-underline-offset:3px}
+.detail{padding:12px 14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.title{font-size:14px}.link{color:#5aa9de;text-decoration:underline dotted}
+.card{border:1px solid #46525f;border-left:4px solid #e0b25a;border-radius:4px;background:#222933}
+.card.out{border-left-color:#e06c6c}
+.card h3{margin:0;padding:7px 10px;font:inherit;text-transform:uppercase;letter-spacing:.06em;color:#e0b25a;display:flex;gap:10px;border-bottom:1px solid #333d49}
+.card.out h3{color:#e06c6c}.card h3 .dim{text-transform:none;letter-spacing:0}
+.card .help{padding:6px 10px;color:#99a4b2}
+.warn{color:#e5a64a}.mark{color:#e5a64a;font-weight:bold}.oute{color:#e06c6c}
+.rows{padding:4px 0}.row{display:grid;grid-template-columns:1.2em 12rem 3rem 8.5rem minmax(0,1fr);gap:0 10px;padding:4px 10px;align-items:baseline}
+.row:nth-child(even){background:rgba(255,255,255,.03)}.men{text-align:right}
+.compact .note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chk{display:inline-flex;gap:6px;align-items:center;color:#a8b4c2}.chk i{display:inline-block;width:12px;height:12px;border:1px solid #99a4b2;border-radius:2px;font-style:normal;font-size:10px;line-height:12px;text-align:center;color:#2a323d}.chk i.on{background:#5aa9de;border-color:#5aa9de}
+.banner{border-radius:4px;padding:6px 10px}.banner.danger{border:1px solid #e06c6c;background:rgba(224,108,108,.1);color:#e06c6c}.banner.warnb{border:1px solid #e5a64a;background:rgba(229,166,74,.1);color:#e5a64a}
+.empty{padding:24px;text-align:center;color:#99a4b2}
+.narrow{max-width:390px}.narrow .body{grid-template-columns:1fr}.narrow .rail{border-right:0;border-bottom:1px solid #46525f}
+.narrow .row{grid-template-columns:1.2em 1fr 3rem}.narrow .row>span:nth-child(4){grid-column:2}.narrow .note{grid-column:2/4}
+.note{min-width:0}
+@media (max-width:700px){.body{grid-template-columns:1fr}.rail{border-right:0;border-bottom:1px solid #46525f}.row{grid-template-columns:1.2em minmax(0,1fr) 3rem}.row>span:nth-child(4){grid-column:2}.note{grid-column:2/4}}
+</style>
+<style>
+.a-row{cursor:pointer}.a-row:hover,.a-row.a-hover{background:rgba(90,169,222,.14)!important;box-shadow:inset 3px 0 0 #5aa9de}
+.a-row:hover .nm,.a-row.a-hover .nm{color:#fff;text-decoration-style:solid;text-decoration-color:#5aa9de}
+.a-link{cursor:pointer}.a-link:hover{text-decoration-style:solid;color:#8ccaf2}
+.b-row .nm{cursor:pointer}.b-row .nm:hover,.b-row.b-hover .nm{color:#5aa9de;text-decoration-style:solid}
+.b-link{cursor:pointer}.b-link:hover{text-decoration-style:solid;color:#8ccaf2}
+</style>
+<div class="ux-page">
+<header class="ux-head">
+<div class="ux-work">A clearer attack window</div>
+<h1 class="ux-heading">How does a clickable unit show it can be clicked?</h1>
+</header>
+<div class="ux-tabrow"><div class="ux-tabs" role="tablist">
+<button type="button" class="ux-tab" role="tab" data-ux-tab="A" id="ux-tab-A" aria-controls="ux-panel-A" aria-selected="true" tabindex="0">A — The whole row lights up<span class="ux-tag ux-rec">Recommended</span><span class="ux-tag ux-agreed">Agreed</span></button>
+<button type="button" class="ux-tab" role="tab" data-ux-tab="B" id="ux-tab-B" aria-controls="ux-panel-B" aria-selected="false" tabindex="-1">B — Only the name lights up</button>
+</div></div>
+<section class="ux-panel" role="tabpanel" id="ux-panel-A" aria-labelledby="ux-tab-A">
+<div class="ux-intro">
+<h2 class="ux-name">A — The whole row lights up<span class="ux-tag ux-rec">Recommended</span><span class="ux-tag ux-agreed">Agreed</span></h2>
+<p class="ux-cost">the whole row is the button, so the hit area is large; the hover band covers the note too</p>
+<p class="ux-why">Recommended: the standard list pattern (a row you can click highlights as one); a big target, and the same highlight shows keyboard focus. The Guards row is drawn as hovered, and every row responds to a real hover</p>
+</div>
+<div class="ux-draw">
+<div class="win "><div class="bar"><span>Attacks · 2 in your orders</span><span class="sp"></span><span class="chk"><i class=""></i>Compact view</span><span>✕</span></div><div class="body"><div class="rail"><div class="sel">Raiders (812) → Bandits (1203)<br><span class="dim">Plain (10,11)</span></div><div>Hawks (901) → Orcs (77)<br><span class="dim">Hills (14,9)</span></div></div><div class="detail"><div style="display:flex;align-items:flex-start;gap:10px"><div><div class="title">Raiders (812) attacks Bandits (1203)</div><div class="dim">in Plain (10,11) · <span class="link a-link">show on map</span></div></div></div><section class="card "><h3>Frontline <span class="dim">4 units · 48 men</span></h3><div class="rows"><div class="row a-row"><span class="mark"></span><span><span class="nm">Raiders</span> <span class="num">(812)</span></span><span class="dim men">20</span><span>melee</span><span class="note"></span></div><div class="row a-row a-hover"><span class="mark"></span><span><span class="nm">Guards</span> <span class="num">(815)</span></span><span class="dim men">15</span><span>melee</span><span class="note"><div class="dim">from Plain (10,12)</div></span></div><div class="row a-row"><span class="mark">!</span><span><span class="nm">Scouts</span> <span class="num">(820)</span></span><span class="dim men">5</span><span>ranged</span><span class="note"><div class="warn">ranged in the frontline: could stand in the backline, safe until the frontline falls</div></span></div><div class="row a-row"><span class="mark">!</span><span><span class="nm">Wagoneers</span> <span class="num">(822)</span></span><span class="dim men">8</span><span>non-combatant</span><span class="note"><div class="warn">non-combatant in the frontline: likely to be cut down</div><div class="dim">from Forest (11,12), if they can reach the battle</div></span></div></div></section><section class="card "><h3>Backline <span class="dim">2 units · 11 men</span></h3><div class="help">Can only shoot or cast spells until the frontline falls.</div><div class="rows"><div class="row a-row"><span class="mark"></span><span><span class="nm">Longbows</span> <span class="num">(830)</span></span><span class="dim men">10</span><span>ranged</span><span class="note"><div class="dim"></div></span></div><div class="row a-row"><span class="mark"></span><span><span class="nm">Ash the Wise</span> <span class="num">(831)</span></span><span class="dim men">1</span><span>mage</span><span class="note"><div class="dim"></div></span></div></div></section><section class="card out"><h3>Will not fight <span class="dim">2 units · 15 men</span></h3><div class="rows"><div class="row a-row"><span class="mark"></span><span><span class="nm">Traders</span> <span class="num">(840)</span></span><span class="dim men">3</span><span></span><span class="note"><div class="oute">avoiding</div></span></div><div class="row a-row"><span class="mark"></span><span><span class="nm">Pikemen</span> <span class="num">(845)</span></span><span class="dim men">12</span><span></span><span class="note"><div class="oute">in Forest (11,12) — none of your units in Plain (10,11) will take aid</div></span></div></div></section><div class="dim">Click a unit to go to it.</div></div></div></div>
+
+</div>
+</section>
+<section class="ux-panel" role="tabpanel" id="ux-panel-B" aria-labelledby="ux-tab-B" hidden>
+<div class="ux-intro">
+<h2 class="ux-name">B — Only the name lights up</h2>
+<p class="ux-cost">only the name is the button, so the target is small; the rest of the row stays plain text. The Guards name is drawn as hovered</p>
+</div>
+<div class="ux-draw">
+<div class="win "><div class="bar"><span>Attacks · 2 in your orders</span><span class="sp"></span><span class="chk"><i class=""></i>Compact view</span><span>✕</span></div><div class="body"><div class="rail"><div class="sel">Raiders (812) → Bandits (1203)<br><span class="dim">Plain (10,11)</span></div><div>Hawks (901) → Orcs (77)<br><span class="dim">Hills (14,9)</span></div></div><div class="detail"><div style="display:flex;align-items:flex-start;gap:10px"><div><div class="title">Raiders (812) attacks Bandits (1203)</div><div class="dim">in Plain (10,11) · <span class="link b-link">show on map</span></div></div></div><section class="card "><h3>Frontline <span class="dim">4 units · 48 men</span></h3><div class="rows"><div class="row b-row"><span class="mark"></span><span><span class="nm">Raiders</span> <span class="num">(812)</span></span><span class="dim men">20</span><span>melee</span><span class="note"></span></div><div class="row b-row b-hover"><span class="mark"></span><span><span class="nm">Guards</span> <span class="num">(815)</span></span><span class="dim men">15</span><span>melee</span><span class="note"><div class="dim">from Plain (10,12)</div></span></div><div class="row b-row"><span class="mark">!</span><span><span class="nm">Scouts</span> <span class="num">(820)</span></span><span class="dim men">5</span><span>ranged</span><span class="note"><div class="warn">ranged in the frontline: could stand in the backline, safe until the frontline falls</div></span></div><div class="row b-row"><span class="mark">!</span><span><span class="nm">Wagoneers</span> <span class="num">(822)</span></span><span class="dim men">8</span><span>non-combatant</span><span class="note"><div class="warn">non-combatant in the frontline: likely to be cut down</div><div class="dim">from Forest (11,12), if they can reach the battle</div></span></div></div></section><section class="card "><h3>Backline <span class="dim">2 units · 11 men</span></h3><div class="help">Can only shoot or cast spells until the frontline falls.</div><div class="rows"><div class="row b-row"><span class="mark"></span><span><span class="nm">Longbows</span> <span class="num">(830)</span></span><span class="dim men">10</span><span>ranged</span><span class="note"><div class="dim"></div></span></div><div class="row b-row"><span class="mark"></span><span><span class="nm">Ash the Wise</span> <span class="num">(831)</span></span><span class="dim men">1</span><span>mage</span><span class="note"><div class="dim"></div></span></div></div></section><section class="card out"><h3>Will not fight <span class="dim">2 units · 15 men</span></h3><div class="rows"><div class="row b-row"><span class="mark"></span><span><span class="nm">Traders</span> <span class="num">(840)</span></span><span class="dim men">3</span><span></span><span class="note"><div class="oute">avoiding</div></span></div><div class="row b-row"><span class="mark"></span><span><span class="nm">Pikemen</span> <span class="num">(845)</span></span><span class="dim men">12</span><span></span><span class="note"><div class="oute">in Forest (11,12) — none of your units in Plain (10,11) will take aid</div></span></div></div></section><div class="dim">Click a unit to go to it.</div></div></div></div>
+
+</div>
+</section>
+</div>
+<script>
+// Tabs: one panel on screen, the left and right arrow keys move between them, nothing persists.
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.ux-tabs > .ux-tab'));
+  if (!tabs.length) return;
+  var row = tabs[0].parentNode, wrap = row.parentNode;
+  function selected(){ return tabs.findIndex(function(t){ return t.getAttribute('aria-selected') === 'true'; }); }
+  // A faded edge on whichever side has tabs out of view.
+  function fade(){
+    wrap.classList.toggle('ux-more-left', row.scrollLeft > 1);
+    wrap.classList.toggle('ux-more-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
+  }
+  // Scrolls the row alone: scrollIntoView would move the page too.
+  function reveal(tab){
+    var t = tab.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (t.left < r.left) row.scrollLeft -= r.left - t.left + 16;
+    else if (t.right > r.right) row.scrollLeft += t.right - r.right + 16;
+    fade();
+  }
+  function select(i){
+    tabs.forEach(function(t, n){
+      t.setAttribute('aria-selected', n === i ? 'true' : 'false');
+      t.tabIndex = n === i ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = n !== i;
+    });
+    reveal(tabs[i]);
+  }
+  tabs.forEach(function(t, i){ t.addEventListener('click', function(){ select(i); }); });
+  document.addEventListener('keydown', function(e){
+    var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    // A control a drawing carries (a field, a button, a slider) keeps its own arrows.
+    if (e.target.closest && e.target.closest('.ux-draw')) return;
+    e.preventDefault();
+    var focused = tabs.indexOf(document.activeElement) >= 0;
+    var i = (selected() + step + tabs.length) % tabs.length;
+    select(i);
+    if (focused) tabs[i].focus({preventScroll: true});
+  });
+  row.addEventListener('scroll', fade);
+  window.addEventListener('resize', fade);
+  window.addEventListener('load', function(){ reveal(tabs[selected()]); });
+  reveal(tabs[selected()]);
+})();
+</script></body></html>
