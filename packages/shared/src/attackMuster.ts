@@ -313,10 +313,12 @@ export function attacksInOrders(input: {
   const views: AttackView[] = [];
   for (const [attackerId, attack] of orders) {
     const found = ownUnit.get(attackerId);
-    if (attack.targets.length === 0 || found === undefined) {
+    // An attacker with no men has nobody to fight with, and the hex's muster leaves it out too.
+    if (attack.targets.length === 0 || found === undefined || found.unit.men <= 0) {
       continue;
     }
-    views.push(viewOf(found.unit, found.region, attack.targets));
+    // A target named twice is attacked once: the first mention keeps its place.
+    views.push(viewOf(found.unit, found.region, [...new Set(attack.targets)]));
   }
   return views;
 
@@ -363,11 +365,13 @@ export function attacksInOrders(input: {
         allies.set(target.factionId, target.factionName ?? `faction ${target.factionId}`);
       }
     }
+    // Only when every target the hex shows is known to be an ally's: one whose faction the report
+    // hides may well be fought, so the groups stay.
     const withdraws =
       foreignTargets > 0 &&
       targetIds.every((id) => {
         const target = shown.get(id);
-        return target === undefined || target.factionId === null || allies.has(target.factionId);
+        return target === undefined || (target.factionId !== null && allies.has(target.factionId));
       });
 
     const frontline: MusterUnit[] = [];

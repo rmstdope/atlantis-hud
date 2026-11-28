@@ -474,6 +474,10 @@ describe("AppHeader the attacks chip (ah-pbyfh)", () => {
     expect(attacks).toBeGreaterThan(battles);
     // Only the attacks chip's own opening tag lies between the two test ids: nothing sits between.
     expect(markup.slice(battles, attacks).match(/<button/g)?.length ?? 0).toBe(1);
+
+    const alone = draw({ battleCount: 0, attackCount: 2 });
+    expect(alone).not.toContain('data-testid="battles-chip"');
+    expect(alone).toContain('data-testid="attacks-chip"');
   });
 
   it("reads as pressed while the window is open", () => {

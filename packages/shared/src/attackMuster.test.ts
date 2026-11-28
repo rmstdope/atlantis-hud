@@ -352,6 +352,59 @@ describe("who of ours joins an attack (rules/com_muster)", () => {
     expect(names(views[0]!.frontline)).toEqual(["Raiders"]);
   });
 
+  it("names a repeated target once", () => {
+    const [view] = attacks(world({ here: [own("812", "Raiders", 20)] }), [
+      "unit 812",
+      "ATTACK 77 1203",
+      "ATTACK 77 1203"
+    ]);
+    expect(view).toMatchObject({ targets: ["unit 77", "Bandits (1203)"], missingTargets: ["77"] });
+  });
+
+  it("still shows the groups beside an ally target when another target's faction is unknown", () => {
+    const regions = world({ here: [own("812", "Raiders", 20)] });
+    regions[0]!.units.push(aReportUnit({ unitId: "1300", name: "Shadow", own: false, factionId: null }));
+    const [view] = attacks(regions, ["unit 812", "ATTACK 1203 1300"], { "31": "ally" });
+    expect(view).toMatchObject({ allies: [{ id: "31", name: "Bandit Kings" }], withdraws: false });
+  });
+
+  it("gives no row to an attacker with no men to fight with", () => {
+    const views = attacks(world({ here: [own("812", "Raiders", 0)] }), ["unit 812", "ATTACK 1203"]);
+    expect(views).toEqual([]);
+  });
+
+  it("keeps out a neighbour whose movement points do not cover the battle hex's terrain", () => {
+    const [view] = attacksInOrders({
+      regions: world({ here: [own("812", "Raiders", 20)], forest: [own("905", "Pikemen", 16)] }),
+      ordersDocument: doc("unit 812", "ATTACK 1203"),
+      syntax: "origins",
+      declarations: { factionId: "95", toward: new Map(), fallback: null },
+      gameData: data,
+      // A world where walking buys a single point: the plain costs 1, so the forest's units reach
+      // it, and the test below turns the battle round to make the forest the hex entered.
+      movementPoints: { walk: 1, ride: 4, fly: 4 },
+      hexLabel
+    });
+    expect(view!.frontline.map((unit) => unit.name)).toContain("Pikemen");
+
+    const forestBattle = world({ here: [], forest: [own("812", "Raiders", 20)] });
+    forestBattle[2]!.exits = [exitTo(plain, "plain")];
+    forestBattle[0]!.units.unshift(own("901", "Knights", 10));
+    forestBattle[2]!.units.push(bandit("1203"));
+    const [inForest] = attacksInOrders({
+      regions: forestBattle,
+      ordersDocument: doc("unit 812", "ATTACK 1203"),
+      syntax: "origins",
+      declarations: { factionId: "95", toward: new Map(), fallback: null },
+      gameData: data,
+      movementPoints: { walk: 1, ride: 4, fly: 4 },
+      hexLabel
+    });
+    expect(inForest!.out.map((unit) => [unit.name, unit.reasons])).toEqual([
+      ["Knights", ["in Plain (12,4), cannot reach the battle"]]
+    ]);
+  });
+
   it("gives each joining unit its men, its role and its line's warning", () => {
     const [view] = attacks(
       world({ here: [own("812", "Raiders", 20), own("840", "Porters", 25, { items: [] })] }),
