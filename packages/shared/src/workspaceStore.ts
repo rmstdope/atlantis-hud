@@ -228,6 +228,11 @@ export type WorkspaceState = {
   /** Whether the region panel's Problems section is shown. On by default. */
   regionProblemsShown: boolean;
   /**
+   * Whether the Attacks window cuts every unit's note to one line (ah-3eegs). Off until chosen, and
+   * a preference of the device, so it outlives a reload, a game switch and a new report.
+   */
+  attacksCompact: boolean;
+  /**
    * A hex's Problems asked to flash one line, by `Show problems in <hex>` on a sailing passenger's
    * landing-hex marker (`ah-zjcj`), until the region panel showing that hex consumes it. The
    * epoch tells one press from the next. Session-only: never persisted, and dropped with the game,
@@ -337,6 +342,8 @@ export type WorkspaceState = {
   toggleBiomeSymbols: () => void;
   /** Turns the hex coordinates on the map on or off. */
   toggleHexCoordinates: () => void;
+  /** Turns the Attacks window's compact view on or off. */
+  toggleAttacksCompact: () => void;
   /** Arms destination picking for exactly one click. */
   armPlanner: () => void;
   /** Records where a route was planned to, and disarms. */
@@ -444,6 +451,7 @@ type Persisted = Pick<
   | "badges"
   | "biomeSymbols"
   | "hexCoordinates"
+  | "attacksCompact"
   | "regionProblemsShown"
 >;
 
@@ -472,6 +480,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       badges: allBadges(true),
       biomeSymbols: false,
       hexCoordinates: true,
+      attacksCompact: false,
       regionProblemsShown: true,
       problemsFlash: null,
       planner: { armed: false, destinationId: null },
@@ -632,6 +641,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       toggleBiomeSymbols: () => set((state) => ({ biomeSymbols: !state.biomeSymbols })),
 
       toggleHexCoordinates: () => set((state) => ({ hexCoordinates: !state.hexCoordinates })),
+      toggleAttacksCompact: () => set((state) => ({ attacksCompact: !state.attacksCompact })),
 
       toggleRegionProblems: () =>
         set((state) => ({ regionProblemsShown: !state.regionProblemsShown })),
@@ -677,6 +687,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         badges: state.badges,
         biomeSymbols: state.biomeSymbols,
         hexCoordinates: state.hexCoordinates,
+        attacksCompact: state.attacksCompact,
         regionProblemsShown: state.regionProblemsShown
       }),
       /**
@@ -717,6 +728,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // before the setting existed has no older default to migrate from.
           hexCoordinates:
             typeof stored.hexCoordinates === "boolean" ? stored.hexCoordinates : true,
+          // Off unless storage holds a real `true`, which is also the agreed default: a record
+          // written before the setting existed has no older default to migrate from.
+          attacksCompact: stored.attacksCompact === true,
           // Not a record, so `reconcile` does not apply: a missing or malformed key must read
           // as shown, or an upgrade silently hides every player's diagnostics.
           regionProblemsShown:
@@ -751,6 +765,7 @@ export function resetWorkspaceStore() {
     badges: allBadges(true),
     biomeSymbols: false,
     hexCoordinates: true,
+    attacksCompact: false,
     regionProblemsShown: true,
     problemsFlash: null,
     unitSlotTab: null,

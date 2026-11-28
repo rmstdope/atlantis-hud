@@ -272,9 +272,6 @@ function stateOf(unit: ReportUnit, orders: UnitFlagOrders | undefined): UnitStat
   };
 }
 
-const AVOID_SET = "set by AVOID 1 in your orders";
-const BEHIND_SET = "set by BEHIND 1 in your orders";
-
 /**
  * Every ATTACK order of ours as a row of the Attacks window, in document order, each with the
  * units of ours its battle would muster.
@@ -377,12 +374,9 @@ export function attacksInOrders(input: {
     const frontline: MusterUnit[] = [];
     const backline: MusterUnit[] = [];
     const out: MusterUnit[] = [];
+    // Where a flag came from - the report or this month's orders - is not said (ah-3eegs).
     const join = (unit: ReportUnit, regionId: string, state: UnitState, reasons: string[]) => {
-      const flags = orders.get(unit.unitId)?.flags;
       const line: BattleLine = state.behind ? "backline" : "frontline";
-      if (line === "backline" && flags?.behind === true) {
-        reasons.push(BEHIND_SET);
-      }
       (line === "backline" ? backline : frontline).push(musterUnit(unit, regionId, line, reasons));
     };
 
@@ -401,7 +395,7 @@ export function attacksInOrders(input: {
           state.avoid ? "gave the order, so it fights although it is avoiding" : "gave the order"
         ]);
       } else if (state.avoid) {
-        out.push(musterUnit(unit, region.regionId, null, [flags?.avoid === true ? `avoiding — ${AVOID_SET}` : "avoiding"]));
+        out.push(musterUnit(unit, region.regionId, null, ["avoiding"]));
       } else {
         joiners.push(state);
         join(unit, region.regionId, state, []);
@@ -423,8 +417,7 @@ export function attacksInOrders(input: {
         const flags = orders.get(unit.unitId)?.flags;
         const state = stateOf(unit, flags);
         if (state.avoid) {
-          const why = flags?.avoid === true ? `in ${there}, avoiding — ${AVOID_SET}` : `in ${there}, avoiding`;
-          out.push(musterUnit(unit, neighbour.regionId, null, [why]));
+          out.push(musterUnit(unit, neighbour.regionId, null, [`in ${there}, avoiding`]));
           continue;
         }
         if (state.hold) {
@@ -485,13 +478,17 @@ export function attacksBarText(attacks: number): string {
   return `Attacks · ${attacks === 0 ? "none" : attacks} in your orders`;
 }
 
-/** "Frontline — 6 units, 87 men"; an empty group reads "<Group> — none". */
-export function groupHeading(group: MusterGroup, units: readonly MusterUnit[]): string {
+/**
+ * A group card's heading: the name (drawn in capitals) and the dim count after it, "4 units · 48 men",
+ * or "none" for an empty group (ah-3eegs).
+ */
+export function groupHeading(group: MusterGroup, units: readonly MusterUnit[]): { name: string; count: string } {
+  const name = GROUP_NAMES[group];
   if (units.length === 0) {
-    return `${GROUP_NAMES[group]} — none`;
+    return { name, count: "none" };
   }
   const men = units.reduce((sum, unit) => sum + unit.men, 0);
-  return `${GROUP_NAMES[group]} — ${count(units.length, "unit")}, ${count(men, "man", "men")}`;
+  return { name, count: `${count(units.length, "unit")} · ${count(men, "man", "men")}` };
 }
 
 /**
@@ -504,9 +501,27 @@ export function backlineNote(view: Pick<AttackView, "frontline">): string {
     : "Can only shoot or cast spells until the frontline falls.";
 }
 
-/** The unit's line in the pieces the window styles apart (ah-wlia8): "Raiders", "(812)", "20 men", the role. */
+/**
+ * The unit's row in the pieces the window styles apart (ah-wlia8): "Raiders", "(812)", the men as a
+ * bare number for its own right-aligned column (ah-3eegs), and the role.
+ */
 export function unitLineParts(unit: MusterUnit): { name: string; number: string; men: string; role: string } {
-  return { name: unit.name, number: `(${unit.unitId})`, men: count(unit.men, "man", "men"), role: unit.role };
+  return { name: unit.name, number: `(${unit.unitId})`, men: String(unit.men), role: unit.role };
+}
+
+/**
+ * A row's note column (ah-3eegs): the warning first, then the reasons joined. `full` is both, a line
+ * apart, for the hover text; `compact` is what a one-line row shows, the warning if there is one.
+ */
+export function unitNote(unit: Pick<MusterUnit, "reasons" | "warning">): {
+  warning: string | null;
+  reason: string | null;
+  full: string;
+  compact: string;
+} {
+  const reason = unit.reasons.length > 0 ? unit.reasons.join("; ") : null;
+  const parts = [unit.warning, reason].filter((part): part is string => part !== null);
+  return { warning: unit.warning, reason, full: parts.join("\n"), compact: parts[0] ?? "" };
 }
 
 type Named = Pick<AttackView, "attackerId" | "attackerName" | "hex" | "targets">;

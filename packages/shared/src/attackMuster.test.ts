@@ -12,6 +12,7 @@ import {
   groupHeading,
   missingTargetBannerText,
   unitLineParts,
+  unitNote,
   lineWarning,
   readUnitAttackOrders,
   unitRole,
@@ -256,12 +257,12 @@ describe("who of ours joins an attack (rules/com_muster)", () => {
     expect(names(view!.backline)).toEqual(["Archers", "Swordsmen"]);
     expect(view!.backline[0]!.reasons).toEqual([]);
     expect(view!.backline[1]).toMatchObject({
-      reasons: ["set by BEHIND 1 in your orders"],
+      reasons: [],
       warning: "melee in the backline: cannot fight until the frontline falls"
     });
     expect(view!.out.map((unit) => [unit.name, unit.reasons])).toEqual([
       ["Scouts", ["avoiding"]],
-      ["Miners", ["avoiding — set by AVOID 1 in your orders"]]
+      ["Miners", ["avoiding"]]
     ]);
   });
 
@@ -273,7 +274,7 @@ describe("who of ours joins an attack (rules/com_muster)", () => {
     expect(view!.frontline).toEqual([]);
     expect(view!.backline.map((unit) => [unit.name, unit.role, unit.reasons, unit.warning])).toEqual([
       ["Raiders", "melee", ["gave the order"], null],
-      ["Swordsmen", "melee", ["set by BEHIND 1 in your orders"], null]
+      ["Swordsmen", "melee", [], null]
     ]);
   });
 
@@ -322,7 +323,7 @@ describe("who of ours joins an attack (rules/com_muster)", () => {
       ["unit 812", "ATTACK 1203", "unit 901", "AVOID 1"]
     );
     expect(view!.out.map((unit) => [unit.name, unit.reasons])).toEqual([
-      ["Knights", ["in Plain (12,2), avoiding — set by AVOID 1 in your orders"]],
+      ["Knights", ["in Plain (12,2), avoiding"]],
       ["Wagons", ["in Plain (12,2), cannot reach the battle"]]
     ]);
   });
@@ -477,16 +478,44 @@ describe("the words of the Attacks window", () => {
     expect(attacksBarText(0)).toBe("Attacks · none in your orders");
   });
 
-  it("heads each group with its units and men, singular where one", () => {
-    expect(groupHeading("frontline", [unit(20), unit(67)])).toBe("Frontline — 2 units, 87 men");
-    expect(groupHeading("backline", [unit(1)])).toBe("Backline — 1 unit, 1 man");
-    expect(groupHeading("out", [unit(12)])).toBe("Will not fight — 1 unit, 12 men");
-    expect(groupHeading("out", [])).toBe("Will not fight — none");
+  it("heads each group with its name and a count of units and men, singular where one", () => {
+    expect(groupHeading("frontline", [unit(20), unit(67)])).toEqual({ name: "Frontline", count: "2 units · 87 men" });
+    expect(groupHeading("backline", [unit(1)])).toEqual({ name: "Backline", count: "1 unit · 1 man" });
+    expect(groupHeading("out", [unit(12)])).toEqual({ name: "Will not fight", count: "1 unit · 12 men" });
+    expect(groupHeading("out", [])).toEqual({ name: "Will not fight", count: "none" });
+    expect(groupHeading("frontline", [])).toEqual({ name: "Frontline", count: "none" });
   });
 
-  it("splits the unit's line into name, number, men and role, for the window to style apart", () => {
-    expect(unitLineParts(unit(20))).toEqual({ name: "Raiders", number: "(812)", men: "20 men", role: "melee, ranged" });
-    expect(unitLineParts(unit(1)).men).toBe("1 man");
+  it("splits the unit's row into name, number, men and role, for the window to style apart", () => {
+    expect(unitLineParts(unit(20))).toEqual({ name: "Raiders", number: "(812)", men: "20", role: "melee, ranged" });
+  });
+
+  describe("a unit's note (ah-3eegs)", () => {
+    const WARNING = "ranged in the frontline: could stand in the backline, safe until the frontline falls";
+    const noted = (reasons: string[], warning: string | null) => unitNote({ ...unit(5), reasons, warning });
+
+    it("is empty for a unit with nothing to say", () => {
+      expect(noted([], null)).toEqual({ warning: null, reason: null, full: "", compact: "" });
+    });
+
+    it("joins several reasons into one", () => {
+      expect(noted(["gave the order", "from Plain (12,3)"], null)).toEqual({
+        warning: null,
+        reason: "gave the order; from Plain (12,3)",
+        full: "gave the order; from Plain (12,3)",
+        compact: "gave the order; from Plain (12,3)"
+      });
+    });
+
+    it("puts the warning first, and in compact shows the warning alone", () => {
+      expect(noted(["from Forest (11,12), if they can reach the battle"], WARNING)).toEqual({
+        warning: WARNING,
+        reason: "from Forest (11,12), if they can reach the battle",
+        full: `${WARNING}\nfrom Forest (11,12), if they can reach the battle`,
+        compact: WARNING
+      });
+      expect(noted([], WARNING)).toMatchObject({ reason: null, full: WARNING, compact: WARNING });
+    });
   });
 
   it("writes the row, the title and the banners", () => {
