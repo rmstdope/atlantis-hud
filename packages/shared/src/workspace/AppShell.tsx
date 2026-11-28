@@ -1307,6 +1307,8 @@ export function AppShell({
   const badges = useWorkspaceStore((state) => state.badges);
   const biomeSymbols = useWorkspaceStore((state) => state.biomeSymbols);
   const hexCoordinates = useWorkspaceStore((state) => state.hexCoordinates);
+  const attacksCompact = useWorkspaceStore((state) => state.attacksCompact);
+  const toggleAttacksCompact = useWorkspaceStore((state) => state.toggleAttacksCompact);
   const showTextures = useSettingsStore((state) => state.biomeTextures);
   // The set the map shows lags the chosen one until all its pictures have loaded (ah-d9jb.3).
   const shownTextureSet = useShownTextureSet(useSettingsStore((state) => state.textureSet));
@@ -7637,6 +7639,8 @@ export function AppShell({
         <AttacksDialog
           attacks={attacks}
           selectedKey={selectedAttackKey}
+          compact={attacksCompact}
+          onToggleCompact={toggleAttacksCompact}
           onSelect={setSelectedAttackKey}
           onShowOnMap={(regionId) => {
             selectHex(regionId);

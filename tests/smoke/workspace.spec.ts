@@ -4399,9 +4399,10 @@ test("the attacks chip shows who of ours an attack typed into the orders would m
   await expect(page.getByTestId("attack-group-backline")).toContainText(
     "gave the order, so it fights although it is avoiding"
   );
-  // ah-wlia8: on a wide window a reason that fits sits on the unit's line, as the mockup draws it;
-  // a narrow one wraps it under the unit. Boxes, not text, so the native shell's driver agrees.
-  const unitLine = page.getByTestId("attack-unit-18642");
+  // ah-wlia8, ah-3eegs: on a wide window the note sits in its column on the unit's row; a narrow
+  // one puts it under the unit, in the same row. Boxes, not text, so the native shell's driver agrees.
+  const unitRow = page.getByTestId("attack-unit-18642");
+  const unitLine = unitRow.getByText("Seven of Eight", { exact: true });
   const reason = page.getByTestId("attack-group-backline").getByText("gave the order, so it fights although it is avoiding");
   const topOf = async (locator: Locator) => {
     const box = await locator.boundingBox();
@@ -4416,9 +4417,35 @@ test("the attacks chip shows who of ours an attack typed into the orders would m
   await expect.poll(async () => { const [u, r] = await tops(); return r - u; }).toBeGreaterThan(8);
   if (wide !== null) await page.setViewportSize(wide);
 
+  // ah-3eegs: the whole row is the button. Compact view sits in the bar just before the close
+  // button, which has focus: one Shift+Tab reaches it and Space ticks it. Its cut note is checked by
+  // its box and its hover text, never its text, which WebKit's driver reads as "" once clipped.
+  await expect(unitRow).toHaveCSS("cursor", "pointer");
+  const compact = page.getByTestId("attacks-compact");
+  await expect(compact).not.toBeChecked();
+  await page.keyboard.press("Shift+Tab");
+  await expect(compact).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(compact).toBeChecked();
+  const note = page.getByTestId("attack-note-18642");
+  await expect(note).toHaveAttribute("title", /gave the order, so it fights although it is avoiding$/);
+  await page.setViewportSize({ width: 360, height: 720 });
+  await expect
+    .poll(async () => {
+      const [noteBox, nameBox] = [await note.boundingBox(), await unitLine.boundingBox()];
+      // One line: an inline name's box is a little shorter than a line, a second line doubles it.
+      return noteBox === null || nameBox === null ? Infinity : noteBox.height / nameBox.height;
+    })
+    .toBeLessThan(1.5);
+  if (wide !== null) await page.setViewportSize(wide);
+
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(chip).toBeFocused();
+  // The setting outlives the window.
+  await chip.click();
+  await expect(compact).toBeChecked();
+  await page.keyboard.press("Escape");
 
   // A press outside the window closes it and hands focus back to the chip too, and so does a press
   // on the chip itself, which lies under the backdrop while the window is open.

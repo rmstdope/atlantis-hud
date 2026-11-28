@@ -553,6 +553,48 @@ describe("the biome symbols toggle (ah-d9jb.4)", () => {
   });
 });
 
+describe("the Attacks window's compact view (ah-3eegs)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("starts off", () => {
+    expect(store().attacksCompact).toBe(false);
+  });
+
+  it("turns on and off, and the choice is remembered", async () => {
+    store().toggleAttacksCompact();
+    expect(store().attacksCompact).toBe(true);
+
+    const options = useWorkspaceStore.persist.getOptions();
+    const raw = await options.storage?.getItem(options.name ?? "atlantis-hud-workspace");
+    const persisted = (raw as { state?: Record<string, unknown> } | null)?.state ?? {};
+    expect(persisted.attacksCompact).toBe(true);
+
+    store().toggleAttacksCompact();
+    expect(store().attacksCompact).toBe(false);
+  });
+
+  it("survives switching game and closing it", () => {
+    store().toggleAttacksCompact();
+    const game = { gameId: "g1", gameName: "Spring campaign", databasePath: "idb://g1", rulesetId: "neworigins" };
+    store().openGame(game, null);
+    store().closeGame();
+    store().openGame({ ...game, gameId: "g2" }, null);
+    expect(store().attacksCompact).toBe(true);
+  });
+
+  it("comes back from storage only when it was left on", () => {
+    const merge = useWorkspaceStore.persist.getOptions().merge;
+    const read = (stored: Record<string, unknown>) =>
+      (merge?.({ collapsed: {}, layers: {}, badges: {}, ...stored }, store()) as ReturnType<typeof store> | undefined)
+        ?.attacksCompact;
+
+    expect(read({ attacksCompact: true })).toBe(true);
+    for (const stored of [{}, { attacksCompact: "yes" }, { attacksCompact: 1 }, { attacksCompact: null }]) {
+      expect(read(stored), JSON.stringify(stored)).toBe(false);
+    }
+  });
+});
+
 describe("hex coordinates on the map (ah-ezyg)", () => {
   beforeEach(resetWorkspaceStore);
 
