@@ -6,7 +6,7 @@ import {
   attackTitleText,
   groupHeading,
   missingTargetBannerText,
-  unitLineText,
+  unitLineParts,
   type AttackView,
   type MusterGroup,
   type MusterUnit
@@ -47,7 +47,7 @@ export function AttacksDialog({
       layer="z-30"
       backdropTestId="attacks-backdrop"
       testId="attacks-dialog"
-      boxClassName="grid h-[85vh] w-[64rem] max-w-[94vw] grid-rows-[auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
+      boxClassName="grid h-[85vh] w-[80rem] max-w-[94vw] grid-rows-[auto_1fr] rounded border border-edge bg-panel-raised text-pane whitespace-normal shadow-lg"
       barClassName="items-center gap-2 border-b border-edge px-2 py-1.5"
       close={{ testId: "attacks-close", label: "close attacks", look: "plain", autoFocus: true }}
       bar={
@@ -196,9 +196,9 @@ function Group({
                 type="button"
                 data-testid={`attack-unit-${unit.unitId}`}
                 onClick={() => onGoToUnit(unit.unitId, unit.regionId)}
-                className="text-left text-ink underline decoration-dotted"
+                className="text-left"
               >
-                {unitLineText(unit)}
+                <UnitLine unit={unit} />
               </button>
               {unit.reasons.length > 0 ? (
                 <span className={group === "out" ? "text-danger" : "text-ink-dim"}>{unit.reasons.join("; ")}</span>
@@ -209,5 +209,17 @@ function Group({
         </ul>
       ) : null}
     </section>
+  );
+}
+
+/** "Raiders (812) · 20 men · melee": the name underlined, the number in blue, as drawn in the mockup. */
+function UnitLine({ unit }: { unit: MusterUnit }) {
+  const { name, number, men, role } = unitLineParts(unit);
+  return (
+    <>
+      <span className="text-ink underline decoration-dotted underline-offset-[3px]">{name}</span>{" "}
+      <span className="text-select">{number}</span> <span className="text-ink-dim">{`· ${men} ·`}</span>{" "}
+      <span className="text-ink">{role}</span>
+    </>
   );
 }

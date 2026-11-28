@@ -101,6 +101,17 @@ describe("the Attacks window", () => {
     expect(text).toContain("Click a unit to go to it.");
   });
 
+  it("draws the unit number in blue beside an underlined name, as the mockup does", () => {
+    const { html } = render([view()]);
+    const button = /<button[^>]*data-testid="attack-unit-812"[^>]*>(.*?)<\/button>/.exec(html)?.[1] ?? "";
+    expect(button).toMatch(/<span class="[^"]*underline[^"]*">Raiders<\/span>/);
+    expect(button).toMatch(/<span class="text-select">\(812\)<\/span>/);
+    expect(button).toMatch(/<span class="text-ink-dim">· 20 men ·<\/span>/);
+    expect(button).toMatch(/<span class="text-ink">melee<\/span>/);
+    // Only the name is underlined, not the whole line.
+    expect(/<button[^>]*data-testid="attack-unit-812"[^>]*>/.exec(html)?.[0]).not.toContain("underline");
+  });
+
   it("leaves out an empty Backline and says when nobody stays out", () => {
     const { text } = render([view()]);
     expect(text).not.toContain("Backline");
