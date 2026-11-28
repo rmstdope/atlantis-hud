@@ -13,6 +13,7 @@
 import type { ReportRegion, ReportUnit } from "@atlantis/core-client";
 import { itemEntryId, terrainEntryId, type GameDataIndex } from "./gameData";
 import { regionIdOf } from "./hexMapModel";
+import { count } from "./plural";
 import { lexOrderLine } from "./orderLine";
 import { findUnitBlocks, thisMonthsOwnLines } from "./ordersDocument";
 import type { OrderCommentSyntax } from "./rulesets";
@@ -454,4 +455,60 @@ export function attacksInOrders(input: {
       out
     };
   }
+}
+
+/* --- the window's words, exactly as the acceptance gives them --- */
+
+export type MusterGroup = "frontline" | "backline" | "out";
+
+const GROUP_NAMES: Readonly<Record<MusterGroup, string>> = {
+  frontline: "Frontline",
+  backline: "Backline",
+  out: "Will not fight"
+};
+
+/** The header chip: "1 attack" / "N attacks". */
+export function attackChipText(attacks: number): string {
+  return count(attacks, "attack");
+}
+
+/** The window's bar: "Attacks · N in your orders", or "none" once the last one is deleted. */
+export function attacksBarText(attacks: number): string {
+  return `Attacks · ${attacks === 0 ? "none" : attacks} in your orders`;
+}
+
+/** "Frontline — 6 units, 87 men"; an empty group reads "<Group> — none". */
+export function groupHeading(group: MusterGroup, units: readonly MusterUnit[]): string {
+  if (units.length === 0) {
+    return `${GROUP_NAMES[group]} — none`;
+  }
+  const men = units.reduce((sum, unit) => sum + unit.men, 0);
+  return `${GROUP_NAMES[group]} — ${count(units.length, "unit")}, ${count(men, "man", "men")}`;
+}
+
+/** "Raiders (812) · 20 men · melee, ranged". */
+export function unitLineText(unit: MusterUnit): string {
+  return `${unit.name} (${unit.unitId}) · ${count(unit.men, "man", "men")} · ${unit.role}`;
+}
+
+type Named = Pick<AttackView, "attackerId" | "attackerName" | "hex" | "targets">;
+
+/** The list row: "Raiders (812) → Bandits (1203), Bandits (1204)". */
+export function attackRowText(view: Named): string {
+  return `${view.attackerName} (${view.attackerId}) → ${view.targets.join(", ")}`;
+}
+
+/** The detail's title: "Raiders (812) attacks Bandits (1203), Bandits (1204)". */
+export function attackTitleText(view: Named): string {
+  return `${view.attackerName} (${view.attackerId}) attacks ${view.targets.join(", ")}`;
+}
+
+/** The red banner for a target faction we declare Ally. */
+export function allyBannerText(faction: { id: string; name: string }): string {
+  return `You have declared ${faction.name} (${faction.id}) an ally. Your units will withdraw instead of attacking them.`;
+}
+
+/** The amber banner for a target the report does not show in the hex. */
+export function missingTargetBannerText(targetId: string, view: Named): string {
+  return `Unit ${targetId} is not in ${view.hex} in this report. The attack happens only if ${view.attackerName} can see it there.`;
 }

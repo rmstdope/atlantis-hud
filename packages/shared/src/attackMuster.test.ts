@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { aReportRegion, aReportUnit, type ReportRegion, type ReportUnit } from "@atlantis/core-client";
 import { describe, expect, it } from "vitest";
 import {
+  allyBannerText,
+  attackChipText,
+  attackRowText,
+  attacksBarText,
   attacksInOrders,
+  attackTitleText,
+  groupHeading,
+  missingTargetBannerText,
+  unitLineText,
   lineWarning,
   readUnitAttackOrders,
   unitRole,
@@ -382,5 +390,48 @@ describe("where a mustered unit stands", () => {
       ["812", "1:1,1"],
       ["901", "1:1,3"]
     ]);
+  });
+});
+
+describe("the words of the Attacks window", () => {
+  const unit = (men: number): MusterUnit => ({
+    unitId: "812",
+    regionId: "1:1,1",
+    name: "Raiders",
+    men,
+    role: "melee, ranged",
+    reasons: [],
+    warning: null
+  });
+
+  it("counts attacks on the chip and in the bar", () => {
+    expect(attackChipText(1)).toBe("1 attack");
+    expect(attackChipText(3)).toBe("3 attacks");
+    expect(attacksBarText(2)).toBe("Attacks · 2 in your orders");
+    expect(attacksBarText(0)).toBe("Attacks · none in your orders");
+  });
+
+  it("heads each group with its units and men, singular where one", () => {
+    expect(groupHeading("frontline", [unit(20), unit(67)])).toBe("Frontline — 2 units, 87 men");
+    expect(groupHeading("backline", [unit(1)])).toBe("Backline — 1 unit, 1 man");
+    expect(groupHeading("out", [unit(12)])).toBe("Will not fight — 1 unit, 12 men");
+    expect(groupHeading("out", [])).toBe("Will not fight — none");
+  });
+
+  it("writes a unit's line with its men and role", () => {
+    expect(unitLineText(unit(20))).toBe("Raiders (812) · 20 men · melee, ranged");
+    expect(unitLineText(unit(1))).toBe("Raiders (812) · 1 man · melee, ranged");
+  });
+
+  it("writes the row, the title and the banners", () => {
+    const view = { attackerId: "812", attackerName: "Raiders", hex: "Plain (12,4)", targets: ["Bandits (1203)", "unit 1204"] };
+    expect(attackRowText(view)).toBe("Raiders (812) → Bandits (1203), unit 1204");
+    expect(attackTitleText(view)).toBe("Raiders (812) attacks Bandits (1203), unit 1204");
+    expect(allyBannerText({ id: "31", name: "Bandit Kings" })).toBe(
+      "You have declared Bandit Kings (31) an ally. Your units will withdraw instead of attacking them."
+    );
+    expect(missingTargetBannerText("1204", view)).toBe(
+      "Unit 1204 is not in Plain (12,4) in this report. The attack happens only if Raiders can see it there."
+    );
   });
 });
