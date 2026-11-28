@@ -1,0 +1,143 @@
+<!doctype html>
+<!--
+  The house frame of a detailed drawing (cb-buko; the agreed look is docs/ui/cb-buko-tabs.html and
+  cb-buko-states.html). scripts/ux-sheet fills the two marker lines below; nothing else writes here.
+  Every class starts with `ux-' and only `body' is styled by element, so what is drawn inside a tab
+  keeps the product's own look.
+-->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>When every unit of yours stands behind, how should the window show it? · Not warning about units standing behind when there is no front line</title>
+<style>
+  body{margin:0;padding:1px 8px;background:#f4f4f5}
+  .ux-page{max-width:980px;margin:14px auto 30px;background:#fff;border:1px solid #e4e4e7;border-radius:10px}
+  .ux-head,.ux-tabs,.ux-intro{font-family:system-ui,-apple-system,sans-serif;line-height:normal;text-align:left;color:#18181b}
+  .ux-head{padding:14px 16px 0}
+  .ux-work{font-size:12px;color:#71717a;text-transform:uppercase;letter-spacing:.04em}
+  .ux-heading{margin:2px 0 10px;font-size:19px}
+  .ux-tabrow{position:relative}
+  .ux-tabrow::before,.ux-tabrow::after{content:"";position:absolute;top:0;bottom:1px;width:44px;pointer-events:none;opacity:0}
+  .ux-tabrow::before{left:0;background:linear-gradient(to left,rgba(255,255,255,0),#fff)}
+  .ux-tabrow::after{right:0;background:linear-gradient(to right,rgba(255,255,255,0),#fff)}
+  .ux-tabrow.ux-more-left::before,.ux-tabrow.ux-more-right::after{opacity:1}
+  .ux-tabs{display:flex;gap:4px;border-bottom:1px solid #e4e4e7;padding:0 16px;overflow-x:auto}
+  .ux-tab{flex:none;border:0;border-radius:0;background:none;margin:0;font:inherit;font-size:14px;padding:8px 12px;color:#52525b;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+  .ux-tab[aria-selected="true"]{color:#18181b;border-bottom-color:#7c3aed;font-weight:600}
+  .ux-tag{display:inline-block;font-size:11px;border-radius:999px;padding:1px 7px;margin-left:6px;font-weight:600}
+  .ux-rec{background:#ede9fe;color:#5b21b6}
+  .ux-agreed{background:#dcfce7;color:#166534}
+  .ux-panel[hidden]{display:none!important}
+  .ux-intro{padding:12px 16px 4px}
+  .ux-name{margin:0;font-size:16px}
+  .ux-cost{margin:3px 0 0;font-size:13px;color:#52525b}
+  .ux-why{margin:3px 0 0;font-size:13px;color:#5b21b6}
+  .ux-draw{padding:12px 16px 16px}
+</style></head><body>
+
+<style>
+.dlg{--ground:#10151c;--panel:#171d26;--raised:#1c232e;--edge:#26303d;--soft:#1e2733;--ink:#dbe3ec;--ink2:#a3b0c0;--dim:#8a97a8;--brass:#d9a441;--sel:#4a9fd8;--ok:#4fb783;--bad:#d97070;--warn:#e0b050;
+ background:var(--ground);padding:10px;border-radius:8px;font:13px/1.45 'Helvetica Neue',Arial,sans-serif;color:var(--ink)}
+.dlg .hdr{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.dlg .chip{border:1px solid var(--edge);background:var(--raised);color:var(--ink2);padding:1px 8px;border-radius:4px;font-size:12px}
+.dlg .chip.on{border-color:var(--brass);color:var(--ink)}
+.dlg .box{border:1px solid var(--edge);background:var(--raised);border-radius:4px}
+.dlg .bar{display:flex;border-bottom:1px solid var(--edge);padding:5px 8px;color:var(--ink2)} .dlg .bar span:first-child{flex:1}
+.dlg .cols{display:grid;grid-template-columns:minmax(9rem,15rem) 1fr;min-height:16rem}
+.dlg .rail{border-right:1px solid var(--edge);list-style:none;padding:0;margin:0}
+.dlg .rail li{padding:5px 8px;border-bottom:1px solid var(--soft)} .dlg .rail li.sel{background:rgba(74,159,216,.15)}
+.dlg .rail .sub{color:var(--dim);font-size:12px;display:block}
+.dlg .det{padding:10px 12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.dlg .ttl{color:var(--ink)} .dlg .meta{color:var(--dim);font-size:12px} .dlg .meta a{color:var(--sel);text-decoration:underline dotted}
+.dlg h4{margin:4px 0 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:500;color:var(--ink2)}
+.dlg h4.out{color:var(--bad)}
+.dlg ul.u{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.dlg ul.u li{display:flex;gap:8px;flex-wrap:wrap} .dlg .uid{color:var(--sel)} .dlg .why{color:var(--dim)} .dlg .out .why,.dlg li.x .why{color:var(--bad)}
+.dlg .warn{color:var(--warn)} .dlg .mk{display:inline-block;width:1.1em;text-align:center;color:var(--warn)}
+.dlg .unc{color:var(--dim);font-style:italic}
+.dlg .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dlg .banner{border:1px solid var(--bad);color:var(--bad);border-radius:4px;padding:6px 8px;background:rgba(217,112,112,.08)}
+@media (max-width:640px){.dlg .cols{grid-template-columns:1fr}.dlg .rail{border-right:0;border-bottom:1px solid var(--edge)}.dlg .split{grid-template-columns:1fr}}
+</style>
+<div class="ux-page">
+<header class="ux-head">
+<div class="ux-work">Not warning about units standing behind when there is no front line</div>
+<h1 class="ux-heading">When every unit of yours stands behind, how should the window show it?</h1>
+</header>
+<div class="ux-tabrow"><div class="ux-tabs" role="tablist">
+<button type="button" class="ux-tab" role="tab" data-ux-tab="A" id="ux-tab-A" aria-controls="ux-panel-A" aria-selected="true" tabindex="0">A — Keep Backline, explain it<span class="ux-tag ux-rec">Recommended</span><span class="ux-tag ux-agreed">Agreed</span></button>
+<button type="button" class="ux-tab" role="tab" data-ux-tab="B" id="ux-tab-B" aria-controls="ux-panel-B" aria-selected="false" tabindex="-1">B — Show them as Frontline</button>
+<button type="button" class="ux-tab" role="tab" data-ux-tab="C" id="ux-tab-C" aria-controls="ux-panel-C" aria-selected="false" tabindex="-1">C — Just stay quiet</button>
+</div></div>
+<section class="ux-panel" role="tabpanel" id="ux-panel-A" aria-labelledby="ux-tab-A">
+<div class="ux-intro">
+<h2 class="ux-name">A — Keep Backline, explain it<span class="ux-tag ux-rec">Recommended</span><span class="ux-tag ux-agreed">Agreed</span></h2>
+<p class="ux-cost">Units stay where the player put them; one line says behind has no effect here.</p>
+<p class="ux-why">Recommended: Shows exactly what the player ordered and tells them the consequence, so nothing surprises them.</p>
+</div>
+<div class="ux-draw">
+<div class="dlg"><div class="hdr"><span class="chip">Turn 39</span><span class="chip on">1 attack</span></div><div class="box"><div class="bar"><span>Attacks · 1 in your orders</span><span>✕</span></div><div class="cols"><ul class="rail"><li class="sel">Drone (9935) → Raiders (9260)<span class="sub">Plain (34,50)</span></li></ul><div class="det"><div class="ttl">Drone (9935) attacks Raiders (9260)</div><div class="meta">in Plain (34,50) · <a>show on map</a></div><h4>Frontline — none</h4><h4 style="color:#e0b050">Backline — 3 units, 32 men</h4><div class="meta">With no frontline, standing behind has no effect: these units fight as if in front.</div><ul class="u"><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Drone</span> <span class="uid">(9935)</span> <span class="why">· 10 men · <span style="color:#dbe3ec">melee</span></span></span><span class="why">gave the order</span></li><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Spearmen</span> <span class="uid">(9941)</span> <span class="why">· 14 men · <span style="color:#dbe3ec">melee</span></span></span></li><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Archers</span> <span class="uid">(9950)</span> <span class="why">· 8 men · <span style="color:#dbe3ec">ranged</span></span></span></li></ul><h4 class="out">Will not fight — none</h4><div class="meta">Every unit of yours that could join will.</div><div class="meta" style="margin-top:6px">Click a unit to go to it.</div></div></div></div></div>
+</div>
+</section>
+<section class="ux-panel" role="tabpanel" id="ux-panel-B" aria-labelledby="ux-tab-B" hidden>
+<div class="ux-intro">
+<h2 class="ux-name">B — Show them as Frontline</h2>
+<p class="ux-cost">Matches how the battle actually goes, but the window no longer mirrors the player&#39;s own behind settings.</p>
+</div>
+<div class="ux-draw">
+<div class="dlg"><div class="hdr"><span class="chip">Turn 39</span><span class="chip on">1 attack</span></div><div class="box"><div class="bar"><span>Attacks · 1 in your orders</span><span>✕</span></div><div class="cols"><ul class="rail"><li class="sel">Drone (9935) → Raiders (9260)<span class="sub">Plain (34,50)</span></li></ul><div class="det"><div class="ttl">Drone (9935) attacks Raiders (9260)</div><div class="meta">in Plain (34,50) · <a>show on map</a></div><h4>Frontline — 3 units, 32 men</h4><div class="meta">All of these stand behind, but with no frontline that has no effect: they fight in front.</div><ul class="u"><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Drone</span> <span class="uid">(9935)</span> <span class="why">· 10 men · <span style="color:#dbe3ec">melee</span></span></span><span class="why">gave the order</span></li><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Spearmen</span> <span class="uid">(9941)</span> <span class="why">· 14 men · <span style="color:#dbe3ec">melee</span></span></span></li><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Archers</span> <span class="uid">(9950)</span> <span class="why">· 8 men · <span style="color:#dbe3ec">ranged</span></span></span></li></ul><h4 class="out">Will not fight — none</h4><div class="meta">Every unit of yours that could join will.</div><div class="meta" style="margin-top:6px">Click a unit to go to it.</div></div></div></div></div>
+</div>
+</section>
+<section class="ux-panel" role="tabpanel" id="ux-panel-C" aria-labelledby="ux-tab-C" hidden>
+<div class="ux-intro">
+<h2 class="ux-name">C — Just stay quiet</h2>
+<p class="ux-cost">Cheapest: the warnings and the line go, but nothing explains why melee behind is suddenly fine.</p>
+</div>
+<div class="ux-draw">
+<div class="dlg"><div class="hdr"><span class="chip">Turn 39</span><span class="chip on">1 attack</span></div><div class="box"><div class="bar"><span>Attacks · 1 in your orders</span><span>✕</span></div><div class="cols"><ul class="rail"><li class="sel">Drone (9935) → Raiders (9260)<span class="sub">Plain (34,50)</span></li></ul><div class="det"><div class="ttl">Drone (9935) attacks Raiders (9260)</div><div class="meta">in Plain (34,50) · <a>show on map</a></div><h4>Frontline — none</h4><h4 style="color:#e0b050">Backline — 3 units, 32 men</h4><ul class="u"><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Drone</span> <span class="uid">(9935)</span> <span class="why">· 10 men · <span style="color:#dbe3ec">melee</span></span></span><span class="why">gave the order</span></li><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Spearmen</span> <span class="uid">(9941)</span> <span class="why">· 14 men · <span style="color:#dbe3ec">melee</span></span></span></li><li><span><span style="text-decoration:underline dotted;text-underline-offset:3px">Archers</span> <span class="uid">(9950)</span> <span class="why">· 8 men · <span style="color:#dbe3ec">ranged</span></span></span></li></ul><h4 class="out">Will not fight — none</h4><div class="meta">Every unit of yours that could join will.</div><div class="meta" style="margin-top:6px">Click a unit to go to it.</div></div></div></div></div>
+</div>
+</section>
+</div>
+<script>
+// Tabs: one panel on screen, the left and right arrow keys move between them, nothing persists.
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.ux-tabs > .ux-tab'));
+  if (!tabs.length) return;
+  var row = tabs[0].parentNode, wrap = row.parentNode;
+  function selected(){ return tabs.findIndex(function(t){ return t.getAttribute('aria-selected') === 'true'; }); }
+  // A faded edge on whichever side has tabs out of view.
+  function fade(){
+    wrap.classList.toggle('ux-more-left', row.scrollLeft > 1);
+    wrap.classList.toggle('ux-more-right', row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
+  }
+  // Scrolls the row alone: scrollIntoView would move the page too.
+  function reveal(tab){
+    var t = tab.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (t.left < r.left) row.scrollLeft -= r.left - t.left + 16;
+    else if (t.right > r.right) row.scrollLeft += t.right - r.right + 16;
+    fade();
+  }
+  function select(i){
+    tabs.forEach(function(t, n){
+      t.setAttribute('aria-selected', n === i ? 'true' : 'false');
+      t.tabIndex = n === i ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = n !== i;
+    });
+    reveal(tabs[i]);
+  }
+  tabs.forEach(function(t, i){ t.addEventListener('click', function(){ select(i); }); });
+  document.addEventListener('keydown', function(e){
+    var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    // A control a drawing carries (a field, a button, a slider) keeps its own arrows.
+    if (e.target.closest && e.target.closest('.ux-draw')) return;
+    e.preventDefault();
+    var focused = tabs.indexOf(document.activeElement) >= 0;
+    var i = (selected() + step + tabs.length) % tabs.length;
+    select(i);
+    if (focused) tabs[i].focus({preventScroll: true});
+  });
+  row.addEventListener('scroll', fade);
+  window.addEventListener('resize', fade);
+  window.addEventListener('load', function(){ reveal(tabs[selected()]); });
+  reveal(tabs[selected()]);
+})();
+</script></body></html>
