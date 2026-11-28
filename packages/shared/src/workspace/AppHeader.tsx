@@ -1,3 +1,4 @@
+import { attackChipText } from "../attackMuster";
 import type { ChangeEvent, DragEvent, MutableRefObject, ReactNode, Ref } from "react";
 import type { ValidationMarker } from "./validationInputs";
 import { useRef } from "react";
@@ -141,6 +142,13 @@ type AppHeaderProps = {
   battlesOpen: boolean;
   onToggleBattles: () => void;
   /**
+   * How many units of ours give an ATTACK order in the orders as they stand (ah-pbyfh). Zero hides
+   * the chip, as at zero battles. Like `battlesOpen`, the window it opens is the shell's.
+   */
+  attackCount: number;
+  attacksOpen: boolean;
+  onToggleAttacks: () => void;
+  /**
    * Opens or closes the diff dialog (ah-jg6.4). The chip's *presence* is decided by
    * `comparedTurnLabel` alone - the prop the Turn chip already reuses for "a comparison is on" -
    * so this carries no parallel notion of that; `changesOpen` here is only the same
@@ -248,6 +256,9 @@ export function AppHeader({
   battleCount,
   battlesOpen,
   onToggleBattles,
+  attackCount,
+  attacksOpen,
+  onToggleAttacks,
   changesOpen,
   onToggleChanges,
   busy,
@@ -621,6 +632,23 @@ export function AppHeader({
           className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
         >
           {battleCount} battle{battleCount === 1 ? "" : "s"}
+        </button>
+      ) : null}
+
+      {/*
+        The orders' attacks (ah-pbyfh), straight after the battles chip and styled as it is; it
+        stands alone in that place on a turn with no battles, and is hidden at zero.
+      */}
+      {attackCount > 0 ? (
+        <button
+          type="button"
+          data-testid="attacks-chip"
+          aria-haspopup="dialog"
+          aria-expanded={attacksOpen}
+          onClick={onToggleAttacks}
+          className="rounded border border-edge bg-panel-raised px-2 py-0.5 text-ink-soft hover:border-brass"
+        >
+          {attackChipText(attackCount)}
         </button>
       ) : null}
 

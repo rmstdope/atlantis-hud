@@ -247,6 +247,7 @@ import {
 import type { HttpTransport } from "./httpTransport";
 import { newAgeClient } from "./newAgeApi";
 import { ownDeclarations, teachingDeclarerFor } from "../teachingPermission";
+import { movementPointsOf } from "../attackMuster";
 import { newAgeWorldFor } from "./newAgeWorlds";
 import {
   FETCH_CONTROL_LABEL,
@@ -288,6 +289,7 @@ import type { SendOrdersPhase } from "./sendOrdersView";
 import { sendDisabledReason } from "./sendOrdersView";
 import { performOrdersSend } from "./sendOrders";
 import { BattlesDialog } from "./BattlesDialog";
+import { AttacksDialog } from "./AttacksDialog";
 import { ProductionDialog } from "./ProductionDialog";
 import { productionView, statesRegionLimit } from "./productionView";
 import { battleHexes } from "./battles";
@@ -1204,6 +1206,10 @@ export function AppShell({
   // exactly as the game picker is: it is a panel that is open for a moment, not a preference, so
   // it is remembered for the session and forgotten on reload (ah-30hg.2, round 5).
   const [battlesOpen, setBattlesOpen] = useState(false);
+  // The Attacks window (ah-pbyfh), transient like `battlesOpen`; the selection follows the
+  // attacking unit's id, so a deleted row hands it to the first one left.
+  const [attacksOpen, setAttacksOpen] = useState(false);
+  const [selectedAttackKey, setSelectedAttackKey] = useState<string | null>(null);
   // The Production window (ah-nneu). Transient like `battlesOpen`: every opening reads the orders fresh.
   const [productionOpen, setProductionOpen] = useState(false);
   const [selectedBattleIndex, setSelectedBattleIndex] = useState(0);
@@ -5082,6 +5088,26 @@ export function AppShell({
       ordersDocument
     ]
   );
+  /**
+   * The orders' attacks and who of ours each would muster (ah-pbyfh), derived from the orders as
+   * they stand on every edit - the window and the chip follow the editor with no refresh, and
+   * loading another report or game recomputes them from that turn's orders.
+   */
+  const movementPoints = useMemo(() => movementPointsOf(rulesetText), [rulesetText]);
+  const attacks = useMemo(
+    () =>
+      parsed
+        ? orders.attacksInOrders({
+            regions: parsed.regions,
+            ordersDocument,
+            declarations: teachingRule.declarations,
+            gameData,
+            movementPoints,
+            hexLabel
+          })
+        : [],
+    [parsed, orders, ordersDocument, teachingRule.declarations, gameData, movementPoints, hexLabel]
+  );
   // A literal comparison rather than a table: there is one such ruleset (`rulesets.ts`), and a
   // one-row table would be ceremony.
   const isNewOrigins = game?.manifest.metadata.rulesetId === "neworigins";
@@ -6897,6 +6923,17 @@ export function AppShell({
             return !open;
           })
         }
+        attackCount={attacks.length}
+        attacksOpen={attacksOpen}
+        onToggleAttacks={() =>
+          setAttacksOpen((open) => {
+            // Opening selects the first row, so the window is never empty.
+            if (!open) {
+              setSelectedAttackKey(attacks[0]?.key ?? null);
+            }
+            return !open;
+          })
+        }
         changesOpen={changesOpen}
         onToggleChanges={() => setChangesOpen((open) => !open)}
         busy={busy}
@@ -7592,6 +7629,22 @@ export function AppShell({
             setBattlesOpen(false);
           }}
           onDismiss={() => setBattlesOpen(false)}
+        />
+      ) : null}
+      {attacksOpen && parsed ? (
+        <AttacksDialog
+          attacks={attacks}
+          selectedKey={selectedAttackKey}
+          onSelect={setSelectedAttackKey}
+          onShowOnMap={(regionId) => {
+            selectHex(regionId);
+            setAttacksOpen(false);
+          }}
+          onGoToUnit={(unitId, regionId) => {
+            setAttacksOpen(false);
+            goToUnit(unitId, null, regionId);
+          }}
+          onDismiss={() => setAttacksOpen(false)}
         />
       ) : null}
       {productionOpen && parsed ? (

@@ -34,6 +34,9 @@ const draw = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) =>
       battleCount={0}
       battlesOpen={false}
       onToggleBattles={() => {}}
+      attackCount={0}
+      attacksOpen={false}
+      onToggleAttacks={() => {}}
       changesOpen={false}
       onToggleChanges={() => {}}
       busy={false}
@@ -448,5 +451,34 @@ describe("the assistant changes chip", () => {
 
     expect(markup).toContain('data-testid="assistant-changes-chip"');
     expect(markup).toContain("Assistant: 3 · ⚠ 1");
+  });
+});
+
+describe("AppHeader the attacks chip (ah-pbyfh)", () => {
+  beforeEach(resetWorkspaceStore);
+
+  it("is hidden while the orders hold no attack", () => {
+    expect(draw({ battleCount: 2 })).not.toContain('data-testid="attacks-chip"');
+  });
+
+  it("counts the attacks, singular for one", () => {
+    expect(draw({ attackCount: 1 })).toMatch(/data-testid="attacks-chip"[^>]*>1 attack</);
+    expect(draw({ attackCount: 2 })).toMatch(/data-testid="attacks-chip"[^>]*>2 attacks</);
+  });
+
+  it("sits right after the battles chip, and stands alone where the battles chip would be", () => {
+    const markup = draw({ battleCount: 3, attackCount: 2 });
+    const battles = markup.indexOf('data-testid="battles-chip"');
+    const attacks = markup.indexOf('data-testid="attacks-chip"');
+    expect(battles).toBeGreaterThan(-1);
+    expect(attacks).toBeGreaterThan(battles);
+    // Only the attacks chip's own opening tag lies between the two test ids: nothing sits between.
+    expect(markup.slice(battles, attacks).match(/<button/g)?.length ?? 0).toBe(1);
+  });
+
+  it("reads as pressed while the window is open", () => {
+    expect(draw({ attackCount: 1, attacksOpen: true })).toMatch(
+      /data-testid="attacks-chip"[^>]*aria-expanded="true"/
+    );
   });
 });
