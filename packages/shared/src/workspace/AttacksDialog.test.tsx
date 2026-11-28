@@ -168,6 +168,22 @@ describe("the Attacks window", () => {
     expect(render([view({ frontline: [unit({})] })], "812", true).html).not.toContain('title=""');
   });
 
+  it("cuts a long unit name to one line in Compact view, the number whole and the full name on hover", () => {
+    const long = view({ frontline: [unit({ unitId: "13997", name: "Fourteen of Eight" })] });
+    const cell = (html: string) => /<span[^>]*data-testid="attack-name-13997"[^>]*>[\s\S]*?<\/span><\/span>/.exec(html)?.[0];
+
+    const compact = cell(render([long], "812", true).html) ?? "";
+    expect(compact).toMatch(/^<span[^>]*title="Fourteen of Eight \(13997\)"/);
+    expect(compact).toMatch(/^<span[^>]*class="[^"]*\bwhitespace-nowrap\b/);
+    expect(compact).toMatch(/<span class="[^"]*\btruncate\b[^"]*">Fourteen of Eight<\/span>/);
+    expect(compact).toMatch(/<span class="[^"]*\bshrink-0\b[^"]*">\(13997\)<\/span>/);
+
+    // Compact view off: the name wraps as before, with no hover text of its own.
+    const normal = render([long]).html;
+    expect(normal).not.toContain('title="Fourteen of Eight (13997)"');
+    expect(row(normal, "13997")?.[0]).not.toContain("truncate");
+  });
+
   it("offers Compact view in the bar, ticked as the setting is, even with no attacks", () => {
     const checkbox = (html: string) => /<input[^>]*data-testid="attacks-compact"[^>]*>/.exec(html)?.[0] ?? "";
     expect(render([view()]).text).toContain("Compact view");

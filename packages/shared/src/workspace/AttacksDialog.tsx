@@ -242,6 +242,10 @@ function Group({
   );
 }
 
+/** The unit's name: underlined, and lit with its row. Spelled out, for Tailwind to find. */
+const NAME =
+  "text-ink underline decoration-dotted underline-offset-[3px] group-hover:text-ink-bright group-hover:decoration-solid group-hover:decoration-select group-focus-visible:text-ink-bright group-focus-visible:decoration-solid group-focus-visible:decoration-select";
+
 /** One unit as a row, the whole of it the button that goes to the unit. */
 function UnitRow({
   unit,
@@ -267,12 +271,21 @@ function UnitRow({
       <span aria-hidden="true" className="text-center font-bold text-warn">
         {unit.warning !== null ? "!" : ""}
       </span>
-      <span>
-        <span className="text-ink underline decoration-dotted underline-offset-[3px] group-hover:text-ink-bright group-hover:decoration-solid group-hover:decoration-select group-focus-visible:text-ink-bright group-focus-visible:decoration-solid group-focus-visible:decoration-select">
-          {name}
-        </span>{" "}
-        <span className="text-select">{number}</span>
-      </span>
+      {compact ? (
+        // One line however long the name (ah-fejfv): the name takes the ellipsis, the number stays whole.
+        <span
+          data-testid={`attack-name-${unit.unitId}`}
+          title={`${name} ${number}`}
+          className="flex min-w-0 gap-[0.3em] whitespace-nowrap"
+        >
+          <span className={`${NAME} truncate`}>{name}</span>
+          <span className="shrink-0 text-select">{number}</span>
+        </span>
+      ) : (
+        <span>
+          <span className={NAME}>{name}</span> <span className="text-select">{number}</span>
+        </span>
+      )}
       <span className="text-right text-ink-dim">{men}</span>
       <span className={`${BENEATH} text-ink`}>{role}</span>
       {compact ? (

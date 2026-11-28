@@ -4475,6 +4475,45 @@ test("the attacks chip shows who of ours an attack typed into the orders would m
   await expect(dialog).toContainText("Your orders have no attacks.");
 });
 
+/**
+ * ah-fejfv: Compact view keeps every row one line, a name wider than the unit column included.
+ * Boxes and the hover text, never the cut name's text, which WebKit's driver reads as "" once clipped.
+ */
+test("the attacks window keeps a long unit name on one line in Compact view", async ({ page }) => {
+  await loadReport(page);
+  // Both are aboard a ship in the ocean hex 7323 is in.
+  await openOrders(page, "13401", "1:26,52");
+  await fillOrders(page, "ATTACK 7323");
+  await page.getByTestId("attacks-chip").click();
+  await page.getByTestId("attacks-compact").check();
+
+  const heightOf = async (unitId: string) =>
+    (await page.getByTestId(`attack-unit-${unitId}`).boundingBox())?.height ?? Infinity;
+  // A second line would make the long-named row half as tall again as the short-named attacker's.
+  await expect.poll(async () => (await heightOf("13997")) / (await heightOf("13401"))).toBeLessThan(1.3);
+  const name = page.getByTestId("attack-name-13997");
+  await expect(name).toHaveAttribute("title", "Fourteen of Eight (13997)");
+  const nameBox = await name.boundingBox();
+  const numberBox = await name.getByText("(13997)", { exact: true }).boundingBox();
+  if (nameBox === null || numberBox === null) throw new Error("the long name has no box");
+  // The number is whole, inside the cell.
+  expect(numberBox.x + numberBox.width).toBeLessThanOrEqual(nameBox.x + nameBox.width + 1);
+  // Whether this name fits the column once it stops wrapping depends on the machine's fonts (it
+  // just does in Chromium on macOS, with room to spare on Linux), so the cut is proven where no font
+  // can fit it: a phone-wide window and the row squeezed to 150px, leaving the name ~3rem. Still one
+  // line, and the name overflows its box, which is where the ellipsis is drawn.
+  const wide = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.getByTestId("attack-unit-13997").evaluate((el) => {
+    (el as HTMLElement).style.width = "150px";
+  });
+  await expect.poll(async () => (await heightOf("13997")) / (await heightOf("13401"))).toBeLessThan(1.3);
+  await expect
+    .poll(() => name.locator("span").first().evaluate((el) => el.scrollWidth > el.clientWidth))
+    .toBe(true);
+  if (wide !== null) await page.setViewportSize(wide);
+});
+
 test("the battles dialog closes on Escape", async ({ page }) => {
   await loadReport(page);
 
