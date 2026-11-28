@@ -139,6 +139,8 @@ describe("the Attacks window", () => {
     const button = row(render([view()]).html, "812")?.[1] ?? "";
     expect(button).toMatch(/<span class="[^"]*underline[^"]*">Raiders<\/span>/);
     expect(button).toMatch(/<span class="text-select">\(812\)<\/span>/);
+    // Only the name is underlined, not the whole row.
+    expect(/^<button[^>]*>/.exec(row(render([view()]).html, "812")?.[0] ?? "")?.[0]).not.toContain("underline");
   });
 
   it("makes the whole row the button, lit on hover and on keyboard focus", () => {
@@ -162,6 +164,8 @@ describe("the Attacks window", () => {
     expect(note?.[0]).toContain(`title="${SCOUT_WARNING}\nfrom Plain (12,3)"`);
     expect(note?.[1]).toBe(SCOUT_WARNING);
     expect(row(compact, "812")?.[1]).not.toContain("from Plain (12,3)<");
+    // A row with nothing to say carries no empty hover text.
+    expect(render([view({ frontline: [unit({})] })], "812", true).html).not.toContain('title=""');
   });
 
   it("offers Compact view in the bar, ticked as the setting is, even with no attacks", () => {

@@ -278,7 +278,7 @@ function UnitRow({
       {compact ? (
         <span
           data-testid={`attack-note-${unit.unitId}`}
-          title={note.full}
+          title={note.full || undefined}
           className={`${NOTE_CELL} truncate ${note.warning !== null ? "text-warn" : reasonColour}`}
         >
           {note.compact}
