@@ -10,6 +10,8 @@
  * are the report's.
  */
 
+import type { ReportUnit } from "@atlantis/core-client";
+import { itemEntryId, type GameDataIndex } from "./gameData";
 import { lexOrderLine } from "./orderLine";
 import { findUnitBlocks, thisMonthsOwnLines } from "./ordersDocument";
 import type { OrderCommentSyntax } from "./rulesets";
@@ -77,4 +79,86 @@ export function readUnitAttackOrders(
     result.set(block.unitId, entry);
   }
   return result;
+}
+
+/** One main role per unit; a unit that both melees and shoots is "melee, ranged". */
+export type AttackRole = "melee" | "ranged" | "mage" | "tactician" | "non-combatant" | "melee, ranged";
+
+/** Where a joining unit stands: `rules/com_thebattle` and `rules/behind`. */
+export type BattleLine = "frontline" | "backline";
+
+/** `data/LBOW`'s opening words for every ranged weapon. */
+const RANGED = /^This is a ranged /iu;
+/** The scraper's own wield sentence (`packages/ruleset/src/data.ts`, `WIELD_SKILL`). */
+const WIELD_SKILL = /Knowledge of [a-z ]+ \[([A-Z]{2,6})\] is needed to wield this weapon\./iu;
+const WIELD_NONE = /No skill is needed to wield this weapon\./iu;
+
+type Wielded = "melee" | "ranged" | null;
+
+/**
+ * What one carried item lets the unit fight with: nothing, unless it is a weapon (its description
+ * carries a wield sentence) and the unit knows any skill it needs (`data/LBOW`: "Knowledge of
+ * longbow [LBOW] is needed to wield this weapon").
+ */
+function wieldedWith(tag: string, unit: ReportUnit, gameData: GameDataIndex): Wielded {
+  const id = itemEntryId(gameData, tag);
+  const detail = id === null ? null : gameData.detailOf(id);
+  const description = detail?.kind === "item" ? (detail.description ?? "") : "";
+  const needs = WIELD_SKILL.exec(description)?.[1] ?? null;
+  if (needs === null && !WIELD_NONE.test(description)) {
+    return null;
+  }
+  if (needs !== null && !unit.skills.some((known) => known.tag === needs && known.level > 0)) {
+    return null;
+  }
+  return RANGED.test(description) ? "ranged" : "melee";
+}
+
+const knows = (unit: ReportUnit, tag: string) =>
+  unit.skills.some((known) => known.tag === tag && known.level > 0);
+
+/**
+ * A unit's main role: mage over tactician over fighter, as agreed with the team.
+ *
+ * Mage is a combat spell set, in the report or by a COMBAT order this month (`rules/combat`);
+ * tactician knows Tactics (`data/TACT`); melee holds a weapon it can wield that is not ranged, or
+ * knows Combat (`data/COMB`); ranged holds a ranged weapon it can wield. With no game data no
+ * weapon can be told, so only Combat makes a fighter.
+ */
+export function unitRole(
+  unit: ReportUnit,
+  spellOrdered: boolean,
+  gameData: GameDataIndex | null
+): AttackRole {
+  if (spellOrdered || unit.combatSpell !== null) {
+    return "mage";
+  }
+  if (knows(unit, "TACT")) {
+    return "tactician";
+  }
+  const wielded = new Set<Wielded>(
+    gameData === null ? [] : unit.items.map((held) => wieldedWith(held.tag, unit, gameData))
+  );
+  const melee = wielded.has("melee") || knows(unit, "COMB");
+  const ranged = wielded.has("ranged");
+  return melee && ranged ? "melee, ranged" : melee ? "melee" : ranged ? "ranged" : "non-combatant";
+}
+
+const SAFER_BEHIND = "could stand in the backline, safe until the frontline falls";
+
+/** The amber warning a role earns on its line, or null where the role suits it. */
+export function lineWarning(role: AttackRole, line: BattleLine): string | null {
+  if (line === "backline") {
+    return role === "melee" ? "melee in the backline: cannot fight until the frontline falls" : null;
+  }
+  switch (role) {
+    case "non-combatant":
+      return "non-combatant in the frontline: likely to be cut down";
+    case "ranged":
+    case "mage":
+    case "tactician":
+      return `${role} in the frontline: ${SAFER_BEHIND}`;
+    default:
+      return null;
+  }
 }
