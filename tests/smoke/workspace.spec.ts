@@ -4496,8 +4496,18 @@ test("the attacks window keeps a long unit name on one line in Compact view", as
   const nameBox = await name.boundingBox();
   const numberBox = await name.getByText("(13997)", { exact: true }).boundingBox();
   if (nameBox === null || numberBox === null) throw new Error("the long name has no box");
-  // The number is whole, inside the cell; the name gave way to it.
+  // The number is whole, inside the cell.
   expect(numberBox.x + numberBox.width).toBeLessThanOrEqual(nameBox.x + nameBox.width + 1);
+  // In Chromium the name only just fits the 12rem column once it stops wrapping, so a phone-wide
+  // window is where it must give way: still one line, the name overflowing its box, which is where
+  // the ellipsis is drawn.
+  const wide = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect.poll(async () => (await heightOf("13997")) / (await heightOf("13401"))).toBeLessThan(1.3);
+  await expect
+    .poll(() => name.locator("span").first().evaluate((el) => el.scrollWidth > el.clientWidth))
+    .toBe(true);
+  if (wide !== null) await page.setViewportSize(wide);
 });
 
 test("the battles dialog closes on Escape", async ({ page }) => {
