@@ -78,6 +78,8 @@ describe("theme palette", () => {
     "--color-brass",
     "--color-brass-bright",
     "--color-select",
+    "--color-select-bright",
+    "--color-ink-bright",
     "--color-ok",
     "--color-warn",
     "--color-danger",

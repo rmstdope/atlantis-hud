@@ -141,7 +141,7 @@ function AttackDetail({
             type="button"
             data-testid="attacks-show-on-map"
             onClick={() => onShowOnMap(attack.regionId)}
-            className="cursor-pointer text-select underline decoration-dotted hover:text-[#8ccaf2] hover:decoration-solid"
+            className="cursor-pointer text-select underline decoration-dotted hover:text-select-bright hover:decoration-solid"
           >
             show on map
           </button>
@@ -232,7 +232,7 @@ function Group({
       {units.length > 0 ? (
         <ul className="py-1">
           {units.map((unit) => (
-            <li key={`${unit.regionId}/${unit.unitId}`} className="even:bg-white/[0.03]">
+            <li key={`${unit.regionId}/${unit.unitId}`} className="even:bg-ink/[0.04]">
               <UnitRow unit={unit} out={out} compact={compact} onGoToUnit={onGoToUnit} />
             </li>
           ))}
@@ -268,7 +268,7 @@ function UnitRow({
         {unit.warning !== null ? "!" : ""}
       </span>
       <span>
-        <span className="text-ink underline decoration-dotted underline-offset-[3px] group-hover:text-white group-hover:decoration-solid group-hover:decoration-select group-focus-visible:text-white group-focus-visible:decoration-solid group-focus-visible:decoration-select">
+        <span className="text-ink underline decoration-dotted underline-offset-[3px] group-hover:text-ink-bright group-hover:decoration-solid group-hover:decoration-select group-focus-visible:text-ink-bright group-focus-visible:decoration-solid group-focus-visible:decoration-select">
           {name}
         </span>{" "}
         <span className="text-select">{number}</span>

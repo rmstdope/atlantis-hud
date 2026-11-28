@@ -72,6 +72,10 @@
   --color-spark: #fff3cf;
   --color-trade-dim: #9fb0c2;
   --color-select: #5aa9de;
+  /* Hover emphasis (ah-3eegs): a link's brighter blue, and a name lit past body ink. Hover only, so
+     the body-text band does not apply; in light they darken, the way brass-bright does. */
+  --color-select-bright: #8ccaf2;
+  --color-ink-bright: #f5f8fc;
 
   /*
    * The selected hex's double ring (ah-sup): a bright ring over a dark casing, achromatic so it
@@ -243,6 +247,8 @@
   --color-spark: #fff3cf;
   --color-trade-dim: #7a8796;
   --color-select: #1f5f8f;
+  --color-select-bright: #174a70;
+  --color-ink-bright: #161c24;
 
   /* Inverted pairing (navigator's choice): on light parchment a white ring washes out, so light
      mode gets a near-black ring over a pale casing instead. */
