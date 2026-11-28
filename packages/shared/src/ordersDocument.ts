@@ -1216,6 +1216,15 @@ function atTopLevel(orders: string, syntax: OrderCommentSyntax): boolean[] {
 }
 
 /**
+ * The unit's own lines for this month: everything outside its `FORM ... END` and `TURN ... ENDTURN`
+ * blocks, for the reason {@link atTopLevel} gives. The lines come back verbatim, comments included.
+ */
+export function thisMonthsOwnLines(orders: string, syntax: OrderCommentSyntax): string[] {
+  const own = atTopLevel(orders, syntax);
+  return orders.split("\n").filter((_line, index) => own[index] === true);
+}
+
+/**
  * For each line, whether it belongs to one of the unit's own `TURN ... ENDTURN` blocks - the
  * `TURN` (or `@TURN`) line at depth zero, everything nested in it, and its closing `ENDTURN`.
  * A `TURN` inside a `FORM` is the formed unit's and is not among them (`rules/form`, `rules/turn`).
