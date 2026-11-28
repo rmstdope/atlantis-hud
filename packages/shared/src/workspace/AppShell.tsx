@@ -7648,9 +7648,11 @@ export function AppShell({
           }}
           onDismiss={() => {
             // Closing hands focus back to the chip, unless the last attack went with it; going to a
-            // unit or the map leaves focus wherever that selection puts it.
+            // unit or the map leaves focus wherever that selection puts it. The backdrop dismisses
+            // on pointerdown, and that press's own mousedown would then move focus to the body once
+            // the backdrop is gone, so focus is handed back a frame later, after the press.
             setAttacksOpen(false);
-            attacksChipRef.current?.focus();
+            requestAnimationFrame(() => attacksChipRef.current?.focus());
           }}
         />
       ) : null}
