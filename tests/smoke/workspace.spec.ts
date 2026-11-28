@@ -4404,6 +4404,19 @@ test("the attacks chip shows who of ours an attack typed into the orders would m
   await expect(dialog).toHaveCount(0);
   await expect(chip).toBeFocused();
 
+  // A press outside the window closes it and hands focus back to the chip too, and so does a press
+  // on the chip itself, which lies under the backdrop while the window is open.
+  await chip.click();
+  await page.mouse.click(5, 5);
+  await expect(dialog).toHaveCount(0);
+  await expect(chip).toBeFocused();
+  await chip.click();
+  const chipBox = await chip.boundingBox();
+  if (chipBox === null) throw new Error("the attacks chip has no box");
+  await page.mouse.click(chipBox.x + chipBox.width / 2, chipBox.y + chipBox.height / 2);
+  await expect(dialog).toHaveCount(0);
+  await expect(chip).toBeFocused();
+
   // From another hex, a unit's name goes to that unit and closes the window.
   await selectHex(page, "1:26,52");
   await chip.click();
