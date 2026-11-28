@@ -13,6 +13,7 @@ import {
   loadReport,
   mapTransform,
   onlyChecks,
+  openOrders,
   ordersInput,
   ordersText,
   saveNow,
@@ -4372,6 +4373,50 @@ test("the battles chip opens the turn's fighting, battle by battle", async ({ pa
   await page.getByTestId("battles-show-on-map").click();
   await expect(page.getByTestId("battles-dialog")).toHaveCount(0);
   await expect(page.getByTestId("panel-region")).toContainText("(26,52)");
+});
+
+/*
+ * The orders' attacks (ah-pbyfh). What each attack musters is `attackMuster.test.ts`'s; this walks
+ * what only a browser can show: the chip following the editor live, focus on opening and closing,
+ * Escape, and a unit name going to that unit.
+ */
+test("the attacks chip shows who of ours an attack typed into the orders would muster", async ({ page }) => {
+  await loadReport(page);
+  await expect(page.getByTestId("attacks-chip")).toHaveCount(0);
+
+  await openOrders(page, "18642");
+  await fillOrders(page, "ATTACK 2184");
+  const chip = page.getByTestId("attacks-chip");
+  await expect(chip).toHaveText("1 attack");
+
+  await chip.click();
+  const dialog = page.getByTestId("attacks-dialog");
+  await expect(dialog).toContainText("Attacks · 1 in your orders");
+  await expect(page.getByTestId("attacks-close")).toBeFocused();
+  // Seven of Eight is avoiding and behind in this report; giving the order brings it in anyway.
+  const detail = page.getByTestId("attack-detail");
+  await expect(detail).toContainText("Seven of Eight (18642) attacks Unit (2184)");
+  await expect(page.getByTestId("attack-group-backline")).toContainText(
+    "gave the order, so it fights although it is avoiding"
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(chip).toBeFocused();
+
+  // From another hex, a unit's name goes to that unit and closes the window.
+  await selectHex(page, "1:26,52");
+  await chip.click();
+  await page.getByTestId("attack-unit-18642").click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("panel-unit")).toContainText("Seven of Eight");
+
+  // Deleting the last attack with the window open: the chip goes, the window says so.
+  await chip.click();
+  await fillOrders(page, "");
+  await expect(chip).toHaveCount(0);
+  await expect(dialog).toContainText("Attacks · none in your orders");
+  await expect(dialog).toContainText("Your orders have no attacks.");
 });
 
 test("the battles dialog closes on Escape", async ({ page }) => {

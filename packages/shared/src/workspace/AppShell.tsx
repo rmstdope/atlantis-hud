@@ -1210,6 +1210,7 @@ export function AppShell({
   // attacking unit's id, so a deleted row hands it to the first one left.
   const [attacksOpen, setAttacksOpen] = useState(false);
   const [selectedAttackKey, setSelectedAttackKey] = useState<string | null>(null);
+  const attacksChipRef = useRef<HTMLButtonElement>(null);
   // The Production window (ah-nneu). Transient like `battlesOpen`: every opening reads the orders fresh.
   const [productionOpen, setProductionOpen] = useState(false);
   const [selectedBattleIndex, setSelectedBattleIndex] = useState(0);
@@ -6925,6 +6926,7 @@ export function AppShell({
         }
         attackCount={attacks.length}
         attacksOpen={attacksOpen}
+        attacksChipRef={attacksChipRef}
         onToggleAttacks={() =>
           setAttacksOpen((open) => {
             // Opening selects the first row, so the window is never empty.
@@ -7644,7 +7646,12 @@ export function AppShell({
             setAttacksOpen(false);
             goToUnit(unitId, null, regionId);
           }}
-          onDismiss={() => setAttacksOpen(false)}
+          onDismiss={() => {
+            // Closing hands focus back to the chip, unless the last attack went with it; going to a
+            // unit or the map leaves focus wherever that selection puts it.
+            setAttacksOpen(false);
+            attacksChipRef.current?.focus();
+          }}
         />
       ) : null}
       {productionOpen && parsed ? (

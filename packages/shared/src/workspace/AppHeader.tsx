@@ -148,6 +148,8 @@ type AppHeaderProps = {
   attackCount: number;
   attacksOpen: boolean;
   onToggleAttacks: () => void;
+  /** The attacks chip, so closing the window can hand focus back to it. */
+  attacksChipRef?: Ref<HTMLButtonElement>;
   /**
    * Opens or closes the diff dialog (ah-jg6.4). The chip's *presence* is decided by
    * `comparedTurnLabel` alone - the prop the Turn chip already reuses for "a comparison is on" -
@@ -259,6 +261,7 @@ export function AppHeader({
   attackCount,
   attacksOpen,
   onToggleAttacks,
+  attacksChipRef,
   changesOpen,
   onToggleChanges,
   busy,
@@ -642,6 +645,7 @@ export function AppHeader({
       {attackCount > 0 ? (
         <button
           type="button"
+          ref={attacksChipRef}
           data-testid="attacks-chip"
           aria-haspopup="dialog"
           aria-expanded={attacksOpen}
